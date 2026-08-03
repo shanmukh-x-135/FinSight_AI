@@ -1,0 +1,26 @@
+# FinSight AI backend image.
+# Build context is ./backend (see docker-compose.yml).
+# Phase 0 keeps this a straightforward single-stage image; Phase 10 hardens it
+# into a multi-stage production build.
+
+FROM python:3.12-slim
+
+# Faster, quieter, unbuffered Python in containers.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Install dependencies first for better layer caching.
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Copy the application source.
+COPY . .
+
+EXPOSE 8000
+
+# Default command is overridden by docker-compose (migrate + serve), but a
+# sensible default is provided for `docker run` usage too.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

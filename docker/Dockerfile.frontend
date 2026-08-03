@@ -1,0 +1,20 @@
+# FinSight AI frontend image (development-oriented).
+# Build context is ./frontend (see docker-compose.yml).
+# Runs the Next.js dev server so the placeholder landing page is reachable in
+# the local stack. Phase 10 replaces this with a production `next build` image
+# (Vercel handles the real production deploy).
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies first for better layer caching.
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Copy the rest of the frontend source.
+COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]
