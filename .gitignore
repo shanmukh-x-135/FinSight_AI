@@ -1,0 +1,41 @@
+# ---- Secrets / environment ----
+# Never commit real env files; the *.example templates ARE committed.
+.env
+.env.*
+!.env.example
+*.local
+
+# ---- Python / backend ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- Node / frontend ----
+node_modules/
+.next/
+out/
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Data / vector store (later phases) ----
+*.faiss
+/data/
+pgdata/
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Native local Postgres data (scripts/run_local_postgres.sh)
+.localdb/
