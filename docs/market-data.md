@@ -1,0 +1,108 @@
+# Market Data Pipeline (Phase 2)
+
+Deterministic ingestion of daily market data and computation of technical
+indicators — the foundation every later intelligence module reads from. No AI
+here (design doc's "analytics before AI").
+
+## Data source
+
+**yfinance** (Yahoo Finance), wrapped behind a provider-agnostic interface
+(`app/shared/clients/market_data.py`) so it can be swapped. NSE listings use the
+`.NS` suffix (e.g. `RELIANCE.NS`). The default universe is a spread of large-cap
+NSE names across sectors (`app/market/constants.py`).
+
+The client (`app/shared/clients/yfinance_client.py`):
+- **retries** transient failures (`market_fetch_max_attempts`, linear backoff);
+- **validates** — drops bars with NaN / non-finite / non-positive OHLC, or
+  `high < low`. Yahoo returns a NaN close for the in-progress session, so the
+  incomplete latest bar is discarded rather than stored as corrupt data.
+
+## Ingestion pipeline
+
+`fetch → validate → store prices → compute indicators → store` per symbol
+(`app/market/service.py::MarketIngestionService`). Each symbol is **isolated**:
+one bad symbol logs and is skipped (its transaction rolled back), never aborting
+the batch. yfinance is blocking, so calls run off the event loop via
+`asyncio.to_thread`.
+
+### Trigger
+
+- **Scheduled** (normal path): APScheduler cron job, weekdays at
+  `MARKET_INGESTION_HOUR:MINUTE` in `MARKET_TIMEZONE` (default 18:30 IST, after
+  NSE close/settlement). Registered in `app/scheduler/scheduler.py`.
+- **Manual** (dev/ops): `POST /api/v1/admin/jobs/market-ingestion/run`
+  (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
+  synchronously and returns `{requested, succeeded, failed}`.
+
+## Indicators
+
+Pure functions in `app/market/indicators.py` (no I/O — unit-tested against
+hand-verified reference values, because indicator bugs are silent). Conventions
+match standard charting tools:
+
+| Indicator | Params (default) | Method |
+|-----------|------------------|--------|
+| RSI       | 14               | Wilder's smoothing (RMA) |
+| EMA       | 20 and 50        | SMA seed, multiplier `2/(period+1)` |
+| MACD      | 12 / 26 / 9      | EMA(fast) − EMA(slow); signal = EMA(MACD); histogram = MACD − signal |
+| Bollinger | 20, 2σ           | SMA ± n × **population** std dev |
+| ATR       | 14               | Wilder's smoothing of True Range |
+
+Computed for the full stored history (`compute_indicator_points`), warm-up rows
+skipped. Verified end-to-end: an independent RSI-14 recomputation on 248 real
+RELIANCE bars matched the stored value to 10 decimals.
+
+## Data model (migration `0003_market`)
+
+- **stocks** — `symbol (unique), name, sector (indexed), industry, exchange, is_active`.
+- **daily_prices** — `stock_id, date, open/high/low/close, volume`; unique + index on `(stock_id, date)` (queried by date range constantly).
+- **indicators** — `stock_id, date`, one column per indicator; unique on `(stock_id, date)`.
+- **fundamentals** — 1:1 with stock: `market_cap, pe_ratio, eps, dividend_yield, week52_high/low`.
+
+Upserts load a stock's existing rows once and update/insert in memory (portable
+across Postgres/SQLite, no dialect-specific `ON CONFLICT`) — fine for a modest
+universe run once per day.
+
+## Read endpoints (`/api/v1/market`)
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /gainers?limit=` | Top stocks by daily % change |
+| `GET /losers?limit=`  | Bottom stocks by daily % change |
+| `GET /breadth`        | Advancers / decliners / unchanged + A/D ratio |
+| `GET /sectors/{sector}` | Stocks in a sector + average % change |
+| `GET /stocks/{symbol}` | Latest quote + fundamentals |
+| `GET /stocks/{symbol}/indicators?limit=` | Indicator history (oldest→newest) |
+
+Daily % change is computed from the two most recent `daily_prices` rows.
+
+## Testing
+
+`backend/tests/market/`:
+- **Indicators** — reference-value goldens (hand-derived) + property checks.
+- **Ingestion** — fake client: full-pipeline storage, partial-failure isolation,
+  idempotency; yfinance retry (success-after-transient, exhaustion) and NaN/invalid
+  bar dropping.
+- **API** — seeded reads (gainers/losers/breadth/sector/detail/indicators, 404s)
+  and the auth-gated admin trigger.
+- **Scheduler** — start/stop + job registration, disabled-flag, job body.
+
+~97% coverage across the market/scheduler/clients modules.
+
+## Local development
+
+```bash
+# via the running stack (Docker): register a user, then trigger ingestion
+TOKEN=... # from /api/v1/auth/login
+curl -X POST localhost:8000/api/v1/admin/jobs/market-ingestion/run \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"symbols":["RELIANCE.NS","TCS.NS"]}'
+curl localhost:8000/api/v1/market/stocks/RELIANCE.NS
+```
+
+## Known limitations
+
+- yfinance/Yahoo is an unofficial source and can rate-limit or change; the client
+  retries and isolates failures but ingestion quality depends on the provider.
+- Fundamentals are best-effort (fields may be missing); a fundamentals failure
+  does not sink the symbol's price/indicator ingestion.
