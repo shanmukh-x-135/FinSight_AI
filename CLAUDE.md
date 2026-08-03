@@ -71,7 +71,7 @@ Native (no Docker) Postgres helper: `scripts/run_local_postgres.sh start`.
 | 0 — Project Setup | `v0.1.0-skeleton` | ✅ done | Monorepo, FastAPI+health, Next.js landing, Docker Compose, logging, Alembic baseline. Verified in Docker. |
 | 1 — Authentication | `v0.2.0-auth` | ✅ done | Register/login/refresh(+rotation), Argon2, JWT, `sessions` revocation, preferences (3 tables), login rate-limit, envelope. Frontend: login/register/dashboard/settings + auth context. Auth coverage ~99%. See `docs/auth.md`. |
 | 2 — Market Data | `v0.3.0-market-data` | ✅ done | yfinance client (retry + NaN-drop), pure indicator engine (RSI/EMA/MACD/Bollinger/ATR, hand-verified), ingestion (per-symbol isolation), APScheduler cron + manual trigger, `stocks/daily_prices/indicators/fundamentals` (migration 0003), market read endpoints. ~97% coverage. Live-verified on real NSE data (independent RSI cross-check matched to 10 dp). See `docs/market-data.md`. |
-| 3 — Portfolio | `v0.4.0-portfolio` | | |
+| 3 — Portfolio | `v0.4.0-portfolio` | ✅ done | Portfolio + holdings + watchlist CRUD (migration 0004), all user-scoped with strict ownership (404 on not-owned). Pure analytics engine (value/P&L/allocation/diversification-HHI/concentration/volatility/health/risk), hand-verified. Frontend: `/portfolio` (Analytics template — metric cards, SVG allocation donut, health card, holdings add/edit/remove) + `/watchlist` (pin/sort/quotes). ~99% coverage. Live-verified on real RELIANCE+TCS portfolio. See `docs/portfolio.md`. Note: sector chart is a dependency-free SVG donut; Plotly deferred to Phase 7. |
 | 4 — Historical Intelligence | `v0.5.0-historical-intelligence` | | |
 | 5 — News + Sentiment | `v0.6.0-news-sentiment` | | |
 | 6 — AI Intelligence (RAG) | `v0.7.0-ai-intelligence` | | |
