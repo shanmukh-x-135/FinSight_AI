@@ -161,3 +161,139 @@ export const api = {
       auth: true,
     }),
 };
+
+// ----- Portfolio & Watchlist types -----------------------------------------
+export interface PortfolioSummary {
+  id: number;
+  name: string;
+  created_at: string;
+  holding_count: number;
+}
+
+export interface HoldingRaw {
+  id: number;
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  quantity: number;
+  avg_buy_price: number;
+}
+
+export interface PortfolioDetail {
+  id: number;
+  name: string;
+  created_at: string;
+  holdings: HoldingRaw[];
+}
+
+export interface SectorAllocation {
+  sector: string;
+  value: number;
+  weight_percent: number;
+}
+
+export interface HoldingAnalytics {
+  id: number;
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  quantity: number;
+  avg_buy_price: number;
+  current_price: number | null;
+  previous_close: number | null;
+  market_value: number;
+  cost_basis: number;
+  unrealized_pnl: number;
+  return_percent: number | null;
+  daily_pnl: number;
+  weight_percent: number;
+}
+
+export interface PortfolioAnalytics {
+  portfolio_id: number;
+  name: string;
+  total_value: number;
+  total_cost: number;
+  total_unrealized_pnl: number;
+  total_return_percent: number | null;
+  daily_pnl: number;
+  daily_pnl_percent: number | null;
+  number_of_holdings: number;
+  number_of_sectors: number;
+  top_holding_weight_percent: number;
+  concentration_hhi: number;
+  diversification_score: number;
+  volatility_percent: number | null;
+  health_score: number;
+  risk_level: string;
+  sector_allocation: SectorAllocation[];
+  holdings: HoldingAnalytics[];
+}
+
+export interface WatchlistItem {
+  id: number;
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  current_price: number | null;
+  previous_close: number | null;
+  change: number | null;
+  change_percent: number | null;
+  pinned: boolean;
+  sort_order: number;
+}
+
+export const portfolioApi = {
+  list: () => request<PortfolioSummary[]>("/api/v1/portfolios", { auth: true }),
+  create: (name: string) =>
+    request<PortfolioSummary>("/api/v1/portfolios", {
+      method: "POST",
+      body: { name },
+      auth: true,
+    }),
+  detail: (id: number) =>
+    request<PortfolioDetail>(`/api/v1/portfolios/${id}`, { auth: true }),
+  remove: (id: number) =>
+    request<null>(`/api/v1/portfolios/${id}`, { method: "DELETE", auth: true }),
+  analytics: (id: number) =>
+    request<PortfolioAnalytics>(`/api/v1/portfolios/${id}/analytics`, { auth: true }),
+  addHolding: (id: number, body: { symbol: string; quantity: number; avg_buy_price: number }) =>
+    request<{ id: number }>(`/api/v1/portfolios/${id}/items`, {
+      method: "POST",
+      body,
+      auth: true,
+    }),
+  updateHolding: (
+    id: number,
+    itemId: number,
+    body: { quantity?: number; avg_buy_price?: number },
+  ) =>
+    request<{ id: number }>(`/api/v1/portfolios/${id}/items/${itemId}`, {
+      method: "PUT",
+      body,
+      auth: true,
+    }),
+  removeHolding: (id: number, itemId: number) =>
+    request<null>(`/api/v1/portfolios/${id}/items/${itemId}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+};
+
+export const watchlistApi = {
+  list: () => request<WatchlistItem[]>("/api/v1/watchlist", { auth: true }),
+  add: (symbol: string) =>
+    request<{ id: number }>("/api/v1/watchlist", {
+      method: "POST",
+      body: { symbol },
+      auth: true,
+    }),
+  update: (id: number, body: { pinned?: boolean; sort_order?: number }) =>
+    request<{ id: number }>(`/api/v1/watchlist/${id}`, {
+      method: "PATCH",
+      body,
+      auth: true,
+    }),
+  remove: (id: number) =>
+    request<null>(`/api/v1/watchlist/${id}`, { method: "DELETE", auth: true }),
+};
