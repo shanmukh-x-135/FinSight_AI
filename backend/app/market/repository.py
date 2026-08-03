@@ -57,6 +57,10 @@ class MarketRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_stock_by_id(self, stock_id: int) -> Stock | None:
+        result = await self.db.execute(select(Stock).where(Stock.id == stock_id))
+        return result.scalar_one_or_none()
+
     async def list_active_stocks(self) -> list[Stock]:
         result = await self.db.execute(select(Stock).where(Stock.is_active.is_(True)))
         return list(result.scalars().all())
@@ -151,6 +155,15 @@ class MarketRepository:
                         setattr(row, key, value)
         await self.db.flush()
         return len(points)
+
+    async def get_latest_indicator(self, stock_id: int) -> Indicator | None:
+        result = await self.db.execute(
+            select(Indicator)
+            .where(Indicator.stock_id == stock_id)
+            .order_by(Indicator.date.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def get_indicator_history(
         self, stock_id: int, limit: int = 60
