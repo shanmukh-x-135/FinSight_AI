@@ -3,8 +3,11 @@
 # Runs the Next.js dev server so the placeholder landing page is reachable in
 # the local stack. Phase 10 replaces this with a production `next build` image
 # (Vercel handles the real production deploy).
+#
+# Uses a Debian (glibc) base rather than Alpine (musl): Next.js 16 / Turbopack
+# ships prebuilt native binaries that are most reliable on glibc.
 
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
