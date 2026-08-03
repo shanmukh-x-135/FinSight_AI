@@ -49,17 +49,25 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """An HTTP client wired to the app with the DB dependency overridden."""
+async def test_app(db_session: AsyncSession):
+    """The FastAPI app with the DB dependency overridden to the test session.
+
+    Exposed as a fixture so tests can add further dependency overrides (e.g. the
+    market data client) on the same instance the HTTP client uses.
+    """
     app = create_app()
 
     async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    yield app
+    app.dependency_overrides.clear()
 
-    transport = ASGITransport(app=app)
+
+@pytest_asyncio.fixture
+async def client(test_app) -> AsyncGenerator[AsyncClient, None]:
+    """An HTTP client wired to the (overridden) app."""
+    transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-
-    app.dependency_overrides.clear()
