@@ -18,8 +18,9 @@ from sqlalchemy import pool
 from app.shared.database import Base
 from config.settings import settings
 
-# Import model modules here as they are added in later phases so that
-# ``Base.metadata`` is fully populated for autogenerate. (None in Phase 0.)
+# Import model modules so ``Base.metadata`` is fully populated for autogenerate
+# and offline SQL. Add new feature models here as later phases introduce them.
+from app.auth import models as _auth_models  # noqa: E402,F401
 
 config = context.config
 
