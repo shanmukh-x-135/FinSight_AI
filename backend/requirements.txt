@@ -15,8 +15,14 @@ asyncpg==0.30.0
 alembic==1.14.0
 greenlet==3.1.1
 
+# --- Security / auth ---
+argon2-cffi==23.1.0          # Argon2 password hashing
+PyJWT==2.10.1                # JWT access/refresh tokens
+email-validator==2.2.0       # pydantic EmailStr validation
+
 # --- Testing ---
 pytest==8.3.4
 pytest-asyncio==0.25.2
+pytest-cov==6.0.0            # coverage measurement (auth target 80%+)
 httpx==0.28.1
 aiosqlite==0.20.0            # ephemeral DB for fast unit/smoke tests

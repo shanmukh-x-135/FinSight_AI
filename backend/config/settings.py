@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Brute-force protection on the login endpoint: at most N attempts per
+    # client IP within the rolling window before returning HTTP 429.
+    login_rate_limit_attempts: int = 5
+    login_rate_limit_window_seconds: int = 60
+
     # ----- Cache (optional) ------------------------------------------------
     redis_url: str | None = None
 
