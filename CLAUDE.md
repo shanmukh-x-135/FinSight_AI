@@ -16,8 +16,8 @@ probabilities are computed deterministically; the LLM only *explains* them.
 ## Stack
 
 - **Backend:** FastAPI · async SQLAlchemy 2 (asyncpg) · Alembic · pydantic-settings ·
-  PostgreSQL · (Redis optional) · FAISS (later) · APScheduler (later) ·
-  Gemini Flash + FinBERT (later). Python **3.12+**.
+  PostgreSQL · APScheduler · yfinance (market data) · (Redis optional) ·
+  FAISS (later) · Gemini Flash + FinBERT (later). Python **3.12+**.
 - **Frontend:** Next.js 16 · React 19 · TypeScript · Tailwind v4 · Shadcn UI (base-ui) ·
   Plotly (later). App Router, no `src/` dir (`app/` + `components/` at root).
 - **Infra:** Docker Compose (db + backend + frontend); prod targets Vercel + Render.
@@ -70,7 +70,7 @@ Native (no Docker) Postgres helper: `scripts/run_local_postgres.sh start`.
 |------|-----|--------|-------|
 | 0 — Project Setup | `v0.1.0-skeleton` | ✅ done | Monorepo, FastAPI+health, Next.js landing, Docker Compose, logging, Alembic baseline. Verified in Docker. |
 | 1 — Authentication | `v0.2.0-auth` | ✅ done | Register/login/refresh(+rotation), Argon2, JWT, `sessions` revocation, preferences (3 tables), login rate-limit, envelope. Frontend: login/register/dashboard/settings + auth context. Auth coverage ~99%. See `docs/auth.md`. |
-| 2 — Market Data | `v0.3.0-market-data` | ⏳ next | |
+| 2 — Market Data | `v0.3.0-market-data` | ✅ done | yfinance client (retry + NaN-drop), pure indicator engine (RSI/EMA/MACD/Bollinger/ATR, hand-verified), ingestion (per-symbol isolation), APScheduler cron + manual trigger, `stocks/daily_prices/indicators/fundamentals` (migration 0003), market read endpoints. ~97% coverage. Live-verified on real NSE data (independent RSI cross-check matched to 10 dp). See `docs/market-data.md`. |
 | 3 — Portfolio | `v0.4.0-portfolio` | | |
 | 4 — Historical Intelligence | `v0.5.0-historical-intelligence` | | |
 | 5 — News + Sentiment | `v0.6.0-news-sentiment` | | |

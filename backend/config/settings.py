@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 60
 
+    # ----- Market data & scheduler -----------------------------------------
+    market_fetch_max_attempts: int = 3
+    scheduler_enabled: bool = True
+    market_timezone: str = "Asia/Kolkata"      # NSE/BSE trading timezone (IST)
+    # Post-market-close ingestion time (local to market_timezone). NSE closes
+    # 15:30 IST; run after settlement to catch finalized end-of-day data.
+    market_ingestion_hour: int = 18
+    market_ingestion_minute: int = 30
+
     # ----- Cache (optional) ------------------------------------------------
     redis_url: str | None = None
 

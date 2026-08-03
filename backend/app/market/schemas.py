@@ -1,0 +1,79 @@
+"""Pydantic response schemas for the market read endpoints."""
+
+from __future__ import annotations
+
+from datetime import date
+
+from pydantic import BaseModel, ConfigDict
+
+
+class IngestionResult(BaseModel):
+    """Summary returned by the manual ingestion trigger."""
+
+    requested: int
+    succeeded: list[str]
+    failed: list[str]
+
+
+class FundamentalsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    market_cap: int | None = None
+    pe_ratio: float | None = None
+    eps: float | None = None
+    dividend_yield: float | None = None
+    week52_high: float | None = None
+    week52_low: float | None = None
+
+
+class QuoteOut(BaseModel):
+    """Latest price snapshot for a stock, with day-over-day change."""
+
+    symbol: str
+    name: str | None
+    sector: str | None
+    date: date | None
+    close: float | None
+    previous_close: float | None
+    change: float | None
+    change_percent: float | None
+    volume: int | None
+
+
+class StockDetailOut(QuoteOut):
+    industry: str | None
+    exchange: str | None
+    fundamentals: FundamentalsOut | None
+
+
+class IndicatorPointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    date: date
+    rsi_14: float | None
+    ema_20: float | None
+    ema_50: float | None
+    macd: float | None
+    macd_signal: float | None
+    macd_histogram: float | None
+    bb_upper: float | None
+    bb_middle: float | None
+    bb_lower: float | None
+    atr_14: float | None
+
+
+class SectorPerformanceOut(BaseModel):
+    sector: str
+    stock_count: int
+    average_change_percent: float | None
+    stocks: list[QuoteOut]
+
+
+class BreadthOut(BaseModel):
+    """Market breadth: advancers vs decliners across the tracked universe."""
+
+    advancers: int
+    decliners: int
+    unchanged: int
+    total: int
+    advance_decline_ratio: float | None
