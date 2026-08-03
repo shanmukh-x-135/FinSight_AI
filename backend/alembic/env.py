@@ -21,6 +21,7 @@ from config.settings import settings
 # Import model modules so ``Base.metadata`` is fully populated for autogenerate
 # and offline SQL. Add new feature models here as later phases introduce them.
 from app.auth import models as _auth_models  # noqa: E402,F401
+from app.market import models as _market_models  # noqa: E402,F401
 
 config = context.config
 
