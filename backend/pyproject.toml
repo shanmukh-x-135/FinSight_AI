@@ -14,6 +14,11 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra -q"
 filterwarnings = ["ignore::DeprecationWarning"]
 
+[tool.coverage.run]
+# SQLAlchemy's async engine bridges sync/async via greenlets; without this,
+# coverage under-reports lines in async functions that await DB operations.
+concurrency = ["thread", "greenlet"]
+
 [tool.ruff]
 line-length = 90
 target-version = "py312"

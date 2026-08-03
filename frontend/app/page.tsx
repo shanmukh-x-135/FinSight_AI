@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+
+import { buttonVariants } from "@/components/ui/button";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -91,7 +94,14 @@ export default function Home() {
         <p className="mt-1 text-xs text-gray-400">API: {API_URL}</p>
       </div>
 
-      <p className="text-xs text-gray-400">Phase 0 — Project Setup skeleton</p>
+      <div className="flex gap-3">
+        <Link href="/register" className={buttonVariants()}>
+          Get started
+        </Link>
+        <Link href="/login" className={buttonVariants({ variant: "outline" })}>
+          Log in
+        </Link>
+      </div>
     </main>
   );
 }

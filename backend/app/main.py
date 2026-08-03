@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.routes import auth_router, user_router
 from app.health import router as health_router
 from app.shared.database import dispose_engine
 from app.shared.exceptions import register_exception_handlers
@@ -62,8 +63,9 @@ def create_app() -> FastAPI:
     # Infrastructure routes (unversioned).
     app.include_router(health_router)
 
-    # Feature routers are mounted under settings.api_v1_prefix in later phases,
-    # e.g. app.include_router(auth_router, prefix=settings.api_v1_prefix).
+    # Feature routers, versioned under /api/v1.
+    app.include_router(auth_router, prefix=settings.api_v1_prefix)
+    app.include_router(user_router, prefix=settings.api_v1_prefix)
 
     return app
 
