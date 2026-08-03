@@ -22,6 +22,7 @@ from config.settings import settings
 # and offline SQL. Add new feature models here as later phases introduce them.
 from app.auth import models as _auth_models  # noqa: E402,F401
 from app.market import models as _market_models  # noqa: E402,F401
+from app.portfolio import models as _portfolio_models  # noqa: E402,F401
 
 config = context.config
 
