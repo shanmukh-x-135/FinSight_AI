@@ -1,0 +1,99 @@
+"""Application configuration.
+
+All runtime configuration is read from environment variables (or a local
+``.env`` file) and validated once at startup via a Pydantic ``BaseSettings``
+model. Importing :data:`settings` anywhere in the app returns the same
+validated, cached instance.
+
+Adding a new setting? Add the field here *and* to ``.env.example`` so the two
+never drift — Phase 0's Definition of Done requires that parity.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Annotated, Literal
+
+from pydantic import Field, PostgresDsn, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Validated application settings.
+
+    Required variables have no default and will raise a clear
+    ``ValidationError`` at startup if missing, rather than failing silently
+    deep inside a request.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.development", ".env.production"),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # ----- Core app ---------------------------------------------------------
+    app_name: str = "FinSight AI"
+    app_env: Literal["development", "staging", "production", "test"] = "development"
+    debug: bool = False
+    log_level: str = "INFO"
+    api_v1_prefix: str = "/api/v1"
+
+    # ----- Database (required) ---------------------------------------------
+    # Async SQLAlchemy URL, e.g.
+    #   postgresql+asyncpg://finsight:finsight@localhost:5432/finsight
+    database_url: PostgresDsn = Field(...)
+
+    # Connection pool tuning
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_echo: bool = False
+
+    # ----- Security (used from Phase 1 onward) -----------------------------
+    jwt_secret: str = Field("change-me-in-production", min_length=8)
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
+    # ----- Cache (optional) ------------------------------------------------
+    redis_url: str | None = None
+
+    # ----- AI / external providers (used from later phases) ----------------
+    gemini_api_key: str | None = None
+    news_api_key: str | None = None
+
+    # ----- CORS ------------------------------------------------------------
+    # ``NoDecode`` stops pydantic-settings from JSON-parsing the env value, so a
+    # plain comma-separated string reaches our validator below.
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, value: object) -> object:
+        """Allow CORS origins as a comma-separated string in ``.env``."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return value
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+    @property
+    def database_url_str(self) -> str:
+        """The database URL as a plain string for SQLAlchemy/Alembic."""
+        return str(self.database_url)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return the cached, validated settings instance."""
+    return Settings()  # type: ignore[call-arg]
+
+
+# Convenience singleton for direct import: ``from config.settings import settings``
+settings = get_settings()
