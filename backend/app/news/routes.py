@@ -36,6 +36,13 @@ async def stock_sentiment(symbol: str, db: AsyncSession = Depends(get_db)) -> di
     return envelope(data=await NewsService(db).get_stock_sentiment(symbol))
 
 
+@news_router.get(
+    "/sentiment/sector/{sector}", summary="Daily article-weighted sentiment for a sector"
+)
+async def sector_sentiment(sector: str, db: AsyncSession = Depends(get_db)) -> dict:
+    return envelope(data=await NewsService(db).get_sector_sentiment(sector))
+
+
 @news_admin_router.post(
     "/jobs/news-ingestion/run",
     summary="Manually trigger news ingestion + sentiment scoring (dev/ops)",

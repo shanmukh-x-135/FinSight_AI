@@ -52,8 +52,23 @@ async def test_ingest_then_read(
     series = sentiment.json()["data"]["series"]
     assert series and series[-1]["avg_sentiment"] < 0  # bad news → negative
 
+    sector = await client.get("/api/v1/news/sentiment/sector/Energy")
+    assert sector.status_code == 200
+    sector_data = sector.json()["data"]
+    assert sector_data["sector"] == "Energy"
+    assert sector_data["latest_sentiment"] < 0
+    assert sector_data["series"][-1]["article_count"] == 1
+
 
 @pytest.mark.asyncio
 async def test_sentiment_unknown_stock_404(client: AsyncClient) -> None:
     resp = await client.get("/api/v1/news/sentiment/NOPE.NS")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sentiment_unknown_sector_404(
+    client: AsyncClient, seed_stocks: None
+) -> None:
+    resp = await client.get("/api/v1/news/sentiment/sector/Unknown")
     assert resp.status_code == 404

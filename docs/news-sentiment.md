@@ -74,6 +74,8 @@ added for that date and the index rebuilt.
 - **news_articles** — deduped article (unique `url`) + sentiment scores.
 - **news_article_stocks** — company tags (unique `(article_id, stock_id)`).
 - **sentiment_daily** — per-stock, per-day aggregate (unique `(stock_id, date)`).
+  Sector/day sentiment is derived on read as an article-count-weighted aggregate
+  of these canonical stock rows, avoiding redundant stored totals.
 
 ## Endpoints
 
@@ -81,6 +83,7 @@ added for that date and the index rebuilt.
 |----------|---------|
 | `GET /api/v1/news?limit=` | Recent articles with sentiment + tags |
 | `GET /api/v1/news/sentiment/{symbol}` | Daily sentiment series for a stock |
+| `GET /api/v1/news/sentiment/sector/{sector}` | Article-weighted daily sentiment for a sector |
 | `POST /api/v1/admin/jobs/news-ingestion/run` | Ingest + score + tag + aggregate (administrator only) |
 
 ## Verification

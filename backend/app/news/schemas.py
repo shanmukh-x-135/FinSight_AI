@@ -35,6 +35,12 @@ class StockSentimentOut(BaseModel):
     series: list[SentimentDailyOut]
 
 
+class SectorSentimentOut(BaseModel):
+    sector: str
+    latest_sentiment: float | None
+    series: list[SentimentDailyOut]
+
+
 class IngestNewsResult(BaseModel):
     fetched: int
     new_articles: int
