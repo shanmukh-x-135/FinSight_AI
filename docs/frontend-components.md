@@ -92,7 +92,10 @@ never a static mock.
   watchlist states. Run with `npm test`.
 - **Type/build:** `npm run build` type-checks every screen against the API
   client types in `lib/api.ts`.
-- **Live E2E:** verified against the Docker stack — register → login →
-  `/dashboard/summary` returns real breadth, AI summary, an evidence-backed
-  opportunity (RELIANCE.NS, confidence 54%), risk alerts, and historical
-  context; all four analytical routes serve 200.
+- **Browser E2E:** `npm run test:e2e` rebuilds and waits for the real Docker
+  Compose stack, idempotently provisions the test account, logs in through the
+  UI, checks all four summary cards plus the watchlist and AI summary, then
+  expands `Show Evidence` and verifies real breadth content. Install the local
+  browser once with `npx playwright install chromium`. Use
+  `E2E_BASE_URL`, `E2E_API_URL`, `E2E_EMAIL`, and `E2E_PASSWORD` with
+  `npm run test:e2e:external` when testing an already-running remote stack.

@@ -243,7 +243,7 @@
   - **Resolved 2026-08-04:** The batched dashboard response now includes the authenticated user's quote-enriched watchlist, and the page renders it with a tested responsive card using real prices, changes, pin state, empty state, truncation, and management navigation.
   - **Resolved 2026-08-04:** Market Intelligence now includes a batched deterministic RSI/EMA/MACD/ATR summary and upcoming India economic events from an optional Trading Economics adapter. Provider configuration/failure is explicit and never replaced with mock events; backend and responsive component states are tested.
   - **Resolved 2026-08-04:** Every `AIInsightCard` now requires evidence at compile time. Dashboard market prose and report executive/market/portfolio/history narratives expose shared deterministic fact-to-evidence disclosures; recommendation and historical cards retain their existing real evidence. Tests cover market, portfolio, historical, executive, percentage-unit, and sparse-evidence paths.
-  - The committed cross-cutting E2E directory is empty.
+  - **Resolved 2026-08-05:** A Playwright Chromium E2E test now rebuilds and waits for the real Compose stack, idempotently provisions an account through the backend, logs in through the UI, verifies every dashboard summary card plus watchlist/AI content, and expands `Show Evidence` to assert real breadth facts. The external-stack URL and credentials are configurable; traces/screenshots are retained on failure.
   - **Resolved 2026-08-04:** Historical percentage display was wrong by 100×:
       - avg_return and next-day returns are decimal fractions, but pct() appends % without multiplying.
       - pct_advancers is also a fraction but is displayed directly as a percent.
@@ -337,7 +337,7 @@
   ### Placeholder or unused surfaces
 
   - chat/ is empty.
-  - tests/e2e, tests/integration, tests/fixtures, and infrastructure are placeholders.
+  - tests/integration, tests/fixtures, and infrastructure remain placeholders. The obsolete tests/e2e placeholder was replaced by the frontend-owned Playwright suite.
   - feature_flags.py is unused.
   - redis_url and news_api_key are configured but unused.
   - Default create-next-app public SVGs appear unused.
@@ -358,7 +358,7 @@
 
   ### Missing tests
 
-  - No browser E2E tests.
+  - **Resolved for the Phase 7 acceptance flow on 2026-08-05:** Chromium covers real-stack login → dashboard data → evidence disclosure. The broader Phase 11 multi-page journey remains future work.
   - Focused history/reports page unit regressions now exist; frontend API integration coverage is still missing.
   - No successful FinBERT inference test.
   - Automated grounding/rejection/retry tests and a manually reviewed 12-scenario deterministic benchmark now exist. The configured-provider runner is ready, but a Gemini run remains unverified because no API key is configured in this workspace.
@@ -384,6 +384,7 @@
   - Backend: 215 passed
   - Backend coverage: 97% overall
   - Frontend unit tests: 26 passed
+  - Frontend Playwright E2E: 1 passed against the rebuilt Docker Compose stack
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack
   - Default Turbopack build could not be verified because this execution environment prohibited its internal port binding
@@ -409,7 +410,7 @@
       - **Completed 2026-08-04:** dashboard watchlist;
       - **Completed 2026-08-04:** market technical summary and economic events;
       - **Completed 2026-08-04:** evidence on every AI narrative;
-      - browser E2E coverage.
+      - **Completed 2026-08-05:** browser E2E coverage for the Phase 7 acceptance flow.
 
   4. Close Phase 8:
       - exact screen/Markdown/PDF content parity;
