@@ -345,7 +345,7 @@
   ### Dependency hygiene
 
   - **Resolved 2026-08-05:** NumPy is declared directly, Ruff is a declared executable dev/test dependency matching `pyproject.toml`, and the shadcn scaffolding CLI is a frontend devDependency.
-  - Plotly is absent despite the roadmap naming it for portfolio allocation.
+  - **Resolved 2026-08-05:** Portfolio allocation now uses a responsive, browser-only Plotly donut with an accessible external legend and SSR-safe loading shell; component tests and the production App Router build pass.
 
   ### UI consistency
 

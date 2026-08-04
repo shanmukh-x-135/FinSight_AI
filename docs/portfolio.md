@@ -83,6 +83,10 @@ Verified live too: a real RELIANCE+TCS portfolio produced hand-checkable returns
 ## Frontend
 
 - **Portfolio page** (`/portfolio`) — first use of the **Analytics page template**
+  with a responsive, client-only Plotly sector-allocation donut. Its compact
+  external legend remains readable without hover, while Plotly supplies precise
+  interactive percentages; browser-only loading is isolated behind
+  `next/dynamic` so App Router prerendering remains safe.
   (Summary Cards → Charts → AI Analysis → Details): metric cards, a sector
   **allocation donut**, a health card, and the holdings table with add/edit/remove.
 - **Watchlist page** (`/watchlist`) — add/remove/pin with live quotes.
