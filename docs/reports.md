@@ -89,8 +89,9 @@ before rendering. All cases are covered by tests.
 
 ## Frontend
 
-- `/reports` (list) — date/type filters, a **Generate report** button, and
-  prev/next pagination.
+- `/reports` (list) — date/type filters (using the shared accessible Base UI
+  Select/Input primitives), a **Generate report** button, and prev/next
+  pagination.
 - `/reports/{id}` (detail) — the **Report page template**: Executive Summary →
   Analysis (market/portfolio/historical) → Recommendations (each with the same
   **Show Evidence** expander from Phase 7) → Appendix (news). **Export

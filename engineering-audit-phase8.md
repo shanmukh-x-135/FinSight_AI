@@ -356,7 +356,7 @@
   - **Resolved 2026-08-04:** Every AI narrative card requires and renders evidence.
   - **Resolved 2026-08-05:** Shared formatting, metric-card, and table conventions are consistently applied across Phase 7 screens.
   - **Resolved 2026-08-05:** Market/Portfolio AI failures and legitimate empty results have distinct shared states; the stale future-phase placeholder was removed.
-  - Reports use a native <select> while other forms use the shared select primitive.
+  - **Resolved 2026-08-05:** Reports uses the shared controlled Base UI Select for report type; its accessible label and filter request are covered by a user-interaction test.
 
   ### Missing tests
 
@@ -385,7 +385,7 @@
 
   - Backend: 219 passed
   - Backend coverage: 97% overall
-  - Frontend unit tests: 35 passed
+  - Frontend unit tests: 36 passed
   - Frontend Playwright E2E: 2 passed against the rebuilt Docker Compose stack
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack
