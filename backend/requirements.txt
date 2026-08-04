@@ -30,6 +30,9 @@ APScheduler==3.11.3          # background job scheduling (post-market-close)
 faiss-cpu==1.15.0            # FAISS index for historical-session similarity search
 # numpy is already pulled in by yfinance; used by feature engineering / embeddings
 
+# --- Reports / export ---
+fpdf2>=2.8,<3                # pure-Python PDF export (no system libs); Markdown→PDF
+
 # --- News & sentiment ---
 feedparser==6.0.14           # RSS news ingestion
 # FinBERT (design doc's sentiment model) is an OPTIONAL extra — see
