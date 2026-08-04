@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PlotlyDonut } from "@/components/plotly-donut";
 
-vi.mock("react-plotly.js", () => ({
-  default: () => <div data-testid="plotly-chart" />,
+vi.mock("plotly.js-basic-dist-min", () => ({
+  default: { newPlot: vi.fn(), purge: vi.fn() },
 }));
 
 describe("PlotlyDonut", () => {
