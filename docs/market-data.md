@@ -29,7 +29,9 @@ returns `not_configured`. Neither path substitutes static or mocked events.
 (`app/market/service.py::MarketIngestionService`). Each symbol is **isolated**:
 one bad symbol logs and is skipped (its transaction rolled back), never aborting
 the batch. yfinance is blocking, so calls run off the event loop via
-`asyncio.to_thread`.
+`asyncio.to_thread`; every price/fundamentals call is bounded by
+`MARKET_FETCH_TIMEOUT_SECONDS` even where the provider SDK has no consistent
+timeout parameter.
 
 Read-side composition uses `MarketRepository.get_market_snapshots`: stock
 metadata, the latest two prices, and the latest indicator are assembled in at

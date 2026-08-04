@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     # ----- Market data & scheduler -----------------------------------------
     market_fetch_max_attempts: int = 3
+    market_fetch_timeout_seconds: float = 30.0
     scheduler_enabled: bool = True
     market_timezone: str = "Asia/Kolkata"      # NSE/BSE trading timezone (IST)
     # Post-market-close ingestion time (local to market_timezone). NSE closes

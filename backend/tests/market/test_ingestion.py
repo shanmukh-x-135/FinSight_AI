@@ -3,6 +3,7 @@ yfinance client's retry and validation behavior."""
 
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 
 import pytest
@@ -97,6 +98,24 @@ async def test_ingest_isolates_failures(db_session: AsyncSession) -> None:
     # The good symbols persisted despite the bad one in the middle.
     assert await MarketRepository(db_session).get_stock_by_symbol("GOOD.NS") is not None
     assert await MarketRepository(db_session).get_stock_by_symbol("BAD.NS") is None
+
+
+@pytest.mark.asyncio
+async def test_ingest_enforces_provider_deadline(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    from config.settings import settings
+
+    class SlowClient(FakeClient):
+        def fetch_daily_prices(self, symbol: str) -> list[PriceBar]:
+            time.sleep(0.05)
+            return _make_bars()
+
+    monkeypatch.setattr(settings, "market_fetch_timeout_seconds", 0.001)
+    result = await MarketIngestionService(db_session, SlowClient()).ingest(["SLOW.NS"])
+
+    assert result.succeeded == []
+    assert result.failed == ["SLOW.NS"]
 
 
 @pytest.mark.asyncio

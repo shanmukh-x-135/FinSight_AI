@@ -34,6 +34,7 @@ from app.shared.clients.economic_calendar import EconomicCalendarClient
 from app.shared.clients.market_data import MarketDataClient, PriceBar
 from app.shared.clients.yfinance_client import build_default_client
 from config.logging import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -110,9 +111,16 @@ class MarketIngestionService:
         )
 
     async def _ingest_one(self, symbol: str) -> None:
-        # yfinance is blocking — run off the event loop.
-        bars = await asyncio.to_thread(self.client.fetch_daily_prices, symbol)
-        fundamentals = await asyncio.to_thread(self.client.fetch_fundamentals, symbol)
+        # Providers are blocking, so run them off-loop and enforce an external
+        # deadline even when their own SDK does not expose one consistently.
+        bars = await asyncio.wait_for(
+            asyncio.to_thread(self.client.fetch_daily_prices, symbol),
+            timeout=settings.market_fetch_timeout_seconds,
+        )
+        fundamentals = await asyncio.wait_for(
+            asyncio.to_thread(self.client.fetch_fundamentals, symbol),
+            timeout=settings.market_fetch_timeout_seconds,
+        )
 
         stock = await self.repo.upsert_stock(
             symbol,
