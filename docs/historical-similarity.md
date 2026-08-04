@@ -20,7 +20,7 @@ vector (11 dimensions, fixed order):
 |-------|----------|
 | Market | avg_return, median_return, pct_advancers, advance_decline_ratio |
 | Technical (scale-free) | avg_rsi, avg_ema20_distance, avg_ema50_distance, avg_bollinger_position, avg_atr_pct, avg_macd_hist_pct |
-| Sentiment | avg_sentiment — **neutral placeholder** until Phase 5 wires real sentiment |
+| Sentiment | avg_sentiment from Phase 5 per-stock daily news aggregation |
 
 Technical features are scale-free (ratios/distances) so they average sensibly
 across stocks of different prices. A date only becomes a session if **every**
@@ -43,8 +43,8 @@ and apply the *same* normalizer — this is the single most important correctnes
 property: any drift between the normalization used to build the index and the
 one used to query it silently destroys similarity quality. There is exactly one
 `Normalizer` class; normalization happens nowhere else. Zero-variance features
-(e.g. the constant sentiment placeholder) map to 0 (no div-by-zero, no effect on
-distance) and start contributing automatically once Phase 5 makes them vary.
+map to 0 (no div-by-zero, no effect on distance). Sentiment now varies from the
+Phase 5 daily aggregation and contributes through the same normalization path.
 
 ### 3. Index (`embeddings.py`)
 
@@ -107,7 +107,6 @@ live (rankings + distances byte-identical across rebuilds) and in tests.
 
 ## Known limitations
 
-- **Sentiment** is a neutral placeholder until Phase 5.
 - **Macro** features (FII/DII, USD/INR, crude, gold, yields — design doc §5.6) are
   not yet ingested; they can be added to `FEATURE_NAMES` when a macro source
   exists (the index must be rebuilt when the feature set changes).

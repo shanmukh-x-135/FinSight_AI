@@ -93,8 +93,8 @@ capability migration `0008_user_admin`:
 | `preferred_market`   | IN · US                                 | IN         |
 | `preferred_sectors`  | list of free-form sector names          | `[]`       |
 
-These preferences drive report generation, recommendation ranking, alert
-thresholds, dashboard content, and AI responses in later phases (design doc §5.10).
+These preferences are the persisted personalization surface for report,
+recommendation, alert, dashboard, and conversational features (design doc §5.10).
 
 ### Operations-only routes
 

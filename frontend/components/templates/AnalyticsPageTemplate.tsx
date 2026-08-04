@@ -7,8 +7,8 @@ import { AIAnalysisState } from "@/components/AIAnalysisState";
  *   Header → Summary Cards → Charts → AI Analysis → Supporting Tables.
  *
  * Screens compose these slots so the layout stays consistent across Market,
- * Portfolio, and Historical Similarity pages. The AI Analysis slot is a
- * placeholder until the intelligence layer (Phase 6/7) fills it.
+ * Portfolio, and Historical Similarity pages. The shared empty state keeps the
+ * slot honest when a successful response contains no current signal.
  */
 export interface AnalyticsPageTemplateProps {
   title: string;

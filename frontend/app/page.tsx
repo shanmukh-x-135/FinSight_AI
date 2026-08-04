@@ -15,13 +15,7 @@ interface HealthResponse {
   env?: string;
 }
 
-/**
- * Phase 0 placeholder landing page.
- *
- * Its only job is to prove the full stack is wired together: it calls the
- * backend's `/health` endpoint and reports whether the API is reachable.
- * Real product screens arrive from Phase 7 (Dashboard UI).
- */
+/** Public landing page with a live API health signal and auth entry points. */
 export default function Home() {
   const [state, setState] = useState<ConnState>("checking");
   const [health, setHealth] = useState<HealthResponse | null>(null);

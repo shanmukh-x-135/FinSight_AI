@@ -91,11 +91,6 @@ Verified live too: a real RELIANCE+TCS portfolio produced hand-checkable returns
   **allocation donut**, a health card, and the holdings table with add/edit/remove.
 - **Watchlist page** (`/watchlist`) — add/remove/pin with live quotes.
 
-**Charting note:** the sector allocation uses a lightweight, dependency-free SVG
-donut (`components/donut-chart.tsx`) rather than Plotly. The design doc's Plotly
-choice is deferred to Phase 7's richer dashboard charts; a zero-dependency donut
-keeps this phase robust and fast.
-
 ## Testing
 
 `backend/tests/portfolio/`: pure analytics goldens + edge cases; portfolio CRUD,

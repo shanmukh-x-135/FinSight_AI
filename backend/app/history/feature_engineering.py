@@ -131,8 +131,8 @@ def vector_from_features(features: dict[str, float]) -> list[float]:
 class Normalizer:
     """Z-score standardizer fitted on the corpus and reused for queries.
 
-    Zero-variance features (e.g. the constant sentiment placeholder) map to 0 to
-    avoid division by zero — they simply don't affect distance.
+    Zero-variance features map to 0 to avoid division by zero, so they simply
+    don't affect distance.
     """
 
     def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
