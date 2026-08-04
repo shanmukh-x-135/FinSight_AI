@@ -236,11 +236,11 @@
   - Dashboard has a batched endpoint.
   - Recommendations expose real evidence.
   - Responsive grids and mobile navigation exist.
-  - Ten component tests pass.
+  - Thirteen component tests pass.
 
   Missing:
 
-  - Dashboard deliverable requires the user’s watchlist; neither its response nor page contains watchlist data: frontend/app/(dashboard)/dashboard/page.tsx:46.
+  - **Resolved 2026-08-04:** The batched dashboard response now includes the authenticated user's quote-enriched watchlist, and the page renders it with a tested responsive card using real prices, changes, pin state, empty state, truncation, and management navigation.
   - Market Intelligence omits the required technical summary and economic events: frontend/app/(dashboard)/market/page.tsx:41.
   - “Show Evidence on every AI insight” is false. Dashboard market summary and report executive/market/portfolio/history narrative cards omit evidence: frontend/app/(dashboard)/dashboard/page.tsx:84.
   - The committed cross-cutting E2E directory is empty.
@@ -383,7 +383,7 @@
 
   - Backend: 210 passed
   - Backend coverage: 97% overall
-  - Frontend unit tests: 17 passed
+  - Frontend unit tests: 20 passed
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack
   - Default Turbopack build could not be verified because this execution environment prohibited its internal port binding
@@ -406,7 +406,7 @@
       - **Completed 2026-08-04:** add and manually review the required 12-scenario benchmark (deterministic provider; live Gemini remains credential-dependent).
 
   3. Close Phase 7:
-      - dashboard watchlist;
+      - **Completed 2026-08-04:** dashboard watchlist;
       - market technical summary and economic events;
       - evidence on every AI narrative;
       - browser E2E coverage.

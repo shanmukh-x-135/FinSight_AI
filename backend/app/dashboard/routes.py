@@ -21,7 +21,9 @@ dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @dashboard_router.get(
     "/summary",
-    summary="Combined dashboard summary (market, portfolio, AI summary, opportunities)",
+    summary=(
+        "Combined dashboard summary (market, portfolio, watchlist, AI, opportunities)"
+    ),
 )
 async def dashboard_summary(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)

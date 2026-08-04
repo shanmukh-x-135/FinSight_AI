@@ -23,6 +23,7 @@ of components, and every AI insight uses the same evidence expander.
 |-----------|-----------------|---------|
 | `MetricCard` | `label, value, sub?, tone?, icon?` | A single KPI tile. `tone` (`positive`/`negative`/`neutral`/`default`) colours the value; `toneOf(n)` derives it from a signed number. |
 | `StockCard` | `symbol, name?, sector?, price?, changePercent?` | Compact quote tile for movers/opportunities; colours the change by sign. |
+| `DashboardWatchlist` | `items, maxItems?` | Compact user-watchlist card with real quotes, pin emphasis, empty/truncated states, and management navigation. |
 | `AIInsightCard` | `title, narrative, action?, confidence?, evidence?` | Standard container for any AI-written insight. Shows the prose + an optional action badge/confidence, and mounts `EvidencePanel` when `evidence` is supplied. Never computes anything. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
@@ -42,14 +43,14 @@ The design doc defines three templates; Phase 7 uses two:
 | **Management** (composed inline) | Header → Table/Form → Actions | Watchlist |
 
 The Dashboard is a bespoke composition (its own summary → AI summary →
-opportunities → risk alerts → movers), assembled from the same shared
-components.
+watchlist → opportunities → risk alerts → movers), assembled from the same
+shared components.
 
 ## Screens → components → data
 
 | Screen | Template | Key components | Backend data |
 |--------|----------|----------------|--------------|
-| **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
+| **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `DashboardWatchlist`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
 | **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors}` + `GET /recommendations` |
 | **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
 | **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, table | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
@@ -60,9 +61,10 @@ components.
 To avoid the per-card round trips the roadmap warns against, the dashboard is
 backed by a single **`GET /api/v1/dashboard/summary`** (`app/dashboard/`). It
 composes — it generates nothing new: market slice, deterministic AI market
-summary, portfolio snapshot (or `null`), evidence-backed opportunities, risk
-alerts, and the historical-similarity slice. Rankings and evidence remain
-deterministic (Phase 6); the endpoint is reproducible for identical data.
+summary, portfolio snapshot (or `null`), the authenticated user's quote-enriched
+watchlist, evidence-backed opportunities, risk alerts, and the
+historical-similarity slice. Rankings and evidence remain deterministic (Phase
+6); the endpoint is reproducible for identical data.
 
 ## Research Mode — "Show Evidence" everywhere
 
@@ -82,9 +84,9 @@ inputs (indicators, historical analogs, risks, confidence), never a static mock.
 ## Tests
 
 - **Component tests** (`components/*.test.tsx`, Vitest + Testing Library):
-  `MetricCard`, `EvidencePanel`, and `AIInsightCard` — including that Show
-  Evidence is hidden until clicked and then reveals the real evidence, risks,
-  confidence, and historical analog. Run with `npm test`.
+  `MetricCard`, `EvidencePanel`, `AIInsightCard`, and `DashboardWatchlist` —
+  including evidence disclosure and populated, pinned, empty, and truncated
+  watchlist states. Run with `npm test`.
 - **Type/build:** `npm run build` type-checks every screen against the API
   client types in `lib/api.ts`.
 - **Live E2E:** verified against the Docker stack — register → login →

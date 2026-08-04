@@ -20,6 +20,7 @@ from app.intelligence.recommendation_engine import (
     select_watchlist,
 )
 from app.intelligence.report_generator import _rec_to_dict
+from app.portfolio.service import PortfolioService
 from config.settings import settings
 
 
@@ -33,15 +34,20 @@ class DashboardService:
         market = await self.cb.build_market_slice()
         history = await self.cb.build_history_slice()
         portfolio = await self.cb.build_portfolio_slice(user_id)
+        user_watchlist = (
+            await PortfolioService(self.db).list_watchlist(user_id)
+            if user_id is not None
+            else []
+        )
 
         # Recommendations: deterministic ranking; the LLM only explains each pick.
         candidates = await self.cb.build_candidates(history)
         ranked = rank_candidates(candidates)
-        watchlist = select_watchlist(ranked, settings.top_n_recommendations)
+        opportunities = select_watchlist(ranked, settings.top_n_recommendations)
         risk_alerts = select_risk_alerts(ranked)
 
         system = pb.system_instruction()
-        for rec in watchlist + risk_alerts:
+        for rec in opportunities + risk_alerts:
             prompt, fallback = pb.recommendation_explanation(rec)
             rec.explanation = await generate_grounded(
                 self.llm, system, prompt, fallback
@@ -56,7 +62,8 @@ class DashboardService:
             "market": market,
             "ai_market_summary": ai_market_summary,
             "portfolio": portfolio,
-            "opportunities": [_rec_to_dict(r) for r in watchlist],
+            "watchlist": [item.model_dump(mode="json") for item in user_watchlist],
+            "opportunities": [_rec_to_dict(r) for r in opportunities],
             "risk_alerts": [_rec_to_dict(r) for r in risk_alerts],
             "history": history,
         }

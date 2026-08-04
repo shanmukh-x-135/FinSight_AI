@@ -408,6 +408,7 @@ export interface DashboardSummary {
   market: { breadth: Breadth; gainers: Quote[]; losers: Quote[] };
   ai_market_summary: string;
   portfolio: PortfolioAnalytics | null;
+  watchlist: WatchlistItem[];
   opportunities: Recommendation[];
   risk_alerts: Recommendation[];
   history: SimilarityResult | null;
