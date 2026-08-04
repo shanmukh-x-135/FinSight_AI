@@ -18,10 +18,11 @@ from app.auth.routes import auth_router, user_router
 from app.dashboard.routes import dashboard_router
 from app.health import router as health_router
 from app.history.routes import history_admin_router, history_router
-from app.intelligence.routes import intelligence_router, reports_router
+from app.intelligence.routes import intelligence_router
 from app.market.routes import admin_router, market_router
 from app.news.routes import news_admin_router, news_router
 from app.portfolio.routes import portfolio_router, watchlist_router
+from app.reports.routes import reports_router
 from app.scheduler.scheduler import shutdown_scheduler, start_scheduler
 from app.shared.database import dispose_engine
 from app.shared.exceptions import register_exception_handlers
