@@ -42,6 +42,15 @@ def test_markdown_contains_all_sections(make_sections) -> None:
     assert "not a forecast" in md
 
 
+def test_markdown_scales_historical_return_ratio(make_sections) -> None:
+    md = render_markdown(_report(make_sections()))
+    # Historical returns use decimal ratios, unlike already-scaled market and
+    # portfolio percentages. 0.4 must therefore render as 40%, not 0.4%.
+    assert "**Avg next-day return:** +40.00%" in md
+    assert "AAA.NS (+5.00%)" in md
+    assert "**Total return:** -3.50%" in md
+
+
 def test_markdown_skips_missing_optional_sections(make_sections) -> None:
     sections = make_sections()
     del sections["portfolio_summary"]

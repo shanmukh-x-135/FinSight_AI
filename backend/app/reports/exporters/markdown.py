@@ -20,6 +20,13 @@ def _pct(n: Any) -> str:
     return f"{n:+.2f}%" if isinstance(n, (int, float)) else str(n)
 
 
+def _ratio_pct(n: Any) -> str:
+    """Format a decimal ratio (0.01 = 1%) as a display percentage."""
+    if n is None:
+        return "—"
+    return f"{n * 100:+.2f}%" if isinstance(n, (int, float)) else str(n)
+
+
 def _num(n: Any, digits: int = 2) -> str:
     if n is None:
         return "—"
@@ -136,7 +143,7 @@ def render_markdown(report: Report) -> str:
                    f"(top-{st.get('k', '—')} nearest)")
         if prob is not None:
             out.append(f"- **Closed higher next day:** {round(prob * 100)}% of them, historically")
-        out.append(f"- **Avg next-day return:** {_pct(st.get('avg_next_day_return'))}")
+        out.append(f"- **Avg next-day return:** {_ratio_pct(st.get('avg_next_day_return'))}")
         out.append("- _Historical context, not a forecast._")
         out.append("")
 

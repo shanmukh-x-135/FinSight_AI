@@ -30,6 +30,11 @@ NaNs in the index.
 The **outcome label** stored per session is the *next* session's `avg_return`
 (the actual next-day market move) — this is what statistics are computed against.
 
+Return and breadth fields are represented by the API as decimal ratios
+(`0.01` means 1%, and `pct_advancers=0.60` means 60%). Frontend and report
+export formatters scale these ratios by 100 for display; market and portfolio
+fields whose names end in `_percent` are already percentage-point values.
+
 ### 2. Normalization — the drift-prevention invariant
 
 Vectors are z-score standardized by a `Normalizer` **fitted once on the corpus
