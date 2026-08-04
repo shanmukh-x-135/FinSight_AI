@@ -1,5 +1,175 @@
 # FinSight AI Implementation Audit
 
+## Remediation closure — 2026-08-05 (current state)
+
+This section supersedes the original read-only snapshot retained below. Every
+Phase 0–8 conclusion was re-evaluated from the implementation after remediation,
+not inferred from tags or the roadmap progress table.
+
+### 1. Repository Architecture
+
+- **Backend:** FastAPI modular monolith with feature-owned routes, services,
+  repositories, models, and schemas under `backend/app/`; shared envelopes,
+  exceptions, request IDs, security, providers, and database lifecycle live in
+  `app/shared/`. APScheduler executes the locked market → news → history
+  post-close pipeline.
+- **Database:** async SQLAlchemy 2/PostgreSQL with one Alembic chain through
+  `0008_user_admin`. The history vectors and reports use JSON where their shape
+  is intentionally versioned; FAISS artifacts live on the persisted data volume.
+- **Frontend:** Next.js 16 App Router/React 19/Tailwind v4 with `(auth)` and
+  `(dashboard)` route groups, a typed API client, auth context, reusable page
+  templates, and responsive authenticated navigation.
+- **Shared UI/design system:** Base UI/Shadcn primitives plus `MetricCard`,
+  `StockCard`, `AIInsightCard`, mandatory `EvidencePanel`, `Heatmap`, reusable
+  `DataTable`, SSR-safe Plotly allocation chart, and shared formatters/states.
+- **API:** all product JSON routes are under `/api/v1` and use the standard
+  envelope; authenticated file exports intentionally return raw Markdown/PDF.
+  Expensive operations routes use the persisted administrator dependency.
+
+### 2. Phase Audit
+
+| Phase | Status | Definition of Done |
+|---|---|---|
+| 0 — Project Setup | COMPLETE | Satisfied |
+| 1 — Authentication | COMPLETE | Satisfied |
+| 2 — Market Data | COMPLETE | Satisfied |
+| 3 — Portfolio | COMPLETE | Satisfied |
+| 4 — Historical Intelligence | COMPLETE | Satisfied |
+| 5 — News + Sentiment | COMPLETE | Satisfied |
+| 6 — AI Intelligence | COMPLETE | Satisfied for the deterministic default and configured Gemini adapter |
+| 7 — Dashboard UI | COMPLETE | Satisfied |
+| 8 — Reports | COMPLETE | Satisfied |
+| 9 — AI Chat | NOT STARTED | Not applicable yet |
+| 10 — Deployment | NOT STARTED | Not applicable yet |
+| 11 — Testing & Polish | NOT STARTED | Phase-specific deliverables remain future work |
+
+#### Phase 0 — COMPLETE
+
+Evidence: runnable Compose stack, FastAPI/Next.js applications, PostgreSQL,
+health checks, structured request-ID logging, complete environment templates,
+Alembic, tests, and current setup/architecture documentation. A clean image
+rebuild and three-service startup passed. DoD: satisfied.
+
+#### Phase 1 — COMPLETE
+
+Evidence: Argon2 registration/login, JWT access and rotating refresh tokens,
+revocable sessions, preferences, rate limiting, frontend auth/settings, and
+ownership/security tests. DoD: satisfied. Process-local rate limiting and
+browser token storage remain documented production-hardening choices, not
+Phase 1 functional gaps.
+
+#### Phase 2 — COMPLETE
+
+Evidence: validated and retrying yfinance ingestion, externally enforced
+provider deadlines, per-symbol isolation, deterministic indicators, scheduled
+and admin-only manual operation, complete market read APIs, and batched snapshot
+queries. Real NSE data remains populated in PostgreSQL. DoD: satisfied.
+
+#### Phase 3 — COMPLETE
+
+Evidence: user-scoped portfolio/holding/watchlist CRUD, deterministic analytics,
+truthful incomplete-valuation semantics, constant-query snapshot assembly,
+responsive UI, and an SSR-safe Plotly allocation visualization. DoD: satisfied;
+missing quotes withhold dependent analytics instead of inventing a zero price.
+
+#### Phase 4 — COMPLETE
+
+Evidence: the fixed vector is now 15-dimensional: market, technical, real news
+sentiment, and real daily returns for USD/INR, crude oil, gold, and the US
+10-year yield. Macro proxies reuse validated price ingestion as inactive rows,
+so they cannot contaminate equity views. Sessions require all four macro inputs;
+no zero imputation is used. Persisted normalization, exact FAISS retrieval,
+self-exclusion, actual next-day outcomes, statistics, and deterministic rebuild
+tests remain intact. Stale pre-upgrade artifacts now fail safely with a rebuild
+contract rather than a 500. Live acceptance indexed 194 macro-complete sessions
+at dimension 15 and returned five ranked analogues with five actual outcomes.
+DoD: satisfied. FII/DII is a documented provider-source extension, not a fake
+placeholder.
+
+#### Phase 5 — COMPLETE
+
+Evidence: RSS ingestion/deduplication, precise company tagging, batched lexicon
+or optional FinBERT inference, successful FinBERT-path regression, stock/day
+aggregation, article-weighted sector/day aggregation and API, scheduler wiring,
+and direct history-vector consumption. DoD: satisfied; the deterministic lexicon
+remains the install-light default while FinBERT is explicitly selectable.
+
+#### Phase 6 — COMPLETE
+
+Evidence: scoped RAG context, deterministic ranking and evidence/confidence/risk,
+versioned prompts, async Gemini adapter with transport/per-attempt deadlines,
+strict prose grounding/rejection/retry, deterministic fallback, structured
+reports, and a manually reviewed 12-scenario benchmark. DoD: satisfied in the
+repository's supported default configuration. A live Gemini benchmark remains
+credential-dependent and is recorded as external verification, not silently
+claimed.
+
+#### Phase 7 — COMPLETE
+
+Evidence: reusable components were built and used across dashboard, market,
+portfolio, history, and reports; dashboard summary is batched; watchlist,
+technical summary, economic-event provider states, evidence disclosures, and
+responsive navigation are real-data wired. Unit tests and Chromium Compose E2E
+cover login → dashboard → evidence. DoD: satisfied.
+
+#### Phase 8 — COMPLETE
+
+Evidence: owned filterable/paginated report browse/detail APIs, generation,
+Markdown single source of truth, Unicode-safe PDF conversion, authenticated
+blob downloads, content/provenance parity across screen/Markdown/PDF, report
+templates, evidence disclosures, exhaustive export tests, and real-stack
+generate/open/export E2E. Report persistence has one repository owner. DoD:
+satisfied.
+
+### 3. Remaining Technical Debt
+
+- Phase 9 chat, Phase 10 production infrastructure, and Phase 11 accessibility,
+  performance/load, clean-clone, and full multi-page journey work have not been
+  pulled forward and should not be represented as Phase 0–8 defects.
+- A live Gemini benchmark needs a user-supplied API key; deterministic benchmark,
+  adapter, timeout, retry, rejection, and fallback coverage are complete.
+- FII/DII historical flows need a trustworthy licensed/provider source before
+  joining the macro vector. The current implementation deliberately does not
+  fabricate them.
+- Authentication still uses browser storage and login throttling is process
+  local; production deployment should move these to hardened cookie/distributed
+  controls if its threat and scale model requires them.
+- Broader accessibility and performance measurement belongs to Phase 11.
+
+Resolved debt includes report-repository duplication, per-holding N+1 reads,
+fake zero-price valuation, missing job authorization, scheduler races, blocking
+provider calls, stale feature flags/dependencies/assets, duplicated frontend
+formatters/tables/metrics, missing Plotly, ungrounded AI prose, report parity,
+historical percentage units, sector sentiment, and missing macro features.
+
+### 4. Current Project State
+
+Verified current evidence:
+
+- Backend: **233 tests pass**; Ruff passes.
+- Frontend: **37 tests pass**; lint and the Next.js webpack production build pass.
+- Browser: **2 Chromium E2E flows pass** against the rebuilt real Compose stack.
+- Database: one Alembic head at `0008_user_admin`.
+- Live macro ingestion: all four proxies succeeded, each with 252–260 real bars.
+- Live history rebuild: 194 sessions, 15 dimensions, latest date 2026-08-04;
+  Top-5 query returned five stored next-day outcomes.
+- Dependency audit: zero npm vulnerabilities at the last verification.
+
+The Phase 8 backlog is closed. The codebase is at the boundary between completed
+Reports and unstarted AI Chat.
+
+### 5. Recommended Next Phase
+
+Resume at **Phase 9 — AI Chat**. Start with the roadmap's conversation model,
+user-scoped chat history, grounded context retrieval, streaming/error contract,
+and chat UI; keep recommendation computation in deterministic services and let
+the LLM explain only supplied facts. Phase 10 and Phase 11 should remain separate
+after Chat is runnable end-to-end.
+
+---
+
+## Original read-only audit snapshot (historical; superseded above)
+
   I reviewed the complete roadmap, repository structure, backend and frontend implementation, migrations, tests, configuration, documentation, phase tags, and outstanding placeholders. No source files were modified.
 
   The repository is substantial and functional, but the progress table overstates completion. Under a strict roadmap-based definition, only Phase 1 is fully complete. Phases 0 and 2–8 have material gaps; Phases 9–11
