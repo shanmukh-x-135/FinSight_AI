@@ -74,6 +74,17 @@ class NewsRepository:
         row.neutral_count = neu
         await self.db.flush()
 
+    async def get_latest_sentiment_map(self) -> dict[int, float]:
+        """Most-recent avg_sentiment per stock (for context building)."""
+        result = await self.db.execute(
+            select(SentimentDaily.stock_id, SentimentDaily.date, SentimentDaily.avg_sentiment)
+            .order_by(SentimentDaily.stock_id, SentimentDaily.date.asc())
+        )
+        latest: dict[int, float] = {}
+        for stock_id, _day, value in result.all():
+            latest[stock_id] = value  # ascending → last write wins = most recent
+        return latest
+
     async def get_sentiment_series(self, stock_id: int) -> list[SentimentDaily]:
         result = await self.db.execute(
             select(SentimentDaily)
