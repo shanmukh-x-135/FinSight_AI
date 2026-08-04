@@ -85,6 +85,14 @@ def test_no_risks_yields_standard_risk_note() -> None:
     assert rec.risks == ["Standard market risk applies"]
 
 
+def test_zero_distance_and_macd_are_described_as_neutral() -> None:
+    rec = build_recommendation(
+        _candidate("FLAT", ema20_distance_pct=0.0, macd_hist=0.0)
+    )
+    assert "Price at its 20-day EMA (+0.0%)" in rec.evidence
+    assert "MACD histogram neutral" in rec.evidence
+
+
 def test_select_watchlist_and_alerts() -> None:
     recs = rank_candidates([
         _candidate("AAA", rsi=68, change_percent=3, ema20_distance_pct=4, macd_hist=2, sentiment=0.6),

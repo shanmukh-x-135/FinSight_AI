@@ -221,7 +221,7 @@
 
   Material gaps:
 
-  - No 10–15-scenario regression benchmark exists. The documentation re-labels the ordinary unit suite as the benchmark.
+  - **Resolved 2026-08-04:** A dedicated, versioned 12-scenario benchmark now covers aligned/conflicting signals, neutral conditions, volatility, sentiment, historical context, sector leadership, and sparse data. It checks action, confidence, evidence, risks, grounding, rank determinism, and reproducibility; all deterministic outputs were read and recorded in docs/benchmarks/phase6-v1.1-deterministic.md.
   - Tests primarily use the deterministic narrator, not real-model responses: backend/tests/intelligence/test_report_generation.py:1.
   - **Resolved 2026-08-04:** Gemini generation now uses the SDK's native async client, configures its transport timeout from llm_timeout_seconds, and enforces the same deadline around every retry attempt.
   - **Resolved 2026-08-04:** Every narration path now validates provider prose against its prompt facts. Unsupported numbers, price predictions/advice, and missing section anchors are rejected; recommendation prose must include its symbol, confidence, supplied evidence, and supplied risk. Gemini retries rejected output and all adapters have a post-generation fallback guard.
@@ -361,7 +361,7 @@
   - No browser E2E tests.
   - Focused history/reports page unit regressions now exist; frontend API integration coverage is still missing.
   - No successful FinBERT inference test.
-  - Automated grounding/rejection/retry tests now exist; a real-Gemini 10–15-scenario regression benchmark and manual review are still missing.
+  - Automated grounding/rejection/retry tests and a manually reviewed 12-scenario deterministic benchmark now exist. The configured-provider runner is ready, but a Gemini run remains unverified because no API key is configured in this workspace.
   - **Resolved 2026-08-04:** Regression tests now cover historical percentage units in shared formatting, the history page, report detail, and Markdown export.
   - PDF tests verify a valid PDF header but do not extract and compare its textual contents with Markdown/UI.
   - No scheduler multi-instance or admin-role tests.
@@ -381,7 +381,7 @@
 
   Verification results:
 
-  - Backend: 206 passed
+  - Backend: 210 passed
   - Backend coverage: 97% overall
   - Frontend unit tests: 17 passed
   - Alembic: single head at 0007_reports
@@ -403,7 +403,7 @@
   2. Close Phase 6 AI guarantees:
       - **Completed 2026-08-04:** enforce timeout/non-blocking Gemini calls;
       - **Completed 2026-08-04:** validate model output against supplied evidence;
-      - add the required scenario benchmark.
+      - **Completed 2026-08-04:** add and manually review the required 12-scenario benchmark (deterministic provider; live Gemini remains credential-dependent).
 
   3. Close Phase 7:
       - dashboard watchlist;

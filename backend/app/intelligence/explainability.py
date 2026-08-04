@@ -124,6 +124,13 @@ def _meaningful_words(values: list[str]) -> set[str]:
     }
 
 
+def _mentions_source_anchor(text: str, values: list[str]) -> bool:
+    words = _meaningful_words(values)
+    if words.intersection(_WORD_RE.findall(text.lower())):
+        return True
+    return any(_mentions_number(text, value) for value in _numbers(values))
+
+
 def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
     """Check model prose against the structured facts embedded in its prompt.
 
@@ -150,11 +157,11 @@ def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
             return GroundingResult(False, "recommendation omits its symbol")
         if not _mentions_number(narrative, facts["confidence"]):
             return GroundingResult(False, "recommendation omits its confidence")
-        evidence_words = _meaningful_words([str(v) for v in facts["evidence"]])
-        if not evidence_words.intersection(_WORD_RE.findall(lower)):
+        evidence = [str(v) for v in facts["evidence"]]
+        if not _mentions_source_anchor(narrative, evidence):
             return GroundingResult(False, "recommendation omits supplied evidence")
-        risk_words = _meaningful_words([str(v) for v in facts["risks"]])
-        if not risk_words.intersection(_WORD_RE.findall(lower)):
+        risks = [str(v) for v in facts["risks"]]
+        if not _mentions_source_anchor(narrative, risks):
             return GroundingResult(False, "recommendation omits supplied risks")
     elif "breadth" in facts:
         breadth = facts["breadth"]

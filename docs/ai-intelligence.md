@@ -117,10 +117,13 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
   paraphrases, hallucinated numbers, missing recommendation evidence/confidence/
   risks, retry after rejected Gemini prose, and fallback for a non-compliant
   provider adapter.
-- **Consistency / regression** — the test suite is the regression benchmark:
-  bullish/bearish/neutral scenarios, with/without portfolio and history,
-  determinism, and reproducibility. Live: identical rankings + reproducible
-  reports across runs.
+- **Consistency / regression** — a dedicated, versioned 12-scenario fixture
+  covers broad bullish/bearish alignment, neutral conditions, overbought and
+  high-volatility risk, oversold rebound, sentiment-only signals, historical
+  analogs, sector leadership, and sparse data. The benchmark asserts action,
+  confidence, evidence, risks, grounding, reproducibility, and deterministic
+  rank order. Its reviewed output is stored in
+  `docs/benchmarks/phase6-v1.1-deterministic.md`.
 - **No price prediction** — enforced by prompt constraints; the historical
   section is explicitly framed as context, "not a forecast".
 - **Provider reliability** — tests cover native async generation, event-loop
@@ -130,3 +133,10 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
 ~97% coverage across the intelligence modules. Live: a real report cited RELIANCE
 with RSI/EMA/MACD/sector/historical evidence and real risks, confidence 54%, and
 no price forecast.
+
+Run `python -m tests.ai_benchmark` from `backend/` for the reproducible baseline,
+or add `--configured-provider` for a provider review. The latter must report
+`GeminiClient` and pass the per-scenario `provider_response` gate, which prevents
+fallback prose from being counted as live-model output. This workspace had no
+Gemini key configured during the 2026-08-04 review, so no live-model benchmark
+is claimed.
