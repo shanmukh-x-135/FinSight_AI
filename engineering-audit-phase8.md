@@ -338,8 +338,7 @@
 
   ### Placeholder or unused surfaces
 
-  - chat/ is empty.
-  - tests/integration, tests/fixtures, and infrastructure remain placeholders. The obsolete tests/e2e placeholder was replaced by the frontend-owned Playwright suite.
+  - `chat/` and `infrastructure/` remain intentional Phase 9/10 scaffolding and are not Phase 0–8 backlog. `tests/fixtures` now holds the exercised 12-scenario AI benchmark; obsolete empty integration/E2E placeholders are absent.
   - **Resolved 2026-08-05:** Removed the unused feature-flag placeholder, unimplemented Redis/News API settings, and unreferenced create-next-app public SVGs.
 
   ### Dependency hygiene
@@ -358,7 +357,7 @@
 
   - **Resolved for the Phase 7 acceptance flow on 2026-08-05:** Chromium covers real-stack login → dashboard data → evidence disclosure. The broader Phase 11 multi-page journey remains future work.
   - Focused history/reports page unit regressions now exist; frontend API integration coverage is still missing.
-  - No successful FinBERT inference test.
+  - **Resolved 2026-08-05:** A successful FinBERT-path regression verifies model construction, batched/truncated inference, case-normalized three-class probabilities, labels, compound scores, and empty-batch behavior without downloading the optional model.
   - Automated grounding/rejection/retry tests and a manually reviewed 12-scenario deterministic benchmark now exist. The configured-provider runner is ready, but a Gemini run remains unverified because no API key is configured in this workspace.
   - **Resolved 2026-08-04:** Regression tests now cover historical percentage units in shared formatting, the history page, report detail, and Markdown export.
   - **Resolved 2026-08-05:** A pypdf regression reads the generated PDF from memory and verifies every non-empty, sanitized Markdown line is extractable from the PDF text. The test also exposed and fixed leaked single-asterisk emphasis markers.
