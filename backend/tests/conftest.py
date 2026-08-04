@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -20,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.auth.dependencies import login_rate_limiter
+from app.auth.models import User
 from app.main import create_app
 from app.shared.database import Base, get_db
 
@@ -71,3 +73,21 @@ async def client(test_app) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest_asyncio.fixture
+async def admin_headers(client: AsyncClient, db_session: AsyncSession) -> dict[str, str]:
+    """Register a persisted administrator and return an authenticated header."""
+    password = "S3curePass!"
+    email = "admin@example.com"
+    await client.post(
+        "/api/v1/auth/register", json={"email": email, "password": password}
+    )
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    user.is_admin = True
+    await db_session.commit()
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
+    token = login.json()["data"]["access_token"]
+    return {"Authorization": f"Bearer {token}"}

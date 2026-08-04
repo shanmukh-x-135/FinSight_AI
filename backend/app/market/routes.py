@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_admin_user
 from app.auth.models import User
 from app.market.dependencies import get_economic_calendar_client, get_market_client
 from app.market.service import (
@@ -120,7 +120,7 @@ class IngestionTriggerRequest(BaseModel):
 )
 async def run_market_ingestion(
     payload: IngestionTriggerRequest | None = None,
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
     client: MarketDataClient = Depends(get_market_client),
 ) -> dict:

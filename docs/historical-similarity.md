@@ -81,7 +81,7 @@ return, best/worst case, and a 95% confidence interval of the mean
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/v1/history/similar?date=&k=` | Top-K similar sessions + statistics (date defaults to latest) |
-| `POST /api/v1/admin/jobs/history-rebuild/run` | Rebuild the index (auth-protected) |
+| `POST /api/v1/admin/jobs/history-rebuild/run` | Rebuild the index (administrator only) |
 
 The rebuild is also chained into the **post-close scheduler pipeline** (ingest →
 rebuild index) so the index never goes stale.

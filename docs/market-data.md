@@ -36,7 +36,7 @@ the batch. yfinance is blocking, so calls run off the event loop via
 - **Scheduled** (normal path): APScheduler cron job, weekdays at
   `MARKET_INGESTION_HOUR:MINUTE` in `MARKET_TIMEZONE` (default 18:30 IST, after
   NSE close/settlement). Registered in `app/scheduler/scheduler.py`.
-- **Manual** (dev/ops): `POST /api/v1/admin/jobs/market-ingestion/run`
+- **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
   synchronously and returns `{requested, succeeded, failed}`.
 
@@ -93,7 +93,7 @@ Daily % change is computed from the two most recent `daily_prices` rows.
   idempotency; yfinance retry (success-after-transient, exhaustion) and NaN/invalid
   bar dropping.
 - **API** — seeded reads (gainers/losers/breadth/technical summary/sector/detail/
-  indicators/economic events, 404s) and the auth-gated admin trigger.
+  indicators/economic events, 404s) and the administrator-gated trigger.
 - **Economic calendar** — HTTPX mock transport verifies authenticated date-range
   requests, parsing, malformed-row isolation, ordering, and graceful provider
   failure/unconfigured behavior.

@@ -5,15 +5,6 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-PW = "S3curePass!"
-
-
-async def _token(client: AsyncClient, email: str) -> str:
-    await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
-    r = await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
-    return r.json()["data"]["access_token"]
-
-
 @pytest.mark.asyncio
 async def test_similar_before_build_returns_409(
     client: AsyncClient, seeded_market: None, tmp_data_dir: str
@@ -31,13 +22,13 @@ async def test_rebuild_requires_auth(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_rebuild_then_query_full_flow(
-    client: AsyncClient, seeded_market: None, tmp_data_dir: str
+    client: AsyncClient,
+    seeded_market: None,
+    tmp_data_dir: str,
+    admin_headers: dict[str, str],
 ) -> None:
-    token = await _token(client, "hist@example.com")
-    headers = {"Authorization": f"Bearer {token}"}
-
     rebuilt = await client.post(
-        "/api/v1/admin/jobs/history-rebuild/run", headers=headers
+        "/api/v1/admin/jobs/history-rebuild/run", headers=admin_headers
     )
     assert rebuilt.status_code == 200
     assert rebuilt.json()["data"]["sessions_indexed"] == 19

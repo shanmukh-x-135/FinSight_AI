@@ -40,6 +40,16 @@ class InvalidTokenError(AppException):
         super().__init__(message)
 
 
+class AdminAccessRequiredError(AppException):
+    """An authenticated non-admin attempted an operations-only action."""
+
+    status_code = status.HTTP_403_FORBIDDEN
+    error_type = "admin_access_required"
+
+    def __init__(self) -> None:
+        super().__init__("Administrator access is required.")
+
+
 class RateLimitExceededError(AppException):
     """Too many login attempts from a client within the window."""
 

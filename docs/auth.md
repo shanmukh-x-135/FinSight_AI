@@ -75,9 +75,10 @@ timing against account enumeration.
 
 ## Data model (User domain)
 
-Three tables (design doc §6.3), migration `0002_auth`:
+Three tables (design doc §6.3), migration `0002_auth` plus the administrator
+capability migration `0008_user_admin`:
 
-- **users** — `id, email (unique), hashed_password, is_active, created_at`.
+- **users** — `id, email (unique), hashed_password, is_active, is_admin, created_at`.
 - **preferences** — 1:1 with users:
   `risk_tolerance, investment_horizon, preferred_market, preferred_sectors (JSON list)`.
   A default row is created at registration.
@@ -94,6 +95,15 @@ Three tables (design doc §6.3), migration `0002_auth`:
 
 These preferences drive report generation, recommendation ranking, alert
 thresholds, dashboard content, and AI responses in later phases (design doc §5.10).
+
+### Operations-only routes
+
+Manual market/news ingestion and historical-index rebuild routes depend on
+`get_admin_user`. Registration always creates `is_admin = false`; administrators
+must be promoted directly through a controlled database/operations workflow.
+There is intentionally no public self-promotion endpoint. Missing credentials
+return 401, while an authenticated non-admin receives 403 with
+`error.type == "admin_access_required"`.
 
 ## Frontend token storage
 

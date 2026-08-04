@@ -81,7 +81,7 @@ added for that date and the index rebuilt.
 |----------|---------|
 | `GET /api/v1/news?limit=` | Recent articles with sentiment + tags |
 | `GET /api/v1/news/sentiment/{symbol}` | Daily sentiment series for a stock |
-| `POST /api/v1/admin/jobs/news-ingestion/run` | Ingest + score + tag + aggregate (auth) |
+| `POST /api/v1/admin/jobs/news-ingestion/run` | Ingest + score + tag + aggregate (administrator only) |
 
 ## Verification
 

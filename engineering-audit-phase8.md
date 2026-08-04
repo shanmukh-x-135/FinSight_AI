@@ -325,7 +325,7 @@
   - **Resolved 2026-08-05:** Missing current prices are represented as unavailable, not zero; total valuation, return, allocation, health, and risk are withheld with explicit unpriced symbols until coverage is complete. Missing previous closes likewise withhold daily P&L.
   - **Resolved 2026-08-04:** Gemini timeout is enforced at both the SDK transport and coroutine levels, and provider inference no longer blocks async workers.
   - **Resolved 2026-08-04:** Deterministic grounding validation now checks model prose against supplied JSON facts before it reaches reports, recommendations, or dashboard responses.
-  - Any authenticated user can invoke expensive admin jobs.
+  - **Resolved 2026-08-05:** Expensive manual jobs require a persisted administrator capability through one reusable dependency; unauthenticated callers receive 401 and authenticated non-admins receive 403 across market, news, and history jobs.
   - Scheduler has no leader election or distributed lock, so multi-worker deployment could duplicate ingestion.
 
   ### Duplication and missing abstractions

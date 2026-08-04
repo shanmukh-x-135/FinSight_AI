@@ -230,23 +230,13 @@ async def test_admin_ingestion_requires_auth(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_admin_ingestion_runs_with_fake_client(
-    client: AsyncClient, test_app
+    client: AsyncClient, test_app, admin_headers: dict[str, str]
 ) -> None:
     test_app.dependency_overrides[get_market_client] = lambda: _FakeIngestClient()
 
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "ops@example.com", "password": "S3curePass!"},
-    )
-    login = await client.post(
-        "/api/v1/auth/login",
-        json={"email": "ops@example.com", "password": "S3curePass!"},
-    )
-    token = login.json()["data"]["access_token"]
-
     resp = await client.post(
         "/api/v1/admin/jobs/market-ingestion/run",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=admin_headers,
         json={"symbols": ["FAKE.NS"]},
     )
     assert resp.status_code == 200

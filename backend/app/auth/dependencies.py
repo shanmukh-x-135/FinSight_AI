@@ -19,7 +19,11 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.exceptions import InvalidTokenError, RateLimitExceededError
+from app.auth.exceptions import (
+    AdminAccessRequiredError,
+    InvalidTokenError,
+    RateLimitExceededError,
+)
 from app.auth.models import User
 from app.auth.repository import AuthRepository
 from app.shared.database import get_db
@@ -46,6 +50,13 @@ async def get_current_user(
     user = await AuthRepository(db).get_user_by_id(int(decoded.subject))
     if user is None or not user.is_active:
         raise InvalidTokenError("User not found or inactive.")
+    return user
+
+
+async def get_admin_user(user: User = Depends(get_current_user)) -> User:
+    """Return the authenticated administrator, or raise an envelope-shaped 403."""
+    if not user.is_admin:
+        raise AdminAccessRequiredError()
     return user
 
 
