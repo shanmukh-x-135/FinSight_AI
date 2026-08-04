@@ -41,3 +41,5 @@ pgdata/
 .localdb/
 
 CLAUDE.md
+# FAISS index + normalizer artifacts (Phase 4)
+backend/data/
