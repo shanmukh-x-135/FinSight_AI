@@ -35,8 +35,12 @@ services:
       JWT_SECRET: dev-only-secret-not-for-production-use
       CORS_ORIGINS: http://localhost:3000
       LOG_LEVEL: INFO
+      DATA_DIR: /app/data
     ports:
       - "8000:8000"
+    volumes:
+      # Persist the FAISS index + normalizer across restarts (not ephemeral).
+      - finsight_data:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -59,3 +63,4 @@ services:
 
 volumes:
   finsight_pgdata:
+  finsight_data:
