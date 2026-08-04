@@ -35,7 +35,9 @@ the batch. yfinance is blocking, so calls run off the event loop via
 
 - **Scheduled** (normal path): APScheduler cron job, weekdays at
   `MARKET_INGESTION_HOUR:MINUTE` in `MARKET_TIMEZONE` (default 18:30 IST, after
-  NSE close/settlement). Registered in `app/scheduler/scheduler.py`.
+  NSE close/settlement). Registered in `app/scheduler/scheduler.py`. The full
+  market→news→history pipeline holds a non-blocking PostgreSQL advisory lock, so
+  only one application worker runs it at a time.
 - **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
   synchronously and returns `{requested, succeeded, failed}`.

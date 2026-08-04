@@ -1,9 +1,10 @@
 """APScheduler lifecycle.
 
-A single AsyncIOScheduler is started/stopped with the app (see ``app/main.py``).
-It registers the post-market-close market-ingestion job. Jobs are additive here;
-later phases (news, historical similarity, AI reports) hook into the same
-scheduler, matching the design doc's event-driven pipeline.
+An AsyncIOScheduler is started/stopped in each app process (see ``app/main.py``).
+It registers the post-market-close market-ingestion job; the job itself uses a
+PostgreSQL advisory lock so only one process executes the pipeline. Jobs are
+additive here; later phases hook into the same scheduler, matching the design
+doc's event-driven pipeline.
 
 Guarded by ``settings.scheduler_enabled`` so it can be turned off (e.g. in
 environments that shouldn't run background work).

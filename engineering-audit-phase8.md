@@ -326,7 +326,7 @@
   - **Resolved 2026-08-04:** Gemini timeout is enforced at both the SDK transport and coroutine levels, and provider inference no longer blocks async workers.
   - **Resolved 2026-08-04:** Deterministic grounding validation now checks model prose against supplied JSON facts before it reaches reports, recommendations, or dashboard responses.
   - **Resolved 2026-08-05:** Expensive manual jobs require a persisted administrator capability through one reusable dependency; unauthenticated callers receive 401 and authenticated non-admins receive 403 across market, news, and history jobs.
-  - Scheduler has no leader election or distributed lock, so multi-worker deployment could duplicate ingestion.
+  - **Resolved 2026-08-05:** The scheduled market→news→history pipeline uses a non-blocking PostgreSQL advisory lock held on a dedicated connection; concurrent workers skip while the owner runs. SQLite tests/local runs use matching in-process semantics, with a concurrent-worker regression test.
 
   ### Duplication and missing abstractions
 
