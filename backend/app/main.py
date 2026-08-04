@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth.routes import auth_router, user_router
 from app.health import router as health_router
 from app.history.routes import history_admin_router, history_router
+from app.intelligence.routes import intelligence_router, reports_router
 from app.market.routes import admin_router, market_router
 from app.news.routes import news_admin_router, news_router
 from app.portfolio.routes import portfolio_router, watchlist_router
@@ -81,6 +82,8 @@ def create_app() -> FastAPI:
     app.include_router(history_admin_router, prefix=settings.api_v1_prefix)
     app.include_router(news_router, prefix=settings.api_v1_prefix)
     app.include_router(news_admin_router, prefix=settings.api_v1_prefix)
+    app.include_router(reports_router, prefix=settings.api_v1_prefix)
+    app.include_router(intelligence_router, prefix=settings.api_v1_prefix)
 
     return app
 
