@@ -99,16 +99,22 @@ def recommendation_explanation(rec: Recommendation) -> tuple[str, str]:
 
 
 def executive_summary(sections: dict) -> tuple[str, str]:
-    parts = [
-        sections.get("market_summary", {}).get("narrative", ""),
-        sections.get("historical_summary", {}).get("narrative", "")
+    source_narratives = {
+        "market": sections.get("market_summary", {}).get("narrative", ""),
+        "historical": sections.get("historical_summary", {}).get("narrative", "")
         if sections.get("historical_summary") else "",
-        sections.get("portfolio_summary", {}).get("narrative", "")
+        "portfolio": sections.get("portfolio_summary", {}).get("narrative", "")
         if sections.get("portfolio_summary") else "",
-    ]
+    }
+    source_narratives = {key: value for key, value in source_narratives.items() if value}
+    parts = list(source_narratives.values())
     recs = sections.get("recommendations", [])
-    watch = ", ".join(r["symbol"] for r in recs if r["action"] == "watch")
+    watchlist = [r["symbol"] for r in recs if r["action"] == "watch"]
+    watch = ", ".join(watchlist)
     fallback = " ".join(p for p in parts if p)
     if watch:
         fallback += f" Watchlist: {watch}."
-    return _prompt("executive", {"sections": list(sections.keys()), "watchlist": watch}), fallback.strip()
+    return _prompt(
+        "executive",
+        {"source_narratives": source_narratives, "watchlist": watchlist},
+    ), fallback.strip()

@@ -18,16 +18,26 @@ Two backends behind one interface:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from functools import partial
 from typing import Protocol
 
+from app.intelligence.explainability import GroundingResult, validate_grounded_narrative
 from config.logging import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+NarrativeValidator = Callable[[str], GroundingResult]
 
 
 class LLMClient(Protocol):
-    async def generate(self, system: str, prompt: str, fallback: str) -> str:
+    async def generate(
+        self,
+        system: str,
+        prompt: str,
+        fallback: str,
+        validator: NarrativeValidator | None = None,
+    ) -> str:
         """Return prose for ``prompt``. ``fallback`` is deterministic text used
         if the model is unavailable/fails, so callers always get valid output."""
         ...
@@ -40,7 +50,17 @@ class DeterministicNarrator:
     from the structured facts, so this backend needs no model.
     """
 
-    async def generate(self, system: str, prompt: str, fallback: str) -> str:
+    async def generate(
+        self,
+        system: str,
+        prompt: str,
+        fallback: str,
+        validator: NarrativeValidator | None = None,
+    ) -> str:
+        if validator:
+            result = validator(fallback)
+            if not result.valid:
+                raise ValueError(f"Invalid deterministic narrative: {result.reason}")
         return fallback
 
 
@@ -59,7 +79,13 @@ class GeminiClient:
         self._model = settings.llm_model
         self._retries = settings.llm_max_retries
 
-    async def generate(self, system: str, prompt: str, fallback: str) -> str:
+    async def generate(
+        self,
+        system: str,
+        prompt: str,
+        fallback: str,
+        validator: NarrativeValidator | None = None,
+    ) -> str:
         contents = f"{system}\n\n{prompt}"
         for attempt in range(1, self._retries + 1):
             try:
@@ -69,7 +95,13 @@ class GeminiClient:
                     )
                 text = (getattr(resp, "text", None) or "").strip()
                 if text:
-                    return text
+                    result = validator(text) if validator else GroundingResult(True)
+                    if result.valid:
+                        return text
+                    logger.warning(
+                        "gemini_generate_rejected",
+                        extra={"attempt": attempt, "reason": result.reason},
+                    )
             except TimeoutError:
                 logger.warning(
                     "gemini_generate_timeout",
@@ -82,6 +114,22 @@ class GeminiClient:
                 )
         logger.warning("gemini_unavailable_using_fallback")
         return fallback
+
+
+async def generate_grounded(
+    client: LLMClient, system: str, prompt: str, fallback: str
+) -> str:
+    """Generate prose with retry-time and post-generation grounding checks."""
+    validator: NarrativeValidator = partial(validate_grounded_narrative, prompt=prompt)
+    narrative = await client.generate(system, prompt, fallback, validator)
+    result = validator(narrative)
+    if result.valid:
+        return narrative
+    fallback_result = validator(fallback)
+    if not fallback_result.valid:
+        raise ValueError(f"Invalid deterministic narrative: {fallback_result.reason}")
+    logger.warning("llm_output_rejected_using_fallback", extra={"reason": result.reason})
+    return fallback
 
 
 _client: LLMClient | None = None

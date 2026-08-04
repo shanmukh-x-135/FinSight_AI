@@ -6,7 +6,13 @@ import asyncio
 
 import pytest
 
-from app.intelligence.llm_client import DeterministicNarrator, get_llm_client
+from app.intelligence import prompt_builder as pb
+from app.intelligence.llm_client import (
+    DeterministicNarrator,
+    generate_grounded,
+    get_llm_client,
+)
+from app.intelligence.recommendation_engine import Recommendation
 from config.settings import settings
 
 
@@ -115,3 +121,72 @@ async def test_gemini_generation_does_not_block_event_loop() -> None:
     assert not generation.done()
     release.set()
     assert await generation == "async prose"
+
+
+@pytest.mark.asyncio
+async def test_gemini_retries_rejected_prose_then_returns_grounded_output() -> None:
+    pytest.importorskip("google.genai")
+    from app.intelligence.llm_client import GeminiClient
+
+    rec = Recommendation(
+        symbol="AAA.NS",
+        name="AAA",
+        sector="Tech",
+        action="watch",
+        score=0.4,
+        confidence=70,
+        evidence=["RSI at 60 (bullish momentum)"],
+        risks=["Standard market risk applies"],
+    )
+    prompt, fallback = pb.recommendation_explanation(rec)
+    responses = iter(
+        [
+            "AAA.NS will reach 999.",
+            (
+                "Watch AAA.NS with 70% confidence because RSI at 60 shows "
+                "bullish momentum. Standard market risk applies."
+            ),
+        ]
+    )
+    calls = 0
+
+    class _Resp:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+    async def _response(**_k):
+        nonlocal calls
+        calls += 1
+        return _Resp(next(responses))
+
+    client = GeminiClient("dummy-key")
+    client._retries = 2
+    client._client.aio.models.generate_content = _response
+
+    result = await generate_grounded(client, "system", prompt, fallback)
+    assert result.startswith("Watch AAA.NS with 70% confidence")
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_post_generation_guard_falls_back_for_noncompliant_adapter() -> None:
+    rec = Recommendation(
+        symbol="AAA.NS",
+        name="AAA",
+        sector="Tech",
+        action="watch",
+        score=0.4,
+        confidence=70,
+        evidence=["RSI at 60 (bullish momentum)"],
+        risks=["Standard market risk applies"],
+    )
+    prompt, fallback = pb.recommendation_explanation(rec)
+
+    class _NoncompliantClient:
+        async def generate(self, system, prompt, fallback, validator=None):
+            return "AAA.NS will reach 999."
+
+    result = await generate_grounded(
+        _NoncompliantClient(), "system", prompt, fallback
+    )
+    assert result == fallback

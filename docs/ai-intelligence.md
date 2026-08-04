@@ -74,11 +74,18 @@ deterministic grounded fallback narrative.
 
 ### Explainability validation (`explainability.py`)
 
-Before a report is stored: every recommendation must have evidence, confidence,
-risks, and an explanation; the report must have a market summary,
-recommendations, and an executive summary. Missing anything → rejected. (Because
-the fields are deterministic, well-formed output passes; the guard catches
-regressions and empty LLM prose.)
+Every provider response is checked before it can enter a report, recommendation
+response, or dashboard payload. The deterministic validator rejects unsupported
+numbers, exact-price predictions/advice, and section prose that omits its
+required factual anchors. Recommendation explanations must mention their symbol,
+confidence, supplied evidence, and supplied risk. Invalid Gemini output is
+retried up to the configured attempt limit; exhausted or non-compliant adapters
+degrade to the validated deterministic fallback.
+
+Before a report is stored, the structural guard additionally requires every
+recommendation to carry evidence, confidence, risks, and an explanation, plus a
+market summary, recommendations collection, and executive summary. Missing
+anything is rejected.
 
 ### Report (`report_generator.py`)
 
@@ -105,8 +112,11 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
 ## Verification (the design doc's AI evaluation dimensions)
 
 - **Retrieval** — context builder returns the expected slice per request.
-- **Grounding** — narratives contain the real facts; recommendation explanations
-  contain their own evidence (grounded by construction with the narrator).
+- **Grounding** — automated checks reject unsupported numeric claims and price
+  predictions and require section-specific factual anchors. Tests cover valid
+  paraphrases, hallucinated numbers, missing recommendation evidence/confidence/
+  risks, retry after rejected Gemini prose, and fallback for a non-compliant
+  provider adapter.
 - **Consistency / regression** — the test suite is the regression benchmark:
   bullish/bearish/neutral scenarios, with/without portfolio and history,
   determinism, and reproducibility. Live: identical rankings + reproducible

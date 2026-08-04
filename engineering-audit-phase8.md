@@ -224,8 +224,7 @@
   - No 10–15-scenario regression benchmark exists. The documentation re-labels the ordinary unit suite as the benchmark.
   - Tests primarily use the deterministic narrator, not real-model responses: backend/tests/intelligence/test_report_generation.py:1.
   - **Resolved 2026-08-04:** Gemini generation now uses the SDK's native async client, configures its transport timeout from llm_timeout_seconds, and enforces the same deadline around every retry attempt.
-  - Explainability validation checks only that deterministic fields and prose are non-empty. It does not validate LLM claims against context, reject hallucinations, or retry malformed/ungrounded prose: backend/app/
-    intelligence/explainability.py:23.
+  - **Resolved 2026-08-04:** Every narration path now validates provider prose against its prompt facts. Unsupported numbers, price predictions/advice, and missing section anchors are rejected; recommendation prose must include its symbol, confidence, supplied evidence, and supplied risk. Gemini retries rejected output and all adapters have a post-generation fallback guard.
 
   The deterministic fallback path is strong; the actual generative-AI quality gate required by the roadmap is incomplete.
 
@@ -323,7 +322,7 @@
   - **Resolved 2026-08-04:** Historical percentages understated by 100× in UI and export.
   - Missing portfolio prices are treated as zero value/full loss.
   - **Resolved 2026-08-04:** Gemini timeout is enforced at both the SDK transport and coroutine levels, and provider inference no longer blocks async workers.
-  - Explainability validation does not validate model claims.
+  - **Resolved 2026-08-04:** Deterministic grounding validation now checks model prose against supplied JSON facts before it reaches reports, recommendations, or dashboard responses.
   - Any authenticated user can invoke expensive admin jobs.
   - Scheduler has no leader election or distributed lock, so multi-worker deployment could duplicate ingestion.
 
@@ -362,7 +361,7 @@
   - No browser E2E tests.
   - Focused history/reports page unit regressions now exist; frontend API integration coverage is still missing.
   - No successful FinBERT inference test.
-  - No real Gemini grounding/regression benchmark.
+  - Automated grounding/rejection/retry tests now exist; a real-Gemini 10–15-scenario regression benchmark and manual review are still missing.
   - **Resolved 2026-08-04:** Regression tests now cover historical percentage units in shared formatting, the history page, report detail, and Markdown export.
   - PDF tests verify a valid PDF header but do not extract and compare its textual contents with Markdown/UI.
   - No scheduler multi-instance or admin-role tests.
@@ -382,7 +381,7 @@
 
   Verification results:
 
-  - Backend: 201 passed
+  - Backend: 206 passed
   - Backend coverage: 97% overall
   - Frontend unit tests: 17 passed
   - Alembic: single head at 0007_reports
@@ -403,7 +402,7 @@
   1. **Completed 2026-08-04:** Correct historical units across the history UI, report detail, Markdown, and PDF; add regression tests.
   2. Close Phase 6 AI guarantees:
       - **Completed 2026-08-04:** enforce timeout/non-blocking Gemini calls;
-      - validate model output against supplied evidence;
+      - **Completed 2026-08-04:** validate model output against supplied evidence;
       - add the required scenario benchmark.
 
   3. Close Phase 7:

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder, RagContext
 from app.intelligence.explainability import validate_report
-from app.intelligence.llm_client import LLMClient, get_llm_client
+from app.intelligence.llm_client import LLMClient, generate_grounded, get_llm_client
 from app.intelligence.recommendation_engine import (
     Recommendation,
     rank_candidates,
@@ -48,7 +48,7 @@ class ReportGenerator:
 
     async def _narrate(self, prompt_fallback: tuple[str, str]) -> str:
         prompt, fallback = prompt_fallback
-        return await self.llm.generate(self.system, prompt, fallback)
+        return await generate_grounded(self.llm, self.system, prompt, fallback)
 
     async def generate(self, user_id: int | None) -> dict:
         ctx: RagContext = await ContextBuilder(self.db).build_report_context(user_id)
