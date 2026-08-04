@@ -15,7 +15,13 @@ The client (`app/shared/clients/yfinance_client.py`):
 - **retries** transient failures (`market_fetch_max_attempts`, linear backoff);
 - **validates** — drops bars with NaN / non-finite / non-positive OHLC, or
   `high < low`. Yahoo returns a NaN close for the in-progress session, so the
-  incomplete latest bar is discarded rather than stored as corrupt data.
+incomplete latest bar is discarded rather than stored as corrupt data.
+
+Upcoming India macro events come from the optional **Trading Economics**
+country/date calendar API through an async HTTPX adapter. Set
+`TRADING_ECONOMICS_API_KEY` to enable it. Provider timeouts, HTTP errors, or
+malformed payloads degrade to an explicit `unavailable` status; an absent key
+returns `not_configured`. Neither path substitutes static or mocked events.
 
 ## Ingestion pipeline
 
@@ -70,6 +76,9 @@ universe run once per day.
 | `GET /gainers?limit=` | Top stocks by daily % change |
 | `GET /losers?limit=`  | Bottom stocks by daily % change |
 | `GET /breadth`        | Advancers / decliners / unchanged + A/D ratio |
+| `GET /technical-summary` | Batched latest RSI/EMA/MACD/ATR market aggregates |
+| `GET /economic-events?days=` | Upcoming India events with provider status and provenance |
+| `GET /sectors` | Per-sector stock count and average daily change |
 | `GET /sectors/{sector}` | Stocks in a sector + average % change |
 | `GET /stocks/{symbol}` | Latest quote + fundamentals |
 | `GET /stocks/{symbol}/indicators?limit=` | Indicator history (oldest→newest) |
@@ -83,8 +92,11 @@ Daily % change is computed from the two most recent `daily_prices` rows.
 - **Ingestion** — fake client: full-pipeline storage, partial-failure isolation,
   idempotency; yfinance retry (success-after-transient, exhaustion) and NaN/invalid
   bar dropping.
-- **API** — seeded reads (gainers/losers/breadth/sector/detail/indicators, 404s)
-  and the auth-gated admin trigger.
+- **API** — seeded reads (gainers/losers/breadth/technical summary/sector/detail/
+  indicators/economic events, 404s) and the auth-gated admin trigger.
+- **Economic calendar** — HTTPX mock transport verifies authenticated date-range
+  requests, parsing, malformed-row isolation, ordering, and graceful provider
+  failure/unconfigured behavior.
 - **Scheduler** — start/stop + job registration, disabled-flag, job body.
 
 ~97% coverage across the market/scheduler/clients modules.
@@ -106,3 +118,5 @@ curl localhost:8000/api/v1/market/stocks/RELIANCE.NS
   retries and isolates failures but ingestion quality depends on the provider.
 - Fundamentals are best-effort (fields may be missing); a fundamentals failure
   does not sink the symbol's price/indicator ingestion.
+- Economic events require a Trading Economics subscription/API key. The UI
+  reports missing/unavailable provider state rather than showing invented data.

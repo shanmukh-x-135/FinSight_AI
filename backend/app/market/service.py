@@ -8,6 +8,7 @@ one bad symbol logs and is skipped, never aborting the batch.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,8 @@ from app.market.models import DailyPrice, Stock
 from app.market.repository import MarketRepository
 from app.market.schemas import (
     BreadthOut,
+    EconomicCalendarOut,
+    EconomicEventOut,
     FundamentalsOut,
     IndicatorPointOut,
     IngestionResult,
@@ -25,7 +28,9 @@ from app.market.schemas import (
     SectorOverviewOut,
     SectorPerformanceOut,
     StockDetailOut,
+    TechnicalSummaryOut,
 )
+from app.shared.clients.economic_calendar import EconomicCalendarClient
 from app.shared.clients.market_data import MarketDataClient, PriceBar
 from app.shared.clients.yfinance_client import build_default_client
 from config.logging import get_logger
@@ -253,4 +258,61 @@ class MarketQueryService:
             unchanged=unchanged,
             total=len(quotes),
             advance_decline_ratio=ratio,
+        )
+
+    async def get_technical_summary(self) -> TechnicalSummaryOut:
+        rows = await self.repo.list_latest_indicators_with_close()
+        indicators = [row for row, _close in rows]
+        rsi_values = [row.rsi_14 for row in indicators if row.rsi_14 is not None]
+        atr_values = [
+            row.atr_14 / close * 100
+            for row, close in rows
+            if row.atr_14 is not None and close
+        ]
+        return TechnicalSummaryOut(
+            as_of=max((row.date for row in indicators), default=None),
+            stocks_with_indicators=len(rows),
+            average_rsi=sum(rsi_values) / len(rsi_values) if rsi_values else None,
+            bullish_rsi_count=sum(value >= 55 for value in rsi_values),
+            overbought_count=sum(value >= 70 for value in rsi_values),
+            oversold_count=sum(value <= 35 for value in rsi_values),
+            above_ema20_count=sum(
+                close > row.ema_20
+                for row, close in rows
+                if close is not None and row.ema_20 is not None
+            ),
+            above_ema50_count=sum(
+                close > row.ema_50
+                for row, close in rows
+                if close is not None and row.ema_50 is not None
+            ),
+            positive_macd_count=sum(
+                row.macd_histogram > 0
+                for row in indicators
+                if row.macd_histogram is not None
+            ),
+            average_atr_percent=(
+                sum(atr_values) / len(atr_values) if atr_values else None
+            ),
+        )
+
+
+class EconomicCalendarService:
+    def __init__(self, client: EconomicCalendarClient | None) -> None:
+        self.client = client
+
+    async def upcoming(self, start_date: date, end_date: date) -> EconomicCalendarOut:
+        if self.client is None:
+            return EconomicCalendarOut(status="not_configured", events=[])
+        try:
+            events = await self.client.fetch_events(start_date, end_date)
+        except Exception as exc:  # noqa: BLE001 — provider failures degrade explicitly
+            logger.warning(
+                "economic_calendar_unavailable",
+                extra={"error": type(exc).__name__},
+            )
+            return EconomicCalendarOut(status="unavailable", events=[])
+        return EconomicCalendarOut(
+            status="ok",
+            events=[EconomicEventOut(**event.__dict__) for event in events],
         )

@@ -9,14 +9,21 @@ All responses use the standard envelope.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
-from app.market.dependencies import get_market_client
-from app.market.service import MarketIngestionService, MarketQueryService
+from app.market.dependencies import get_economic_calendar_client, get_market_client
+from app.market.service import (
+    EconomicCalendarService,
+    MarketIngestionService,
+    MarketQueryService,
+)
+from app.shared.clients.economic_calendar import EconomicCalendarClient
 from app.shared.clients.market_data import MarketDataClient
 from app.shared.database import get_db
 from app.shared.response import envelope
@@ -47,6 +54,24 @@ async def losers(
 @market_router.get("/breadth", summary="Market breadth (advancers vs decliners)")
 async def breadth(db: AsyncSession = Depends(get_db)) -> dict:
     data = await MarketQueryService(db).get_breadth()
+    return envelope(data=data)
+
+
+@market_router.get("/technical-summary", summary="Market-wide technical summary")
+async def technical_summary(db: AsyncSession = Depends(get_db)) -> dict:
+    data = await MarketQueryService(db).get_technical_summary()
+    return envelope(data=data)
+
+
+@market_router.get("/economic-events", summary="Upcoming India economic events")
+async def economic_events(
+    days: int = Query(14, ge=1, le=60),
+    client: EconomicCalendarClient | None = Depends(get_economic_calendar_client),
+) -> dict:
+    start_date = date.today()
+    data = await EconomicCalendarService(client).upcoming(
+        start_date, start_date + timedelta(days=days)
+    )
     return envelope(data=data)
 
 

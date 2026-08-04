@@ -46,6 +46,8 @@ def test_executive_summary_combines_sections() -> None:
         "market_summary": {"narrative": "Market was mixed."},
         "recommendations": [{"symbol": "AAA.NS", "action": "watch"}],
     }
-    _p, fb = pb.executive_summary(sections)
+    prompt, fb = pb.executive_summary(sections)
     assert "Market was mixed." in fb
     assert "Watchlist: AAA.NS" in fb
+    assert '"market": "Market was mixed."' in prompt
+    assert '"watchlist": [' in prompt and '"AAA.NS"' in prompt

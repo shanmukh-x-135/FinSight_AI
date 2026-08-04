@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -85,3 +86,37 @@ class BreadthOut(BaseModel):
     unchanged: int
     total: int
     advance_decline_ratio: float | None
+
+
+class TechnicalSummaryOut(BaseModel):
+    as_of: date | None
+    stocks_with_indicators: int
+    average_rsi: float | None
+    bullish_rsi_count: int
+    overbought_count: int
+    oversold_count: int
+    above_ema20_count: int
+    above_ema50_count: int
+    positive_macd_count: int
+    average_atr_percent: float | None
+
+
+class EconomicEventOut(BaseModel):
+    event_id: str
+    date: datetime
+    country: str
+    category: str
+    name: str
+    importance: int
+    reference: str | None
+    source: str | None
+    source_url: str | None
+    actual: str | None
+    forecast: str | None
+    previous: str | None
+
+
+class EconomicCalendarOut(BaseModel):
+    provider: str = "Trading Economics"
+    status: Literal["ok", "not_configured", "unavailable"]
+    events: list[EconomicEventOut]

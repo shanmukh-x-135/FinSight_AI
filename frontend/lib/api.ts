@@ -325,11 +325,49 @@ export interface SectorOverview {
   average_change_percent: number | null;
 }
 
+export interface TechnicalSummary {
+  as_of: string | null;
+  stocks_with_indicators: number;
+  average_rsi: number | null;
+  bullish_rsi_count: number;
+  overbought_count: number;
+  oversold_count: number;
+  above_ema20_count: number;
+  above_ema50_count: number;
+  positive_macd_count: number;
+  average_atr_percent: number | null;
+}
+
+export interface EconomicEvent {
+  event_id: string;
+  date: string;
+  country: string;
+  category: string;
+  name: string;
+  importance: number;
+  reference: string | null;
+  source: string | null;
+  source_url: string | null;
+  actual: string | null;
+  forecast: string | null;
+  previous: string | null;
+}
+
+export interface EconomicCalendar {
+  provider: string;
+  status: "ok" | "not_configured" | "unavailable";
+  events: EconomicEvent[];
+}
+
 export const marketApi = {
   gainers: (limit = 5) => request<Quote[]>(`/api/v1/market/gainers?limit=${limit}`),
   losers: (limit = 5) => request<Quote[]>(`/api/v1/market/losers?limit=${limit}`),
   breadth: () => request<Breadth>("/api/v1/market/breadth"),
   sectors: () => request<SectorOverview[]>("/api/v1/market/sectors"),
+  technicalSummary: () =>
+    request<TechnicalSummary>("/api/v1/market/technical-summary"),
+  economicEvents: (days = 14) =>
+    request<EconomicCalendar>(`/api/v1/market/economic-events?days=${days}`),
 };
 
 // ----- Historical similarity types (Phase 4 reads) --------------------------
@@ -408,6 +446,7 @@ export interface DashboardSummary {
   market: { breadth: Breadth; gainers: Quote[]; losers: Quote[] };
   ai_market_summary: string;
   portfolio: PortfolioAnalytics | null;
+  watchlist: WatchlistItem[];
   opportunities: Recommendation[];
   risk_alerts: Recommendation[];
   history: SimilarityResult | null;

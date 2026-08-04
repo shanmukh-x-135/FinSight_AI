@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder
 from app.intelligence.exceptions import ReportNotFoundError
-from app.intelligence.llm_client import LLMClient, get_llm_client
+from app.intelligence.llm_client import LLMClient, generate_grounded, get_llm_client
 from app.intelligence.models import Report
 from app.intelligence.recommendation_engine import (
     rank_candidates,
@@ -54,7 +54,9 @@ class IntelligenceService:
         system = pb.system_instruction()
         for rec in watchlist + risk_alerts:
             prompt, fallback = pb.recommendation_explanation(rec)
-            rec.explanation = self.llm.generate(system, prompt, fallback)
+            rec.explanation = await generate_grounded(
+                self.llm, system, prompt, fallback
+            )
         return {
             "watchlist": [_rec_to_dict(r) for r in watchlist],
             "risk_alerts": [_rec_to_dict(r) for r in risk_alerts],

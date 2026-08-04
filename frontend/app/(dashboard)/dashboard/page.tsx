@@ -5,18 +5,20 @@
  *
  * One batched call to /dashboard/summary backs the whole page: market breadth
  * cards, the deterministic AI market summary, the user's portfolio snapshot,
- * today's evidence-backed opportunities (each with a Show Evidence expander),
- * risk alerts, and market movers. All data is real; nothing is mocked.
+ * watchlist quotes, today's evidence-backed opportunities (each with a Show
+ * Evidence expander), risk alerts, and market movers. All data is real.
  */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
+import { DashboardWatchlist } from "@/components/DashboardWatchlist";
 import { MetricCard, toneOf } from "@/components/MetricCard";
 import { StockCard } from "@/components/StockCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { dashboardApi, type DashboardSummary } from "@/lib/api";
+import { marketNarrativeEvidence } from "@/lib/evidence";
 import { money, pct } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -86,7 +88,15 @@ export default function DashboardPage() {
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           AI Market Summary
         </h3>
-        <AIInsightCard title="Today's market" narrative={data.ai_market_summary} />
+        <AIInsightCard
+          title="Today's market"
+          narrative={data.ai_market_summary}
+          evidence={{ evidence: marketNarrativeEvidence(market) }}
+        />
+      </section>
+
+      <section>
+        <DashboardWatchlist items={data.watchlist} />
       </section>
 
       {/* Today's opportunities */}

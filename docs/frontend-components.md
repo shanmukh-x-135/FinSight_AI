@@ -23,7 +23,10 @@ of components, and every AI insight uses the same evidence expander.
 |-----------|-----------------|---------|
 | `MetricCard` | `label, value, sub?, tone?, icon?` | A single KPI tile. `tone` (`positive`/`negative`/`neutral`/`default`) colours the value; `toneOf(n)` derives it from a signed number. |
 | `StockCard` | `symbol, name?, sector?, price?, changePercent?` | Compact quote tile for movers/opportunities; colours the change by sign. |
-| `AIInsightCard` | `title, narrative, action?, confidence?, evidence?` | Standard container for any AI-written insight. Shows the prose + an optional action badge/confidence, and mounts `EvidencePanel` when `evidence` is supplied. Never computes anything. |
+| `DashboardWatchlist` | `items, maxItems?` | Compact user-watchlist card with real quotes, pin emphasis, empty/truncated states, and management navigation. |
+| `TechnicalSummaryCard` | `summary` | Market-wide latest RSI, EMA, MACD, and ATR aggregates computed by the backend. |
+| `EconomicEventsCard` | `calendar` | Horizontally scrollable, provider-attributed India event cards with explicit unavailable/unconfigured states. |
+| `AIInsightCard` | `title, narrative, evidence, action?, confidence?` | Standard container for any AI-written insight. Evidence is required at compile time, so every narrative mounts the same disclosure. Never computes anything. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
 | `DataTable<T>` | `columns, rows, rowKey, emptyMessage?` | Generic table matching the app's table styling; used for gainers/losers/holdings/similar-sessions instead of bespoke `<table>` markup. |
@@ -42,15 +45,15 @@ The design doc defines three templates; Phase 7 uses two:
 | **Management** (composed inline) | Header → Table/Form → Actions | Watchlist |
 
 The Dashboard is a bespoke composition (its own summary → AI summary →
-opportunities → risk alerts → movers), assembled from the same shared
-components.
+watchlist → opportunities → risk alerts → movers), assembled from the same
+shared components.
 
 ## Screens → components → data
 
 | Screen | Template | Key components | Backend data |
 |--------|----------|----------------|--------------|
-| **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
-| **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors}` + `GET /recommendations` |
+| **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `DashboardWatchlist`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
+| **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `TechnicalSummaryCard`, `EconomicEventsCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors,technical-summary,economic-events}` + `GET /recommendations` |
 | **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
 | **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, table | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
 | **Watchlist** (`/watchlist`) | Management | table + form | `GET/POST/PATCH/DELETE /watchlist` |
@@ -60,16 +63,18 @@ components.
 To avoid the per-card round trips the roadmap warns against, the dashboard is
 backed by a single **`GET /api/v1/dashboard/summary`** (`app/dashboard/`). It
 composes — it generates nothing new: market slice, deterministic AI market
-summary, portfolio snapshot (or `null`), evidence-backed opportunities, risk
-alerts, and the historical-similarity slice. Rankings and evidence remain
-deterministic (Phase 6); the endpoint is reproducible for identical data.
+summary, portfolio snapshot (or `null`), the authenticated user's quote-enriched
+watchlist, evidence-backed opportunities, risk alerts, and the
+historical-similarity slice. Rankings and evidence remain deterministic (Phase
+6); the endpoint is reproducible for identical data.
 
 ## Research Mode — "Show Evidence" everywhere
 
-The same `EvidencePanel` is mounted by `AIInsightCard` on the Dashboard, Market,
-and Portfolio screens, and directly on the History screen — so evidence looks
-and behaves identically on every AI insight. It renders the *real* deterministic
-inputs (indicators, historical analogs, risks, confidence), never a static mock.
+The same `EvidencePanel` is required by `AIInsightCard` on the Dashboard, Market,
+History, Portfolio, and Report screens, so evidence looks and behaves identically
+on every AI insight. Shared evidence builders render the *real* deterministic
+market, portfolio, historical, recommendation, and executive-summary inputs,
+never a static mock.
 
 ## Responsive behaviour
 
@@ -82,9 +87,9 @@ inputs (indicators, historical analogs, risks, confidence), never a static mock.
 ## Tests
 
 - **Component tests** (`components/*.test.tsx`, Vitest + Testing Library):
-  `MetricCard`, `EvidencePanel`, and `AIInsightCard` — including that Show
-  Evidence is hidden until clicked and then reveals the real evidence, risks,
-  confidence, and historical analog. Run with `npm test`.
+  `MetricCard`, `EvidencePanel`, `AIInsightCard`, and `DashboardWatchlist` —
+  including evidence disclosure and populated, pinned, empty, and truncated
+  watchlist states. Run with `npm test`.
 - **Type/build:** `npm run build` type-checks every screen against the API
   client types in `lib/api.ts`.
 - **Live E2E:** verified against the Docker stack — register → login →

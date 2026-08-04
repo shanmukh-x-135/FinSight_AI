@@ -17,7 +17,7 @@ import { MetricCard, toneOf } from "@/components/MetricCard";
 import { AnalyticsPageTemplate } from "@/components/templates/AnalyticsPageTemplate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { historyApi, type SimilarSession, type SimilarityResult } from "@/lib/api";
-import { pct, signClass } from "@/lib/utils";
+import { ratioPct, signClass } from "@/lib/utils";
 
 const outcomeClass = (o: string | null) =>
   o === "bullish" ? "text-green-600" : o === "bearish" ? "text-red-600" : "text-muted-foreground";
@@ -25,8 +25,8 @@ const outcomeClass = (o: string | null) =>
 const sessionColumns: Column<SimilarSession>[] = [
   { key: "date", header: "Date", render: (s) => <span className="font-medium">{s.date}</span> },
   { key: "similarity", header: "Similarity", align: "right", render: (s) => `${(s.similarity_score * 100).toFixed(1)}%` },
-  { key: "avg_return", header: "Session return", align: "right", render: (s) => <span className={signClass(s.avg_return)}>{pct(s.avg_return)}</span> },
-  { key: "next_day", header: "Next day", align: "right", render: (s) => <span className={signClass(s.next_day_return)}>{pct(s.next_day_return)}</span> },
+  { key: "avg_return", header: "Session return", align: "right", render: (s) => <span className={signClass(s.avg_return)}>{ratioPct(s.avg_return)}</span> },
+  { key: "next_day", header: "Next day", align: "right", render: (s) => <span className={signClass(s.next_day_return)}>{ratioPct(s.next_day_return)}</span> },
   { key: "outcome", header: "Outcome", align: "right", render: (s) => <span className={`capitalize ${outcomeClass(s.outcome)}`}>{s.outcome ?? "—"}</span> },
 ];
 
@@ -75,7 +75,7 @@ export default function HistoryPage() {
       ? "No comparable historical sessions were found for today."
       : `Today's market resembles ${stats.sample_size} past session${stats.sample_size === 1 ? "" : "s"}. ` +
         (bullPct != null ? `${bullPct}% of them closed higher the next day` : "") +
-        (stats.avg_next_day_return != null ? ` (average ${pct(stats.avg_next_day_return)}).` : ".") +
+        (stats.avg_next_day_return != null ? ` (average ${ratioPct(stats.avg_next_day_return)}).` : ".") +
         " This is historical context, not a forecast.";
 
   const summaryCards = (
@@ -89,12 +89,12 @@ export default function HistoryPage() {
       />
       <MetricCard
         label="Avg Next-Day"
-        value={pct(stats.avg_next_day_return)}
+        value={ratioPct(stats.avg_next_day_return)}
         tone={toneOf(stats.avg_next_day_return)}
       />
       <MetricCard
         label="Best / Worst"
-        value={`${pct(stats.best_case_return)} / ${pct(stats.worst_case_return)}`}
+        value={`${ratioPct(stats.best_case_return)} / ${ratioPct(stats.worst_case_return)}`}
         sub="observed next-day range"
       />
     </div>
@@ -124,8 +124,8 @@ export default function HistoryPage() {
           <CardTitle className="text-base">Today&apos;s session ({result.query_date})</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-3 text-sm">
-          <div><p className="text-muted-foreground">Avg return</p><p className={`font-semibold ${signClass(result.query_summary.avg_return)}`}>{pct(result.query_summary.avg_return)}</p></div>
-          <div><p className="text-muted-foreground">% advancers</p><p className="font-semibold">{result.query_summary.pct_advancers.toFixed(1)}%</p></div>
+          <div><p className="text-muted-foreground">Avg return</p><p className={`font-semibold ${signClass(result.query_summary.avg_return)}`}>{ratioPct(result.query_summary.avg_return)}</p></div>
+          <div><p className="text-muted-foreground">% advancers</p><p className="font-semibold">{ratioPct(result.query_summary.pct_advancers, 1, false)}</p></div>
           <div><p className="text-muted-foreground">A/D ratio</p><p className="font-semibold">{result.query_summary.advance_decline_ratio.toFixed(2)}</p></div>
           <div><p className="text-muted-foreground">Avg RSI</p><p className="font-semibold">{result.query_summary.avg_rsi.toFixed(1)}</p></div>
         </CardContent>
@@ -140,12 +140,12 @@ export default function HistoryPage() {
       evidence={{
         evidence: result.similar_sessions
           .slice(0, 5)
-          .map((s) => `${s.date}: ${(s.similarity_score * 100).toFixed(0)}% similar → next day ${pct(s.next_day_return)} (${s.outcome ?? "n/a"})`),
+          .map((s) => `${s.date}: ${(s.similarity_score * 100).toFixed(0)}% similar → next day ${ratioPct(s.next_day_return)} (${s.outcome ?? "n/a"})`),
         extra: [
-          { label: "Median next-day", value: pct(stats.median_next_day_return) },
-          { label: "Std deviation", value: pct(stats.std_next_day_return) },
+          { label: "Median next-day", value: ratioPct(stats.median_next_day_return) },
+          { label: "Std deviation", value: ratioPct(stats.std_next_day_return) },
           ...(stats.ci_low != null && stats.ci_high != null
-            ? [{ label: "95% CI", value: `${pct(stats.ci_low)} to ${pct(stats.ci_high)}` }]
+            ? [{ label: "95% CI", value: `${ratioPct(stats.ci_low)} to ${ratioPct(stats.ci_high)}` }]
             : []),
         ],
       }}

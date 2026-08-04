@@ -23,7 +23,13 @@ import {
   type Recommendation,
   type Report,
 } from "@/lib/api";
-import { money, pct } from "@/lib/utils";
+import {
+  executiveNarrativeEvidence,
+  historicalNarrativeEvidence,
+  marketNarrativeEvidence,
+  portfolioNarrativeEvidence,
+} from "@/lib/evidence";
+import { money, pct, ratioPct } from "@/lib/utils";
 
 function RecCard({ r }: { r: Recommendation }) {
   return (
@@ -119,14 +125,24 @@ export default function ReportDetailPage() {
   );
 
   const executiveSummary = s.executive_summary && (
-    <AIInsightCard title="Executive Summary" narrative={s.executive_summary} />
+    <AIInsightCard
+      title="Executive Summary"
+      narrative={s.executive_summary}
+      evidence={{ evidence: executiveNarrativeEvidence(s) }}
+    />
   );
 
   const analysis = (
     <div className="space-y-4">
       {market && (
         <>
-          {market.narrative && <AIInsightCard title="Market Summary" narrative={market.narrative} />}
+          {market.narrative && (
+            <AIInsightCard
+              title="Market Summary"
+              narrative={market.narrative}
+              evidence={{ evidence: marketNarrativeEvidence(market) }}
+            />
+          )}
           {market.breadth && (
             <div className="grid gap-4 sm:grid-cols-3">
               <MetricCard label="Advancers" value={market.breadth.advancers} tone="positive" />
@@ -158,7 +174,13 @@ export default function ReportDetailPage() {
 
       {portfolio && (
         <>
-          {portfolio.narrative && <AIInsightCard title="Portfolio Summary" narrative={portfolio.narrative} />}
+          {portfolio.narrative && (
+            <AIInsightCard
+              title="Portfolio Summary"
+              narrative={portfolio.narrative}
+              evidence={{ evidence: portfolioNarrativeEvidence(portfolio) }}
+            />
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard label="Total Value" value={money(portfolio.total_value)} />
             <MetricCard label="Total Return" value={pct(portfolio.total_return_percent)} tone={toneOf(portfolio.total_return_percent)} />
@@ -170,7 +192,13 @@ export default function ReportDetailPage() {
 
       {hist && (
         <>
-          {hist.narrative && <AIInsightCard title="Historical Context" narrative={hist.narrative} />}
+          {hist.narrative && hist.statistics && (
+            <AIInsightCard
+              title="Historical Context"
+              narrative={hist.narrative}
+              evidence={{ evidence: historicalNarrativeEvidence(hist.statistics) }}
+            />
+          )}
           {hist.statistics && (
             <div className="grid gap-4 sm:grid-cols-3">
               <MetricCard label="Similar Sessions" value={hist.statistics.sample_size} />
@@ -178,7 +206,7 @@ export default function ReportDetailPage() {
                 label="Closed Higher"
                 value={hist.statistics.bullish_probability == null ? "—" : `${Math.round(hist.statistics.bullish_probability * 100)}%`}
               />
-              <MetricCard label="Avg Next-Day" value={pct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
+              <MetricCard label="Avg Next-Day" value={ratioPct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
             </div>
           )}
         </>

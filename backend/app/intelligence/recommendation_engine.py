@@ -106,12 +106,24 @@ def _evidence(c: CandidateInput) -> list[str]:
         )
         ev.append(f"RSI at {c.rsi:.0f} ({tag})")
     if c.ema20_distance_pct is not None:
+        if c.ema20_distance_pct > 0:
+            position = "above"
+        elif c.ema20_distance_pct < 0:
+            position = "below"
+        else:
+            position = "at"
         ev.append(
-            f"Price {'above' if c.ema20_distance_pct >= 0 else 'below'} its 20-day EMA "
+            f"Price {position} its 20-day EMA "
             f"({c.ema20_distance_pct:+.1f}%)"
         )
     if c.macd_hist is not None:
-        ev.append(f"MACD histogram {'positive' if c.macd_hist > 0 else 'negative'}")
+        if c.macd_hist > 0:
+            direction = "positive"
+        elif c.macd_hist < 0:
+            direction = "negative"
+        else:
+            direction = "neutral"
+        ev.append(f"MACD histogram {direction}")
     if c.change_percent is not None:
         ev.append(f"{c.change_percent:+.1f}% today")
     if c.sector and c.sector_change_percent is not None:

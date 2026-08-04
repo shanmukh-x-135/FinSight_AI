@@ -39,6 +39,15 @@ const columns: Column<ReportSummary>[] = [
   },
 ];
 
+const fetchReports = (type: string, start: string, end: string, offset: number) =>
+  reportsApi.list({
+    report_type: type || undefined,
+    start_date: start || undefined,
+    end_date: end || undefined,
+    limit: PAGE,
+    offset,
+  });
+
 export default function ReportsPage() {
   const [rows, setRows] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,13 +63,7 @@ export default function ReportsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await reportsApi.list({
-        report_type: type || undefined,
-        start_date: start || undefined,
-        end_date: end || undefined,
-        limit: PAGE,
-        offset,
-      });
+      const data = await fetchReports(type, start, end, offset);
       setRows(data);
       setError(null);
     } catch {
@@ -71,8 +74,29 @@ export default function ReportsPage() {
   }, [type, start, end, offset]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+
+    async function loadFromEffect() {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoading(true);
+      try {
+        const data = await fetchReports(type, start, end, offset);
+        if (cancelled) return;
+        setRows(data);
+        setError(null);
+      } catch {
+        if (!cancelled) setError("Could not load your reports.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadFromEffect();
+    return () => {
+      cancelled = true;
+    };
+  }, [type, start, end, offset]);
 
   async function onGenerate() {
     setGenerating(true);

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from app.intelligence.constants import PROMPT_CONSTRAINTS
 
-PROMPT_VERSION = "1.0"
+PROMPT_VERSION = "1.1"
 
 SYSTEM_INSTRUCTION = (
     "You are FinSight AI, a financial research assistant. You explain market "
@@ -22,17 +22,26 @@ SYSTEM_INSTRUCTION = (
 
 # Per-section instructions. Facts are appended by the prompt builder.
 SECTION_INSTRUCTIONS: dict[str, str] = {
-    "market": "Write a concise market summary paragraph from these facts.",
+    "market": (
+        "Write a concise market summary paragraph from these facts. State the "
+        "advancer and decliner counts and cite only supplied market evidence."
+    ),
     "historical": (
         "Summarize how today compares to similar historical sessions and what "
         "typically followed, framed as scenarios/probabilities — not a prediction."
     ),
-    "portfolio": "Summarize this portfolio's health, performance, and risks.",
+    "portfolio": (
+        "Summarize this portfolio's health, performance, and risks. Include the "
+        "supplied health score and risk level."
+    ),
     "recommendation": (
         "Explain, in one or two sentences, why this stock is on the watchlist, "
         "citing the evidence, and note the risks. Do not predict a price."
     ),
-    "executive": "Write a short executive summary tying these sections together.",
+    "executive": (
+        "Write a short executive summary using only the supplied, validated source "
+        "narratives and watchlist."
+    ),
 }
 
 # Registry (populated for discoverability / future expansion).

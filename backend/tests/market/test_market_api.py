@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.dependencies import get_market_client
+from app.market.dependencies import get_economic_calendar_client, get_market_client
 from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
 from app.shared.clients.market_data import FundamentalsData, PriceBar
+from app.shared.clients.economic_calendar import EconomicEventData
 
 D1, D2 = date(2024, 1, 1), date(2024, 1, 2)
 
@@ -43,7 +44,14 @@ async def seed_market(db_session: AsyncSession) -> None:
     db_session.add_all(
         [
             Indicator(stock_id=a.id, date=D1, rsi_14=50.0, ema_20=100.0),
-            Indicator(stock_id=a.id, date=D2, rsi_14=60.0, ema_20=105.0, macd=1.2),
+            Indicator(
+                stock_id=a.id, date=D2, rsi_14=60.0, ema_20=105.0,
+                ema_50=100.0, macd=1.2, macd_histogram=0.5, atr_14=2.2,
+            ),
+            Indicator(
+                stock_id=b.id, date=D2, rsi_14=30.0, ema_20=95.0,
+                ema_50=100.0, macd=-1.0, macd_histogram=-0.5, atr_14=3.0,
+            ),
         ]
     )
     await db_session.commit()
@@ -73,6 +81,74 @@ async def test_breadth(client: AsyncClient, seed_market: None) -> None:
     assert data["decliners"] == 1
     assert data["unchanged"] == 1
     assert data["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_technical_summary(client: AsyncClient, seed_market: None) -> None:
+    data = (await client.get("/api/v1/market/technical-summary")).json()["data"]
+    assert data["as_of"] == "2024-01-02"
+    assert data["stocks_with_indicators"] == 2
+    assert data["average_rsi"] == pytest.approx(45)
+    assert data["bullish_rsi_count"] == 1
+    assert data["oversold_count"] == 1
+    assert data["above_ema20_count"] == 1
+    assert data["above_ema50_count"] == 1
+    assert data["positive_macd_count"] == 1
+    assert data["average_atr_percent"] == pytest.approx(2.666666, rel=1e-5)
+
+
+class _FakeCalendarClient:
+    async def fetch_events(self, start_date: date, end_date: date):
+        return [
+            EconomicEventData(
+                event_id="event-1",
+                date=datetime(2026, 8, 7, 6, 30, tzinfo=timezone.utc),
+                country="India",
+                category="Interest Rate",
+                name="RBI Interest Rate Decision",
+                importance=3,
+                source="Reserve Bank of India",
+            )
+        ]
+
+
+class _FailingCalendarClient:
+    async def fetch_events(self, start_date: date, end_date: date):
+        raise TimeoutError("provider timeout")
+
+
+@pytest.mark.asyncio
+async def test_economic_events_uses_provider(client: AsyncClient, test_app) -> None:
+    test_app.dependency_overrides[get_economic_calendar_client] = (
+        lambda: _FakeCalendarClient()
+    )
+    response = await client.get("/api/v1/market/economic-events?days=7")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "ok"
+    assert data["events"][0]["name"] == "RBI Interest Rate Decision"
+
+
+@pytest.mark.asyncio
+async def test_economic_events_reports_unconfigured(client: AsyncClient) -> None:
+    data = (await client.get("/api/v1/market/economic-events")).json()["data"]
+    assert data == {
+        "provider": "Trading Economics",
+        "status": "not_configured",
+        "events": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_economic_events_degrades_on_provider_failure(
+    client: AsyncClient, test_app
+) -> None:
+    test_app.dependency_overrides[get_economic_calendar_client] = (
+        lambda: _FailingCalendarClient()
+    )
+    response = await client.get("/api/v1/market/economic-events")
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "unavailable"
 
 
 @pytest.mark.asyncio

@@ -6,19 +6,22 @@ import { AIInsightCard } from "./AIInsightCard";
 
 describe("AIInsightCard", () => {
   it("renders the title, narrative, and action badge", () => {
-    render(<AIInsightCard title="RELIANCE.NS" narrative="On the watchlist." action="watch" confidence={54} />);
+    render(
+      <AIInsightCard
+        title="RELIANCE.NS"
+        narrative="On the watchlist."
+        action="watch"
+        confidence={54}
+        evidence={{ evidence: ["RSI supports momentum"] }}
+      />,
+    );
     expect(screen.getByText("RELIANCE.NS")).toBeInTheDocument();
     expect(screen.getByText("On the watchlist.")).toBeInTheDocument();
     expect(screen.getByText("watch")).toBeInTheDocument();
     expect(screen.getByText("54% conf.")).toBeInTheDocument();
   });
 
-  it("shows no evidence expander when no evidence is supplied", () => {
-    render(<AIInsightCard title="Market" narrative="Mixed session." />);
-    expect(screen.queryByRole("button", { name: /show evidence/i })).not.toBeInTheDocument();
-  });
-
-  it("wires the Show Evidence expander when evidence is supplied", async () => {
+  it("always wires the required Show Evidence expander", async () => {
     const user = userEvent.setup();
     render(
       <AIInsightCard
@@ -32,5 +35,18 @@ describe("AIInsightCard", () => {
     expect(screen.getByText("MACD histogram positive")).toBeInTheDocument();
     // Card confidence flows through to the evidence panel bar.
     expect(screen.getByText("70%")).toBeInTheDocument();
+  });
+
+  it("keeps disclosure available when a grounded narrative has no indicators", async () => {
+    const user = userEvent.setup();
+    render(
+      <AIInsightCard
+        title="Sparse context"
+        narrative="No comparable sessions were found."
+        evidence={{ evidence: [] }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /show evidence/i }));
+    expect(screen.getByText("No supporting indicators.")).toBeInTheDocument();
   });
 });

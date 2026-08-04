@@ -1,0 +1,78 @@
+{
+  "benchmark_version": "1.0",
+  "prompt_version": "1.1",
+  "scenarios": [
+    {
+      "id": "broad_bullish_alignment",
+      "description": "Technical, momentum, sector, sentiment, and historical signals align bullishly.",
+      "candidate": {"symbol": "BULL.NS", "name": "Bull", "sector": "Technology", "price": 100.0, "change_percent": 3.0, "rsi": 68.0, "ema20_distance_pct": 4.0, "ema50_distance_pct": 5.0, "macd_hist": 1.0, "atr_pct": 1.0, "sentiment": 0.6, "sector_change_percent": 2.0, "hist_bullish_probability": 0.7, "hist_sample_size": 20},
+      "expected": {"action": "watch", "confidence": 79, "evidence": ["RSI", "20-day EMA", "MACD", "70% of 20"], "risks": ["Standard market risk"]}
+    },
+    {
+      "id": "broad_bearish_alignment",
+      "description": "Technical, momentum, sector, sentiment, and historical signals align bearishly.",
+      "candidate": {"symbol": "BEAR.NS", "name": "Bear", "sector": "Energy", "price": 100.0, "change_percent": -3.0, "rsi": 32.0, "ema20_distance_pct": -4.0, "ema50_distance_pct": -5.0, "macd_hist": -1.0, "atr_pct": 2.0, "sentiment": -0.6, "sector_change_percent": -2.0, "hist_bullish_probability": 0.3, "hist_sample_size": 20},
+      "expected": {"action": "avoid", "confidence": 19, "evidence": ["RSI", "below its 20-day EMA", "MACD", "30% of 20"], "risks": ["Negative news sentiment", "50-day trend", "favored downside"]}
+    },
+    {
+      "id": "neutral_market",
+      "description": "Flat neutral signals should remain a hold, not become a recommendation.",
+      "candidate": {"symbol": "FLAT.NS", "name": "Flat", "sector": "Utilities", "price": 100.0, "change_percent": 0.0, "rsi": 50.0, "ema20_distance_pct": 0.0, "ema50_distance_pct": 0.0, "macd_hist": 0.0, "atr_pct": 1.0, "sentiment": 0.0, "sector_change_percent": 0.0, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "hold", "confidence": 49, "evidence": ["RSI", "20-day EMA", "MACD"], "risks": ["Standard market risk"]}
+    },
+    {
+      "id": "overbought_high_volatility",
+      "description": "Positive setup must still surface overbought and volatility risks.",
+      "candidate": {"symbol": "HOT.NS", "name": "Hot", "sector": "Industrials", "price": 100.0, "change_percent": 1.2, "rsi": 78.0, "ema20_distance_pct": 2.0, "ema50_distance_pct": 3.0, "macd_hist": 0.5, "atr_pct": 4.5, "sentiment": 0.2, "sector_change_percent": 1.0, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "watch", "confidence": 59, "evidence": ["RSI at 78", "MACD"], "risks": ["Overbought", "Elevated volatility"]}
+    },
+    {
+      "id": "oversold_rebound",
+      "description": "An oversold stock with improving momentum remains evidence-led.",
+      "candidate": {"symbol": "REBOUND.NS", "name": "Rebound", "sector": "Consumer", "price": 100.0, "change_percent": 2.0, "rsi": 30.0, "ema20_distance_pct": 0.5, "ema50_distance_pct": 1.0, "macd_hist": 0.5, "atr_pct": 2.0, "sentiment": 0.3, "sector_change_percent": 0.5, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "watch", "confidence": 58, "evidence": ["oversold", "above its 20-day EMA", "MACD"], "risks": ["Standard market risk"]}
+    },
+    {
+      "id": "positive_news_only",
+      "description": "Strong positive sentiment alone can cross the watch threshold without invented support.",
+      "candidate": {"symbol": "NEWSUP.NS", "name": "News Up", "sector": "Media", "price": 100.0, "change_percent": 0.0, "rsi": 50.0, "ema20_distance_pct": 0.0, "ema50_distance_pct": 0.0, "macd_hist": 0.0, "atr_pct": 1.0, "sentiment": 0.9, "sector_change_percent": 0.0, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "watch", "confidence": 56, "evidence": ["News sentiment positive"], "risks": ["Standard market risk"]}
+    },
+    {
+      "id": "negative_news_only",
+      "description": "Strong negative sentiment alone creates an avoid signal and explicit news risk.",
+      "candidate": {"symbol": "NEWSDN.NS", "name": "News Down", "sector": "Media", "price": 100.0, "change_percent": 0.0, "rsi": 50.0, "ema20_distance_pct": 0.0, "ema50_distance_pct": 0.0, "macd_hist": 0.0, "atr_pct": 1.0, "sentiment": -0.9, "sector_change_percent": 0.0, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "avoid", "confidence": 42, "evidence": ["News sentiment negative"], "risks": ["Negative news sentiment"]}
+    },
+    {
+      "id": "bullish_historical_context",
+      "description": "Bullish historical analogs support but do not dictate a watch decision.",
+      "candidate": {"symbol": "HISTUP.NS", "name": "History Up", "sector": "Finance", "price": 100.0, "change_percent": 0.6, "rsi": 50.0, "ema20_distance_pct": 0.0, "ema50_distance_pct": 0.0, "macd_hist": 0.0, "atr_pct": 1.0, "sentiment": 0.0, "sector_change_percent": 0.0, "hist_bullish_probability": 0.8, "hist_sample_size": 25},
+      "expected": {"action": "watch", "confidence": 60, "evidence": ["80% of 25 similar historical sessions"], "risks": ["Standard market risk"]}
+    },
+    {
+      "id": "bearish_historical_context",
+      "description": "Bearish historical analogs create an avoid signal with explicit uncertainty context.",
+      "candidate": {"symbol": "HISTDN.NS", "name": "History Down", "sector": "Finance", "price": 100.0, "change_percent": 0.0, "rsi": 50.0, "ema20_distance_pct": 0.0, "ema50_distance_pct": 0.0, "macd_hist": 0.0, "atr_pct": 1.0, "sentiment": 0.0, "sector_change_percent": 0.0, "hist_bullish_probability": 0.2, "hist_sample_size": 25},
+      "expected": {"action": "avoid", "confidence": 40, "evidence": ["20% of 25 similar historical sessions"], "risks": ["favored downside"]}
+    },
+    {
+      "id": "high_volatility_opportunity",
+      "description": "A bullish opportunity retains a prominent volatility warning.",
+      "candidate": {"symbol": "VOL.NS", "name": "Volatile", "sector": "Metals", "price": 100.0, "change_percent": 2.0, "rsi": 60.0, "ema20_distance_pct": 2.0, "ema50_distance_pct": 1.0, "macd_hist": 0.5, "atr_pct": 6.0, "sentiment": 0.3, "sector_change_percent": 1.0, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "watch", "confidence": 60, "evidence": ["RSI", "MACD"], "risks": ["Elevated volatility"]}
+    },
+    {
+      "id": "sector_leadership",
+      "description": "Sector leadership can create a modest watch signal while retaining normal risk language.",
+      "candidate": {"symbol": "SECTOR.NS", "name": "Sector Lead", "sector": "Healthcare", "price": 100.0, "change_percent": 0.0, "rsi": 50.0, "ema20_distance_pct": 0.0, "ema50_distance_pct": 0.0, "macd_hist": 0.0, "atr_pct": 1.0, "sentiment": 0.0, "sector_change_percent": 3.0, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "watch", "confidence": 55, "evidence": ["Healthcare sector +3.0%"], "risks": ["Standard market risk"]}
+    },
+    {
+      "id": "sparse_data",
+      "description": "Missing optional indicators must not invent data or force a directional action.",
+      "candidate": {"symbol": "SPARSE.NS", "name": "Sparse", "sector": null, "price": 100.0, "change_percent": 0.5, "rsi": null, "ema20_distance_pct": null, "ema50_distance_pct": null, "macd_hist": null, "atr_pct": null, "sentiment": null, "sector_change_percent": null, "hist_bullish_probability": null, "hist_sample_size": null},
+      "expected": {"action": "hold", "confidence": 51, "evidence": ["+0.5% today"], "risks": ["Standard market risk"]}
+    }
+  ]
+}

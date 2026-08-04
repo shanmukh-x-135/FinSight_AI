@@ -33,29 +33,40 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+async function readStoredUser(): Promise<User | null> {
+  if (!tokenStore.getAccess()) return null;
+  try {
+    return await api.me();
+  } catch {
+    tokenStore.clear();
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
-    if (!tokenStore.getAccess()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-    try {
-      setUser(await api.me());
-    } catch {
-      tokenStore.clear();
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
+    setUser(await readStoredUser());
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    void loadUser();
-  }, [loadUser]);
+    let cancelled = false;
+
+    async function hydrateUser() {
+      const storedUser = await readStoredUser();
+      if (cancelled) return;
+      setUser(storedUser);
+      setLoading(false);
+    }
+
+    void hydrateUser();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const tokens = await api.login(email, password);

@@ -23,12 +23,18 @@ Provider-agnostic (`app/intelligence/llm_client.py`):
 
 | Backend | When | Notes |
 |---------|------|-------|
-| **Gemini Flash** (`google-genai`) | `GEMINI_API_KEY` set | Design doc's model. Retry + timeout; **degrades to the fallback on any failure — never raises**. Needs the AI extra (`requirements-ai.txt`). |
+| **Gemini Flash** (`google-genai`) | `GEMINI_API_KEY` set | Design doc's model. Native async calls, retry + per-attempt timeout; **degrades to the fallback on any failure — never raises**. Needs the AI extra (`requirements-ai.txt`). |
 | **DeterministicNarrator** | default | Renders the prose directly from the structured facts. No API key, no cost, reproducible, offline-testable. The prompt builder always supplies a grounded fallback narrative, so output is always valid. |
 
 Same trade-off as FinBERT/Plotly in earlier phases: the design-doc model is
 integrated and selectable, but the default keeps the system reproducible and
 cost-free. The evidence/rankings are identical either way.
+
+Gemini generation uses `client.aio.models.generate_content`, so provider I/O
+does not block FastAPI's event loop. `LLM_TIMEOUT_SECONDS` is applied both to
+the SDK transport (milliseconds) and as an `asyncio` deadline around each
+attempt. Timeouts, quota errors, empty responses, and exhausted retries all
+return the deterministic grounded fallback.
 
 ## Pipeline
 
@@ -68,11 +74,18 @@ deterministic grounded fallback narrative.
 
 ### Explainability validation (`explainability.py`)
 
-Before a report is stored: every recommendation must have evidence, confidence,
-risks, and an explanation; the report must have a market summary,
-recommendations, and an executive summary. Missing anything → rejected. (Because
-the fields are deterministic, well-formed output passes; the guard catches
-regressions and empty LLM prose.)
+Every provider response is checked before it can enter a report, recommendation
+response, or dashboard payload. The deterministic validator rejects unsupported
+numbers, exact-price predictions/advice, and section prose that omits its
+required factual anchors. Recommendation explanations must mention their symbol,
+confidence, supplied evidence, and supplied risk. Invalid Gemini output is
+retried up to the configured attempt limit; exhausted or non-compliant adapters
+degrade to the validated deterministic fallback.
+
+Before a report is stored, the structural guard additionally requires every
+recommendation to carry evidence, confidence, risks, and an explanation, plus a
+market summary, recommendations collection, and executive summary. Missing
+anything is rejected.
 
 ### Report (`report_generator.py`)
 
@@ -99,15 +112,31 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
 ## Verification (the design doc's AI evaluation dimensions)
 
 - **Retrieval** — context builder returns the expected slice per request.
-- **Grounding** — narratives contain the real facts; recommendation explanations
-  contain their own evidence (grounded by construction with the narrator).
-- **Consistency / regression** — the test suite is the regression benchmark:
-  bullish/bearish/neutral scenarios, with/without portfolio and history,
-  determinism, and reproducibility. Live: identical rankings + reproducible
-  reports across runs.
+- **Grounding** — automated checks reject unsupported numeric claims and price
+  predictions and require section-specific factual anchors. Tests cover valid
+  paraphrases, hallucinated numbers, missing recommendation evidence/confidence/
+  risks, retry after rejected Gemini prose, and fallback for a non-compliant
+  provider adapter.
+- **Consistency / regression** — a dedicated, versioned 12-scenario fixture
+  covers broad bullish/bearish alignment, neutral conditions, overbought and
+  high-volatility risk, oversold rebound, sentiment-only signals, historical
+  analogs, sector leadership, and sparse data. The benchmark asserts action,
+  confidence, evidence, risks, grounding, reproducibility, and deterministic
+  rank order. Its reviewed output is stored in
+  `docs/benchmarks/phase6-v1.1-deterministic.md`.
 - **No price prediction** — enforced by prompt constraints; the historical
   section is explicitly framed as context, "not a forecast".
+- **Provider reliability** — tests cover native async generation, event-loop
+  progress during an in-flight request, configured transport timeout, retries,
+  timeout fallback, empty output, and provider exceptions.
 
 ~97% coverage across the intelligence modules. Live: a real report cited RELIANCE
 with RSI/EMA/MACD/sector/historical evidence and real risks, confidence 54%, and
 no price forecast.
+
+Run `python -m tests.ai_benchmark` from `backend/` for the reproducible baseline,
+or add `--configured-provider` for a provider review. The latter must report
+`GeminiClient` and pass the per-scenario `provider_response` gate, which prevents
+fallback prose from being counted as live-model output. This workspace had no
+Gemini key configured during the 2026-08-04 review, so no live-model benchmark
+is claimed.
