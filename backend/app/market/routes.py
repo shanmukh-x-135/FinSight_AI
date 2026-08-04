@@ -50,6 +50,12 @@ async def breadth(db: AsyncSession = Depends(get_db)) -> dict:
     return envelope(data=data)
 
 
+@market_router.get("/sectors", summary="Per-sector performance overview (heatmap)")
+async def sectors_overview(db: AsyncSession = Depends(get_db)) -> dict:
+    data = await MarketQueryService(db).get_sectors_overview()
+    return envelope(data=data)
+
+
 @market_router.get("/sectors/{sector}", summary="Performance of a sector")
 async def sector_performance(sector: str, db: AsyncSession = Depends(get_db)) -> dict:
     data = await MarketQueryService(db).get_sector_performance(sector)

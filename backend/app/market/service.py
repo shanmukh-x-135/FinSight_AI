@@ -22,6 +22,7 @@ from app.market.schemas import (
     IndicatorPointOut,
     IngestionResult,
     QuoteOut,
+    SectorOverviewOut,
     SectorPerformanceOut,
     StockDetailOut,
 )
@@ -192,6 +193,43 @@ class MarketQueryService:
             average_change_percent=avg,
             stocks=quotes,
         )
+
+    async def get_sectors_overview(self) -> list[SectorOverviewOut]:
+        """Per-sector average daily change across the tracked universe.
+
+        Powers the dashboard/market sector heatmap in one query. A sector's
+        count includes every stock in it; the average is over those with a
+        computable day change. Sorted best-performing first.
+        """
+        quotes = await self._all_quotes()
+        counts: dict[str, int] = {}
+        changes: dict[str, list[float]] = {}
+        for q in quotes:
+            if not q.sector:
+                continue
+            counts[q.sector] = counts.get(q.sector, 0) + 1
+            if q.change_percent is not None:
+                changes.setdefault(q.sector, []).append(q.change_percent)
+        overview = [
+            SectorOverviewOut(
+                sector=sector,
+                stock_count=count,
+                average_change_percent=(
+                    sum(changes[sector]) / len(changes[sector])
+                    if changes.get(sector)
+                    else None
+                ),
+            )
+            for sector, count in counts.items()
+        ]
+        overview.sort(
+            key=lambda s: (
+                s.average_change_percent is not None,
+                s.average_change_percent or 0.0,
+            ),
+            reverse=True,
+        )
+        return overview
 
     async def get_gainers(self, limit: int = 5) -> list[QuoteOut]:
         quotes = [q for q in await self._all_quotes() if q.change_percent is not None]

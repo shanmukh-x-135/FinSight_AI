@@ -69,6 +69,14 @@ class SectorPerformanceOut(BaseModel):
     stocks: list[QuoteOut]
 
 
+class SectorOverviewOut(BaseModel):
+    """One tile in the market-wide sector heatmap (Phase 7 dashboard/market)."""
+
+    sector: str
+    stock_count: int
+    average_change_percent: float | None
+
+
 class BreadthOut(BaseModel):
     """Market breadth: advancers vs decliners across the tracked universe."""
 

@@ -86,6 +86,20 @@ async def test_sector_performance(client: AsyncClient, seed_market: None) -> Non
 
 
 @pytest.mark.asyncio
+async def test_sectors_overview(client: AsyncClient, seed_market: None) -> None:
+    resp = await client.get("/api/v1/market/sectors")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    by_sector = {s["sector"]: s for s in data}
+    assert by_sector["Technology"]["stock_count"] == 2
+    assert by_sector["Technology"]["average_change_percent"] == pytest.approx(0.0)
+    assert by_sector["Energy"]["stock_count"] == 1
+    assert by_sector["Energy"]["average_change_percent"] == pytest.approx(0.0)
+    # Best-performing sector first (both 0.0 here → both present, order stable).
+    assert {s["sector"] for s in data} == {"Technology", "Energy"}
+
+
+@pytest.mark.asyncio
 async def test_sector_not_found(client: AsyncClient, seed_market: None) -> None:
     resp = await client.get("/api/v1/market/sectors/Healthcare")
     assert resp.status_code == 404
