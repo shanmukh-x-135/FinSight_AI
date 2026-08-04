@@ -84,13 +84,20 @@ class MarketIngestionService:
         self.client = client or build_default_client()
 
     async def ingest(self, symbols: list[str] | None = None) -> IngestionResult:
-        universe = symbols or list(C.DEFAULT_UNIVERSE)
+        universe = (
+            list(symbols)
+            if symbols is not None
+            else [*C.DEFAULT_UNIVERSE, *C.MACRO_PROXIES]
+        )
         succeeded: list[str] = []
         failed: list[str] = []
 
         for symbol in universe:
             try:
-                await self._ingest_one(symbol)
+                if symbol in C.MACRO_PROXIES:
+                    await self._ingest_macro_one(symbol)
+                else:
+                    await self._ingest_one(symbol)
                 await self.db.commit()
                 succeeded.append(symbol)
                 logger.info("ingest_symbol_ok", extra={"symbol": symbol})
@@ -132,6 +139,23 @@ class MarketIngestionService:
         await self.repo.upsert_daily_prices(stock.id, bars)
         await self.repo.upsert_fundamentals(stock.id, fundamentals)
         await self.repo.upsert_indicators(stock.id, compute_indicator_points(bars))
+
+    async def _ingest_macro_one(self, symbol: str) -> None:
+        """Persist one cross-asset proxy without exposing it as an equity."""
+        bars = await asyncio.wait_for(
+            asyncio.to_thread(self.client.fetch_daily_prices, symbol),
+            timeout=settings.market_fetch_timeout_seconds,
+        )
+        name, asset_class = C.MACRO_PROXIES[symbol]
+        stock = await self.repo.upsert_stock(
+            symbol,
+            name=name,
+            sector="Macro",
+            industry=asset_class,
+            exchange="GLOBAL",
+            is_active=False,
+        )
+        await self.repo.upsert_daily_prices(stock.id, bars)
 
 
 def _quote_from_prices(stock: Stock, last_two: list[DailyPrice]) -> QuoteOut:

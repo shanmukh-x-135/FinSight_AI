@@ -38,6 +38,7 @@ class MarketRepository:
         sector: str | None,
         industry: str | None,
         exchange: str | None,
+        is_active: bool | None = None,
     ) -> Stock:
         result = await self.db.execute(select(Stock).where(Stock.symbol == symbol))
         stock = result.scalar_one_or_none()
@@ -54,6 +55,8 @@ class MarketRepository:
             stock.industry = industry
         if exchange is not None:
             stock.exchange = exchange
+        if is_active is not None:
+            stock.is_active = is_active
         await self.db.flush()
         return stock
 

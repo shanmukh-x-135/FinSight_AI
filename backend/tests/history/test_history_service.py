@@ -8,11 +8,16 @@ determinism (rebuild → identical rankings) and the error paths.
 
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 
+import numpy as np
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.history.constants import index_path, normalizer_path
+from app.history.embeddings import FaissIndexStore
 from app.history.exceptions import IndexNotBuiltError, InsufficientHistoryError
 from app.history.service import HistoryService
 
@@ -24,7 +29,7 @@ async def test_build_creates_sessions_and_index(
     result = await HistoryService(db_session).build_index()
     # Jan 1 has no prior close (skipped) → 9 January + 10 February = 19 sessions.
     assert result.sessions_indexed == 19
-    assert result.dim == 11
+    assert result.dim == 15
     assert result.latest_date == date(2024, 2, 10)
 
 
@@ -79,6 +84,20 @@ async def test_rebuild_is_reproducible(
 async def test_query_before_build_raises(
     db_session: AsyncSession, seeded_market: None, tmp_data_dir: str
 ) -> None:
+    with pytest.raises(IndexNotBuiltError):
+        await HistoryService(db_session).query_similar()
+
+
+@pytest.mark.asyncio
+async def test_query_rejects_stale_feature_artifacts(
+    db_session: AsyncSession, tmp_data_dir: str
+) -> None:
+    Path(normalizer_path()).parent.mkdir(parents=True)
+    Path(normalizer_path()).write_text(
+        json.dumps({"feature_names": ["old"], "mean": [0.0], "std": [1.0]})
+    )
+    FaissIndexStore.build([1], np.zeros((1, 1), dtype="float32")).save(index_path())
+
     with pytest.raises(IndexNotBuiltError):
         await HistoryService(db_session).query_similar()
 

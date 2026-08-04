@@ -10,7 +10,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice, Fundamentals, Indicator
+from app.market import constants as market_constants
+from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
 from app.market.repository import MarketRepository
 from app.market.service import MarketIngestionService, compute_indicator_points
 from app.shared.clients.market_data import (
@@ -84,6 +85,32 @@ async def test_ingest_stores_all_layers(db_session: AsyncSession) -> None:
         select(func.count()).select_from(Indicator).where(Indicator.stock_id == stock.id)
     )
     assert indicator_count and indicator_count > 0
+
+
+@pytest.mark.asyncio
+async def test_default_ingest_persists_macro_as_inactive(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    monkeypatch.setattr(market_constants, "DEFAULT_UNIVERSE", ())
+    monkeypatch.setattr(
+        market_constants,
+        "MACRO_PROXIES",
+        {"INR=X": ("USD/INR", "Currency")},
+    )
+
+    result = await MarketIngestionService(db_session, FakeClient()).ingest()
+
+    assert result.succeeded == ["INR=X"]
+    macro = await db_session.scalar(select(Stock).where(Stock.symbol == "INR=X"))
+    assert macro is not None
+    assert macro.is_active is False
+    assert macro.sector == "Macro"
+    assert await db_session.scalar(
+        select(func.count()).select_from(DailyPrice).where(DailyPrice.stock_id == macro.id)
+    ) == 60
+    assert await db_session.scalar(
+        select(func.count()).select_from(Indicator).where(Indicator.stock_id == macro.id)
+    ) == 0
 
 
 @pytest.mark.asyncio

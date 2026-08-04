@@ -27,6 +27,7 @@ from app.history.exceptions import (
     SessionNotFoundError,
 )
 from app.history.feature_engineering import (
+    MacroDay,
     Normalizer,
     StockDay,
     compute_session_feature,
@@ -46,6 +47,7 @@ from app.history.similarity import (
     distance_to_similarity,
     outcome_label,
 )
+from app.market.constants import MACRO_FEATURE_SYMBOLS
 from config.logging import get_logger
 from config.settings import settings
 
@@ -114,9 +116,25 @@ class HistoryService:
         price_rows = await self.repo.get_price_rows()  # (stock_id, date, close), sorted
         indicator_rows = await self.repo.get_indicator_rows()
         sentiment_rows = await self.repo.get_sentiment_rows()
+        macro_rows = await self.repo.get_macro_price_rows(
+            list(MACRO_FEATURE_SYMBOLS.values())
+        )
         sentiment_by: dict[tuple[int, date], float] = {
             (sid, d): value for sid, d, value in sentiment_rows
         }
+
+        macro_returns: dict[date, dict[str, float]] = {}
+        feature_by_symbol = {
+            symbol: feature for feature, symbol in MACRO_FEATURE_SYMBOLS.items()
+        }
+        previous_macro: dict[str, float] = {}
+        for symbol, d, close in macro_rows:
+            previous = previous_macro.get(symbol)
+            if previous is not None and previous > 0 and close > 0:
+                macro_returns.setdefault(d, {})[feature_by_symbol[symbol]] = (
+                    close / previous - 1.0
+                )
+            previous_macro[symbol] = close
 
         close_by: dict[tuple[int, date], float] = {}
         prev_by: dict[tuple[int, date], float | None] = {}
@@ -157,7 +175,13 @@ class HistoryService:
                         sentiment=sentiment_by.get((sid, d)),
                     )
                 )
-            feat = compute_session_feature(stock_days)
+            macro_values = macro_returns.get(d, {})
+            macro = (
+                MacroDay(**macro_values)
+                if len(macro_values) == len(MACRO_FEATURE_SYMBOLS)
+                else None
+            )
+            feat = compute_session_feature(stock_days, macro=macro)
             if feat is not None:
                 sessions.append((d, feat))
         return sessions
@@ -170,8 +194,15 @@ class HistoryService:
         if not (os.path.exists(index_path()) and os.path.exists(normalizer_path())):
             raise IndexNotBuiltError()
 
-        normalizer = Normalizer.load(normalizer_path())
-        store = FaissIndexStore.load(index_path())
+        try:
+            normalizer = Normalizer.load(normalizer_path())
+            store = FaissIndexStore.load(index_path())
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.warning(
+                "history_index_incompatible",
+                extra={"error": type(exc).__name__, "detail": str(exc)},
+            )
+            raise IndexNotBuiltError() from exc
 
         session = (
             await self.repo.get_session_by_date(query_date)

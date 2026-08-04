@@ -13,7 +13,7 @@ class IndexNotBuiltError(AppException):
 
     def __init__(self) -> None:
         super().__init__(
-            "Historical similarity index has not been built yet. "
+            "Historical similarity index is missing or incompatible. "
             "Run the rebuild job first."
         )
 
