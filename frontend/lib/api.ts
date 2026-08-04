@@ -201,31 +201,33 @@ export interface HoldingAnalytics {
   avg_buy_price: number;
   current_price: number | null;
   previous_close: number | null;
-  market_value: number;
+  market_value: number | null;
   cost_basis: number;
-  unrealized_pnl: number;
+  unrealized_pnl: number | null;
   return_percent: number | null;
-  daily_pnl: number;
-  weight_percent: number;
+  daily_pnl: number | null;
+  weight_percent: number | null;
 }
 
 export interface PortfolioAnalytics {
   portfolio_id: number;
   name: string;
-  total_value: number;
+  total_value: number | null;
   total_cost: number;
-  total_unrealized_pnl: number;
+  total_unrealized_pnl: number | null;
   total_return_percent: number | null;
-  daily_pnl: number;
+  daily_pnl: number | null;
   daily_pnl_percent: number | null;
   number_of_holdings: number;
   number_of_sectors: number;
-  top_holding_weight_percent: number;
-  concentration_hhi: number;
-  diversification_score: number;
+  top_holding_weight_percent: number | null;
+  concentration_hhi: number | null;
+  diversification_score: number | null;
   volatility_percent: number | null;
-  health_score: number;
+  health_score: number | null;
   risk_level: string;
+  valuation_complete: boolean;
+  unpriced_symbols: string[];
   sector_allocation: SectorAllocation[];
   holdings: HoldingAnalytics[];
 }
@@ -473,12 +475,15 @@ export interface ReportSections {
   };
   portfolio_summary?: {
     narrative?: string;
-    total_value?: number;
+    total_value?: number | null;
+    total_cost?: number;
     total_return_percent?: number | null;
-    health_score?: number;
+    health_score?: number | null;
     risk_level?: string;
-    diversification_score?: number;
+    diversification_score?: number | null;
     number_of_holdings?: number;
+    valuation_complete?: boolean;
+    unpriced_symbols?: string[];
   };
   historical_summary?: {
     narrative?: string;

@@ -19,6 +19,8 @@ export interface DataTableProps<T> {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T, index: number) => string | number;
+  loading?: boolean;
+  loadingMessage?: string;
   emptyMessage?: string;
 }
 
@@ -26,11 +28,13 @@ export function DataTable<T>({
   columns,
   rows,
   rowKey,
+  loading = false,
+  loadingMessage = "Loading…",
   emptyMessage = "No data.",
 }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" aria-busy={loading}>
         <thead>
           <tr className="border-b text-left text-muted-foreground">
             {columns.map((c) => (
@@ -44,14 +48,21 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
+          {loading && (
+            <tr>
+              <td colSpan={columns.length} className="py-4 text-muted-foreground">
+                {loadingMessage}
+              </td>
+            </tr>
+          )}
+          {!loading && rows.length === 0 && (
             <tr>
               <td colSpan={columns.length} className="py-4 text-muted-foreground">
                 {emptyMessage}
               </td>
             </tr>
           )}
-          {rows.map((row, i) => (
+          {!loading && rows.map((row, i) => (
             <tr key={rowKey(row, i)} className="border-b">
               {columns.map((c) => (
                 <td

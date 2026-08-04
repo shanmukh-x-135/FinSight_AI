@@ -27,9 +27,10 @@ of components, and every AI insight uses the same evidence expander.
 | `TechnicalSummaryCard` | `summary` | Market-wide latest RSI, EMA, MACD, and ATR aggregates computed by the backend. |
 | `EconomicEventsCard` | `calendar` | Horizontally scrollable, provider-attributed India event cards with explicit unavailable/unconfigured states. |
 | `AIInsightCard` | `title, narrative, evidence, action?, confidence?` | Standard container for any AI-written insight. Evidence is required at compile time, so every narrative mounts the same disclosure. Never computes anything. |
+| `AIAnalysisState` | `status, message` | Shared honest empty/unavailable state for Analytics-template AI slots; prevents service failures from looking like unfinished features. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
-| `DataTable<T>` | `columns, rows, rowKey, emptyMessage?` | Generic table matching the app's table styling; used for gainers/losers/holdings/similar-sessions instead of bespoke `<table>` markup. |
+| `DataTable<T>` | `columns, rows, rowKey, loading?, loadingMessage?, emptyMessage?` | Generic responsive table with shared loading/empty states; used for gainers/losers/holdings/watchlist/similar-sessions instead of bespoke `<table>` markup. |
 
 `EvidencePanel` and `AIInsightCard` are client components (`"use client"`) — the
 expander holds toggle state. The rest are pure/presentational, so they render in
@@ -55,8 +56,8 @@ shared components.
 | **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `DashboardWatchlist`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
 | **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `TechnicalSummaryCard`, `EconomicEventsCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors,technical-summary,economic-events}` + `GET /recommendations` |
 | **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
-| **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, table | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
-| **Watchlist** (`/watchlist`) | Management | table + form | `GET/POST/PATCH/DELETE /watchlist` |
+| **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, `DataTable` | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
+| **Watchlist** (`/watchlist`) | Management | `DataTable` + form | `GET/POST/PATCH/DELETE /watchlist` |
 
 ### The batched dashboard endpoint
 
@@ -87,12 +88,17 @@ never a static mock.
 ## Tests
 
 - **Component tests** (`components/*.test.tsx`, Vitest + Testing Library):
-  `MetricCard`, `EvidencePanel`, `AIInsightCard`, and `DashboardWatchlist` —
-  including evidence disclosure and populated, pinned, empty, and truncated
-  watchlist states. Run with `npm test`.
+  `MetricCard`, `DataTable`, `AIAnalysisState`, `EvidencePanel`,
+  `AIInsightCard`, and `DashboardWatchlist` — including table
+  loading/empty/actions, explicit AI empty/unavailable outcomes, evidence
+  disclosure, and populated, pinned, empty, and truncated watchlist states.
+  Run with `npm test`.
 - **Type/build:** `npm run build` type-checks every screen against the API
   client types in `lib/api.ts`.
-- **Live E2E:** verified against the Docker stack — register → login →
-  `/dashboard/summary` returns real breadth, AI summary, an evidence-backed
-  opportunity (RELIANCE.NS, confidence 54%), risk alerts, and historical
-  context; all four analytical routes serve 200.
+- **Browser E2E:** `npm run test:e2e` rebuilds and waits for the real Docker
+  Compose stack, idempotently provisions the test account, logs in through the
+  UI, checks all four summary cards plus the watchlist and AI summary, then
+  expands `Show Evidence` and verifies real breadth content. Install the local
+  browser once with `npx playwright install chromium`. Use
+  `E2E_BASE_URL`, `E2E_API_URL`, `E2E_EMAIL`, and `E2E_PASSWORD` with
+  `npm run test:e2e:external` when testing an already-running remote stack.

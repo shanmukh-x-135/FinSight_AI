@@ -28,8 +28,10 @@ def sample_sections(*, long_text: bool = False, special: bool = False) -> dict:
             "narrative": "Breadth was positive.",
             "breadth": {"advancers": 3, "decliners": 1, "unchanged": 0, "total": 4,
                         "advance_decline_ratio": 3.0},
-            "gainers": [{"symbol": "AAA.NS", "change_percent": 5.0}],
-            "losers": [{"symbol": "BBB.NS", "change_percent": -4.0}],
+            "gainers": [{"symbol": "AAA.NS", "name": "Alpha", "close": 105.0,
+                         "change_percent": 5.0}],
+            "losers": [{"symbol": "BBB.NS", "name": "Beta", "close": 96.0,
+                         "change_percent": -4.0}],
         },
         "portfolio_summary": {
             "narrative": "Concentrated but healthy.",

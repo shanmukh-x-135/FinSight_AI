@@ -68,6 +68,15 @@ stored sections → render_markdown() → Markdown  ─┬─→  .md  (text/mar
   light-default pattern as FinBERT/Gemini/Plotly). Supports a Markdown subset:
   `#`/`##`/`###` headings, `-` bullets, `**bold**`, paragraph breaks.
 
+The detail screen and Markdown intentionally expose the same report facts:
+report provenance; full breadth (advancers/decliners/unchanged/tracked/A-D
+ratio); mover symbol/name/price/change; portfolio value/return/health/risk/
+diversification/holdings; historical sample/top-K/probability/average return;
+recommendation confidence/evidence/risks/historical context; and the first five
+notable news items. Raw sector-allocation arrays and individual similarity rows
+remain internal in both renderers. Tests lock this parity and deduplicate
+historical evidence already present in the recommendation evidence list.
+
 ### Robustness (the roadmap's PDF edge cases)
 
 fpdf2's core fonts are latin-1 only, so any Unicode the LLM might emit is
@@ -75,12 +84,14 @@ fpdf2's core fonts are latin-1 only, so any Unicode the LLM might emit is
 arrows, ellipses map to safe equivalents, and anything still unrepresentable is
 replaced (never crashes). Long text wraps via `multi_cell` (with the cursor
 reset to the left margin each block); missing optional sections just don't
-appear. All three cases are covered by tests.
+appear. Single- and double-asterisk/underscore emphasis markers are removed
+before rendering. All cases are covered by tests.
 
 ## Frontend
 
-- `/reports` (list) — date/type filters, a **Generate report** button, and
-  prev/next pagination.
+- `/reports` (list) — date/type filters (using the shared accessible Base UI
+  Select/Input primitives), a **Generate report** button, and prev/next
+  pagination.
 - `/reports/{id}` (detail) — the **Report page template**: Executive Summary →
   Analysis (market/portfolio/historical) → Recommendations (each with the same
   **Show Evidence** expander from Phase 7) → Appendix (news). **Export
@@ -91,10 +102,21 @@ appear. All three cases are covered by tests.
 
 - **API:** auth, type filter, date filter, pagination (multi-page, no overlap),
   detail, ownership 404 (`tests/reports/test_reports_api.py`).
-- **Export:** Markdown contains every section / skips missing ones / handles
-  empty recommendations; PDF renders for the happy path, **unusually long
-  text**, **special/Unicode characters**, and **missing sections**; the export
-  endpoints return the right content-type/disposition and reject unknown
-  formats (`tests/reports/test_export.py`).
+- **Export:** Markdown contains every section, every screen-visible summary
+  fact, the shared five-item news limit, and deduplicated historical evidence;
+  it skips missing sections and handles empty recommendations. PDF renders for
+  the happy path, **unusually long text**, **special/Unicode characters**, and
+  **missing sections**; the export endpoints return the right content-type/
+  disposition and reject unknown formats. A pypdf regression extracts the
+  generated in-memory PDF and proves every non-empty sanitized Markdown line is
+  present in its text (`tests/reports/test_export.py`).
+- **Detail UI:** unit coverage locks percentage units, report/market/portfolio/
+  historical facts, recommendation historical evidence, and the five-item news
+  limit against the Markdown contract.
+- **Browser E2E:** the real Compose stack is rebuilt before Chromium logs in,
+  generates a report through the UI, opens the exact returned report ID,
+  expands evidence, downloads both formats, verifies their filenames, checks
+  Markdown title/provenance, and validates the PDF signature and non-trivial
+  size (`frontend/e2e/reports.spec.ts`; run with `npm run test:e2e`).
 - Live-verified against the Docker stack: generated a real report, listed +
   filtered it, and exported valid Markdown and a valid PDF (`%PDF`, ~4 KB).

@@ -15,7 +15,7 @@ from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.exceptions import StockNotFoundError
+from app.market.exceptions import SectorNotFoundError, StockNotFoundError
 from app.market.repository import MarketRepository
 from app.news.constants import DEFAULT_FEEDS
 from app.news.models import NewsArticle
@@ -23,6 +23,7 @@ from app.news.repository import NewsRepository
 from app.news.schemas import (
     IngestNewsResult,
     NewsArticleOut,
+    SectorSentimentOut,
     SentimentDailyOut,
     StockSentimentOut,
 )
@@ -169,4 +170,25 @@ class NewsService:
                 )
                 for s in series
             ],
+        )
+
+    async def get_sector_sentiment(self, sector: str) -> SectorSentimentOut:
+        if not await self.market.list_stocks_by_sector(sector):
+            raise SectorNotFoundError(sector)
+        rows = await self.repo.get_sector_sentiment_series(sector)
+        series = [
+            SentimentDailyOut(
+                date=day,
+                avg_sentiment=avg,
+                article_count=count,
+                positive_count=positive,
+                negative_count=negative,
+                neutral_count=neutral,
+            )
+            for day, avg, count, positive, negative, neutral in rows
+        ]
+        return SectorSentimentOut(
+            sector=sector,
+            latest_sentiment=series[-1].avg_sentiment if series else None,
+            series=series,
         )

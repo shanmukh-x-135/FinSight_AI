@@ -16,7 +16,7 @@ from app.auth.exceptions import (
     InvalidCredentialsError,
     InvalidTokenError,
 )
-from app.auth.models import Session, User
+from app.auth.models import User
 from app.auth.repository import AuthRepository
 from app.auth.schemas import PreferencesUpdate, TokenResponse
 from app.shared.security.jwt import (

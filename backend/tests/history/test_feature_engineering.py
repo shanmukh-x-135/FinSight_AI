@@ -6,10 +6,18 @@ import pytest
 
 from app.history.feature_engineering import (
     FEATURE_NAMES,
+    MacroDay,
     Normalizer,
     StockDay,
     compute_session_feature,
     vector_from_features,
+)
+
+MACRO = MacroDay(
+    usd_inr_return=0.01,
+    crude_oil_return=-0.02,
+    gold_return=0.005,
+    us_10y_yield_return=0.003,
 )
 
 
@@ -22,7 +30,7 @@ def test_compute_session_feature_reference() -> None:
         StockDay(close=105, prev_close=100, rsi=50, ema20=100, ema50=100,
                  bb_upper=110, bb_lower=100, atr=10.5, macd_hist=1.05),
     ]
-    f = compute_session_feature(stock_days)
+    f = compute_session_feature(stock_days, macro=MACRO)
     assert f is not None
     assert f["avg_return"] == pytest.approx((0.10 - 0.01 + 0.05) / 3)
     assert f["median_return"] == pytest.approx(0.05)
@@ -33,6 +41,8 @@ def test_compute_session_feature_reference() -> None:
     assert f["avg_bollinger_position"] == pytest.approx((0.5 + 0.45 + 0.5) / 3)
     assert f["avg_atr_pct"] == pytest.approx(0.1)
     assert f["avg_sentiment"] == 0.0
+    assert f["usd_inr_return"] == 0.01
+    assert f["crude_oil_return"] == -0.02
 
 
 def test_sentiment_is_averaged_into_feature() -> None:
@@ -43,7 +53,7 @@ def test_sentiment_is_averaged_into_feature() -> None:
         StockDay(99, 100, 40, 100, 100, 110, 90, 9.9, -0.99, sentiment=-0.1),
         StockDay(105, 100, 50, 100, 100, 110, 100, 10.5, 1.05, sentiment=None),
     ]
-    f = compute_session_feature(days)
+    f = compute_session_feature(days, macro=MACRO)
     assert f is not None
     assert f["avg_sentiment"] == pytest.approx((0.5 - 0.1) / 2)
 
@@ -54,7 +64,7 @@ def test_no_sentiment_defaults_neutral() -> None:
         StockDay(99, 100, 40, 100, 100, 110, 90, 9.9, -0.99),
         StockDay(105, 100, 50, 100, 100, 110, 100, 10.5, 1.05),
     ]
-    f = compute_session_feature(days)
+    f = compute_session_feature(days, macro=MACRO)
     assert f is not None
     assert f["avg_sentiment"] == 0.0
 
@@ -65,7 +75,7 @@ def test_insufficient_stocks_returns_none() -> None:
         StockDay(100, 99, 50, 100, 100, 110, 90, 1, 0.1),
         StockDay(100, 99, 50, 100, 100, 110, 90, 1, 0.1),
     ]
-    assert compute_session_feature(days) is None
+    assert compute_session_feature(days, macro=MACRO) is None
 
 
 def test_missing_indicator_returns_none() -> None:
@@ -75,7 +85,16 @@ def test_missing_indicator_returns_none() -> None:
         StockDay(99, 100, None, 100, 100, 110, 90, 1, 0.1),
         StockDay(105, 100, None, 100, 100, 110, 90, 1, 0.1),
     ]
-    assert compute_session_feature(days) is None
+    assert compute_session_feature(days, macro=MACRO) is None
+
+
+def test_missing_macro_returns_none() -> None:
+    days = [
+        StockDay(110, 100, 60, 100, 90, 120, 100, 11, 2.2),
+        StockDay(99, 100, 40, 100, 100, 110, 90, 9.9, -0.99),
+        StockDay(105, 100, 50, 100, 100, 110, 100, 10.5, 1.05),
+    ]
+    assert compute_session_feature(days, macro=None) is None
 
 
 def test_vector_matches_feature_order() -> None:

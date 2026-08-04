@@ -42,4 +42,17 @@ describe("EvidencePanel", () => {
     await user.click(screen.getByRole("button", { name: /show evidence/i }));
     expect(screen.getByText(/No supporting indicators/)).toBeInTheDocument();
   });
+
+  it("does not repeat a historical line already present in evidence", async () => {
+    const user = userEvent.setup();
+    const historicalLine = "60% of 5 similar historical sessions closed higher";
+    render(
+      <EvidencePanel
+        evidence={[historicalLine]}
+        historicalContext={{ bullish_probability: 0.6, sample_size: 5 }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /show evidence/i }));
+    expect(screen.getAllByText(historicalLine)).toHaveLength(1);
+  });
 });

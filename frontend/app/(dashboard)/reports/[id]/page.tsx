@@ -106,7 +106,7 @@ export default function ReportDetailPage() {
 
   const generated = s.meta?.generated_at ?? report.created_at;
   const subtitle =
-    `Generated ${new Date(generated).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` +
+    `Report #${report.id} · Generated ${new Date(generated).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` +
     (s.meta?.llm_backend ? ` · ${s.meta.llm_backend}` : "") +
     (s.meta?.prompt_version ? ` · prompt v${s.meta.prompt_version}` : "");
 
@@ -144,9 +144,11 @@ export default function ReportDetailPage() {
             />
           )}
           {market.breadth && (
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <MetricCard label="Advancers" value={market.breadth.advancers} tone="positive" />
               <MetricCard label="Decliners" value={market.breadth.decliners} tone="negative" />
+              <MetricCard label="Unchanged" value={market.breadth.unchanged} tone="neutral" />
+              <MetricCard label="Tracked" value={market.breadth.total} />
               <MetricCard
                 label="A/D Ratio"
                 value={market.breadth.advance_decline_ratio == null ? "—" : market.breadth.advance_decline_ratio.toFixed(2)}
@@ -181,10 +183,11 @@ export default function ReportDetailPage() {
               evidence={{ evidence: portfolioNarrativeEvidence(portfolio) }}
             />
           )}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <MetricCard label="Total Value" value={money(portfolio.total_value)} />
             <MetricCard label="Total Return" value={pct(portfolio.total_return_percent)} tone={toneOf(portfolio.total_return_percent)} />
-            <MetricCard label="Health Score" value={portfolio.health_score ?? "—"} sub={`risk: ${portfolio.risk_level ?? "—"}`} />
+            <MetricCard label="Health Score" value={portfolio.health_score == null ? "—" : Math.round(portfolio.health_score)} sub={`risk: ${portfolio.risk_level ?? "—"}`} />
+            <MetricCard label="Diversification" value={portfolio.diversification_score == null ? "—" : `${Math.round(portfolio.diversification_score)}/100`} />
             <MetricCard label="Holdings" value={portfolio.number_of_holdings ?? "—"} />
           </div>
         </>
@@ -201,7 +204,7 @@ export default function ReportDetailPage() {
           )}
           {hist.statistics && (
             <div className="grid gap-4 sm:grid-cols-3">
-              <MetricCard label="Similar Sessions" value={hist.statistics.sample_size} />
+              <MetricCard label="Similar Sessions" value={hist.statistics.sample_size} sub={`top-${hist.statistics.k} nearest`} />
               <MetricCard
                 label="Closed Higher"
                 value={hist.statistics.bullish_probability == null ? "—" : `${Math.round(hist.statistics.bullish_probability * 100)}%`}
@@ -209,6 +212,9 @@ export default function ReportDetailPage() {
               <MetricCard label="Avg Next-Day" value={ratioPct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
             </div>
           )}
+          <p className="text-xs italic text-muted-foreground">
+            Historical context, not a forecast.
+          </p>
         </>
       )}
 
@@ -245,7 +251,7 @@ export default function ReportDetailPage() {
       </CardHeader>
       <CardContent>
         <ul className="space-y-2 text-sm">
-          {news.map((a, i) => (
+          {news.slice(0, 5).map((a, i) => (
             <li key={i} className="flex flex-wrap items-center gap-2">
               <span>{a.title}</span>
               {a.sentiment_label && (
@@ -267,7 +273,7 @@ export default function ReportDetailPage() {
         <p role="alert" className="mx-auto mb-3 max-w-4xl text-sm text-red-600">{exportError}</p>
       )}
       <ReportPageTemplate
-        title={`${report.report_type.charAt(0).toUpperCase()}${report.report_type.slice(1)} Report`}
+        title={`FinSight AI — ${report.report_type.charAt(0).toUpperCase()}${report.report_type.slice(1)} Report`}
         subtitle={subtitle}
         actions={actions}
         executiveSummary={executiveSummary}

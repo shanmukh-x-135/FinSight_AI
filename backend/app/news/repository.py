@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.market.models import Stock
 from app.news.models import NewsArticle, NewsArticleStock, SentimentDaily
 
 
@@ -92,3 +93,25 @@ class NewsRepository:
             .order_by(SentimentDaily.date.asc())
         )
         return list(result.scalars().all())
+
+    async def get_sector_sentiment_series(self, sector: str) -> list[tuple]:
+        """Daily article-weighted sector sentiment aggregated from stock rows."""
+        count = func.sum(SentimentDaily.article_count)
+        result = await self.db.execute(
+            select(
+                SentimentDaily.date,
+                func.sum(
+                    SentimentDaily.avg_sentiment * SentimentDaily.article_count
+                )
+                / count,
+                count,
+                func.sum(SentimentDaily.positive_count),
+                func.sum(SentimentDaily.negative_count),
+                func.sum(SentimentDaily.neutral_count),
+            )
+            .join(Stock, Stock.id == SentimentDaily.stock_id)
+            .where(Stock.sector == sector)
+            .group_by(SentimentDaily.date)
+            .order_by(SentimentDaily.date.asc())
+        )
+        return list(result.all())

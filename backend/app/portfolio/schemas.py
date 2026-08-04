@@ -76,12 +76,12 @@ class HoldingAnalyticsOut(BaseModel):
     avg_buy_price: float
     current_price: float | None
     previous_close: float | None
-    market_value: float
+    market_value: float | None
     cost_basis: float
-    unrealized_pnl: float
+    unrealized_pnl: float | None
     return_percent: float | None
-    daily_pnl: float
-    weight_percent: float
+    daily_pnl: float | None
+    weight_percent: float | None
 
 
 class SectorAllocationOut(BaseModel):
@@ -93,20 +93,22 @@ class SectorAllocationOut(BaseModel):
 class PortfolioAnalyticsOut(BaseModel):
     portfolio_id: int
     name: str
-    total_value: float
+    total_value: float | None
     total_cost: float
-    total_unrealized_pnl: float
+    total_unrealized_pnl: float | None
     total_return_percent: float | None
-    daily_pnl: float
+    daily_pnl: float | None
     daily_pnl_percent: float | None
     number_of_holdings: int
     number_of_sectors: int
-    top_holding_weight_percent: float
-    concentration_hhi: float
-    diversification_score: float
+    top_holding_weight_percent: float | None
+    concentration_hhi: float | None
+    diversification_score: float | None
     volatility_percent: float | None
-    health_score: float
+    health_score: float | None
     risk_level: str
+    valuation_complete: bool
+    unpriced_symbols: list[str]
     sector_allocation: list[SectorAllocationOut]
     holdings: list[HoldingAnalyticsOut]
 

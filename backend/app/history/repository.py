@@ -12,13 +12,13 @@ from datetime import date
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice, Indicator, Stock
-from app.news.models import SentimentDaily
 from app.history.models import (
     HistoricalEmbedding,
     HistoricalSession,
     HistoricalStatistics,
 )
+from app.market.models import DailyPrice, Indicator, Stock
+from app.news.models import SentimentDaily
 
 
 class HistoryRepository:
@@ -61,6 +61,18 @@ class HistoryRepository:
             .where(Stock.is_active.is_(True))
         )
         return list(result.all())
+
+    async def get_macro_price_rows(
+        self, symbols: list[str]
+    ) -> list[tuple[str, date, float]]:
+        """Validated proxy closes used to derive deterministic macro returns."""
+        result = await self.db.execute(
+            select(Stock.symbol, DailyPrice.date, DailyPrice.close)
+            .join(Stock, Stock.id == DailyPrice.stock_id)
+            .where(Stock.symbol.in_(symbols), Stock.is_active.is_(False))
+            .order_by(Stock.symbol, DailyPrice.date)
+        )
+        return [(row[0], row[1], row[2]) for row in result.all()]
 
     # ----- Sessions -------------------------------------------------------
     async def upsert_session(

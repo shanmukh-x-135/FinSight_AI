@@ -18,6 +18,14 @@ class ReportRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    async def create_report(
+        self, user_id: int | None, report_type: str, sections: dict
+    ) -> Report:
+        report = Report(user_id=user_id, report_type=report_type, sections=sections)
+        self.db.add(report)
+        await self.db.flush()
+        return report
+
     async def get_report(self, report_id: int) -> Report | None:
         result = await self.db.execute(select(Report).where(Report.id == report_id))
         return result.scalar_one_or_none()

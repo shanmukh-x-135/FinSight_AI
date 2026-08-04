@@ -83,7 +83,8 @@ class ReportGenerator:
                     for k in (
                         "total_value", "total_return_percent", "health_score",
                         "risk_level", "diversification_score", "number_of_holdings",
-                        "sector_allocation",
+                        "sector_allocation", "valuation_complete", "unpriced_symbols",
+                        "total_cost",
                     )
                 },
             }

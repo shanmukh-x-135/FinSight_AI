@@ -14,18 +14,21 @@ market data → daily feature vector → normalize → FAISS index → Top-K sea
 ### 1. Feature engineering (`feature_engineering.py`)
 
 For each trading date, aggregate the tracked universe into one market feature
-vector (11 dimensions, fixed order):
+vector (15 dimensions, fixed order):
 
 | Group | Features |
 |-------|----------|
 | Market | avg_return, median_return, pct_advancers, advance_decline_ratio |
 | Technical (scale-free) | avg_rsi, avg_ema20_distance, avg_ema50_distance, avg_bollinger_position, avg_atr_pct, avg_macd_hist_pct |
-| Sentiment | avg_sentiment — **neutral placeholder** until Phase 5 wires real sentiment |
+| Sentiment | avg_sentiment from Phase 5 per-stock daily news aggregation |
+| Macro (cross-asset) | USD/INR return, crude-oil return, gold return, US 10-year yield return |
 
 Technical features are scale-free (ratios/distances) so they average sensibly
 across stocks of different prices. A date only becomes a session if **every**
-feature is computable (≥3 stocks, all indicators present) — no imputation, no
-NaNs in the index.
+feature is computable (≥3 stocks, all indicators present, and all four macro
+proxy observations present) — no imputation, no NaNs in the index. Macro prices
+are fetched through the same validated yfinance client and stored as inactive
+`Stock` rows, so they cannot leak into equity breadth or sector calculations.
 
 The **outcome label** stored per session is the *next* session's `avg_return`
 (the actual next-day market move) — this is what statistics are computed against.
@@ -43,8 +46,8 @@ and apply the *same* normalizer — this is the single most important correctnes
 property: any drift between the normalization used to build the index and the
 one used to query it silently destroys similarity quality. There is exactly one
 `Normalizer` class; normalization happens nowhere else. Zero-variance features
-(e.g. the constant sentiment placeholder) map to 0 (no div-by-zero, no effect on
-distance) and start contributing automatically once Phase 5 makes them vary.
+map to 0 (no div-by-zero, no effect on distance). Sentiment now varies from the
+Phase 5 daily aggregation and contributes through the same normalization path.
 
 ### 3. Index (`embeddings.py`)
 
@@ -81,7 +84,7 @@ return, best/worst case, and a 95% confidence interval of the mean
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/v1/history/similar?date=&k=` | Top-K similar sessions + statistics (date defaults to latest) |
-| `POST /api/v1/admin/jobs/history-rebuild/run` | Rebuild the index (auth-protected) |
+| `POST /api/v1/admin/jobs/history-rebuild/run` | Rebuild the index (administrator only) |
 
 The rebuild is also chained into the **post-close scheduler pipeline** (ingest →
 rebuild index) so the index never goes stale.
@@ -100,16 +103,17 @@ live (rankings + distances byte-identical across rebuilds) and in tests.
 - **Integration**: a controlled two-regime market (calm-up vs volatile-down) — a
   query from one regime retrieves neighbours from the *same* regime; rebuild
   reproducibility; index-not-built / insufficient-history errors.
-- **Live**: 199 real sessions indexed from Phase 2 data; latest-session query
-  returns plausible analogues with real next-day outcomes; rebuild deterministic.
+- **Live**: 194 macro-complete real sessions indexed at 15 dimensions from
+  Phase 2 data; the latest-session query returned five ranked analogues with
+  five real next-day outcomes, and the rebuild remained deterministic.
 
 ~98% coverage across the history modules.
 
 ## Known limitations
 
-- **Sentiment** is a neutral placeholder until Phase 5.
-- **Macro** features (FII/DII, USD/INR, crude, gold, yields — design doc §5.6) are
-  not yet ingested; they can be added to `FEATURE_NAMES` when a macro source
-  exists (the index must be rebuilt when the feature set changes).
+- FII/DII flow is not included in the vector because the current providers do
+  not expose a reliable historical series. The implemented cross-asset macro
+  set covers USD/INR, crude, gold, and sovereign yields; adding institutional
+  flow later requires a trustworthy source and an index rebuild.
 - Similarity quality scales with historical depth; ~1y (~200 sessions) is enough
   for defensible analogues but more backfill improves it.

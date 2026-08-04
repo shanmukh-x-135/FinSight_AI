@@ -86,7 +86,7 @@ export function EvidencePanel({
               {evidence.map((e, i) => (
                 <Row key={i}>{e}</Row>
               ))}
-              {hist && <Row>{hist}</Row>}
+              {hist && !evidence.includes(hist) && <Row>{hist}</Row>}
             </ul>
           </div>
 

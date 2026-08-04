@@ -11,7 +11,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_admin_user
 from app.auth.models import User
 from app.history.service import HistoryService
 from app.shared.database import get_db
@@ -43,7 +43,7 @@ async def similar_sessions(
     "normalizer, and rebuilds the FAISS index. Auth-protected.",
 )
 async def rebuild_history_index(
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     result = await HistoryService(db).build_index()

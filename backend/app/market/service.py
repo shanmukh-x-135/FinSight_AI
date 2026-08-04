@@ -34,6 +34,7 @@ from app.shared.clients.economic_calendar import EconomicCalendarClient
 from app.shared.clients.market_data import MarketDataClient, PriceBar
 from app.shared.clients.yfinance_client import build_default_client
 from config.logging import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -83,13 +84,20 @@ class MarketIngestionService:
         self.client = client or build_default_client()
 
     async def ingest(self, symbols: list[str] | None = None) -> IngestionResult:
-        universe = symbols or list(C.DEFAULT_UNIVERSE)
+        universe = (
+            list(symbols)
+            if symbols is not None
+            else [*C.DEFAULT_UNIVERSE, *C.MACRO_PROXIES]
+        )
         succeeded: list[str] = []
         failed: list[str] = []
 
         for symbol in universe:
             try:
-                await self._ingest_one(symbol)
+                if symbol in C.MACRO_PROXIES:
+                    await self._ingest_macro_one(symbol)
+                else:
+                    await self._ingest_one(symbol)
                 await self.db.commit()
                 succeeded.append(symbol)
                 logger.info("ingest_symbol_ok", extra={"symbol": symbol})
@@ -110,9 +118,16 @@ class MarketIngestionService:
         )
 
     async def _ingest_one(self, symbol: str) -> None:
-        # yfinance is blocking — run off the event loop.
-        bars = await asyncio.to_thread(self.client.fetch_daily_prices, symbol)
-        fundamentals = await asyncio.to_thread(self.client.fetch_fundamentals, symbol)
+        # Providers are blocking, so run them off-loop and enforce an external
+        # deadline even when their own SDK does not expose one consistently.
+        bars = await asyncio.wait_for(
+            asyncio.to_thread(self.client.fetch_daily_prices, symbol),
+            timeout=settings.market_fetch_timeout_seconds,
+        )
+        fundamentals = await asyncio.wait_for(
+            asyncio.to_thread(self.client.fetch_fundamentals, symbol),
+            timeout=settings.market_fetch_timeout_seconds,
+        )
 
         stock = await self.repo.upsert_stock(
             symbol,
@@ -124,6 +139,23 @@ class MarketIngestionService:
         await self.repo.upsert_daily_prices(stock.id, bars)
         await self.repo.upsert_fundamentals(stock.id, fundamentals)
         await self.repo.upsert_indicators(stock.id, compute_indicator_points(bars))
+
+    async def _ingest_macro_one(self, symbol: str) -> None:
+        """Persist one cross-asset proxy without exposing it as an equity."""
+        bars = await asyncio.wait_for(
+            asyncio.to_thread(self.client.fetch_daily_prices, symbol),
+            timeout=settings.market_fetch_timeout_seconds,
+        )
+        name, asset_class = C.MACRO_PROXIES[symbol]
+        stock = await self.repo.upsert_stock(
+            symbol,
+            name=name,
+            sector="Macro",
+            industry=asset_class,
+            exchange="GLOBAL",
+            is_active=False,
+        )
+        await self.repo.upsert_daily_prices(stock.id, bars)
 
 
 def _quote_from_prices(stock: Stock, last_two: list[DailyPrice]) -> QuoteOut:
@@ -157,7 +189,51 @@ class MarketQueryService:
 
     async def _all_quotes(self) -> list[QuoteOut]:
         stocks = await self.repo.list_active_stocks()
-        return [await self._quote(s) for s in stocks]
+        snapshots = await self.repo.get_market_snapshots(
+            (stock.id for stock in stocks), known_stocks=stocks
+        )
+        return [
+            _quote_from_prices(stock, list(snapshots[stock.id].prices))
+            for stock in stocks
+            if stock.id in snapshots
+        ]
+
+    @staticmethod
+    def _gainers_from(quotes: list[QuoteOut], limit: int) -> list[QuoteOut]:
+        changed = [q for q in quotes if q.change_percent is not None]
+        changed.sort(key=lambda q: q.change_percent, reverse=True)
+        return changed[:limit]
+
+    @staticmethod
+    def _losers_from(quotes: list[QuoteOut], limit: int) -> list[QuoteOut]:
+        changed = [q for q in quotes if q.change_percent is not None]
+        changed.sort(key=lambda q: q.change_percent)
+        return changed[:limit]
+
+    @staticmethod
+    def _breadth_from(quotes: list[QuoteOut]) -> BreadthOut:
+        changed = [q for q in quotes if q.change_percent is not None]
+        advancers = sum(1 for q in changed if q.change_percent > 0)
+        decliners = sum(1 for q in changed if q.change_percent < 0)
+        unchanged = sum(1 for q in changed if q.change_percent == 0)
+        return BreadthOut(
+            advancers=advancers,
+            decliners=decliners,
+            unchanged=unchanged,
+            total=len(changed),
+            advance_decline_ratio=advancers / decliners if decliners else None,
+        )
+
+    async def get_market_overview(
+        self, limit: int = 5
+    ) -> tuple[BreadthOut, list[QuoteOut], list[QuoteOut]]:
+        """Build breadth and movers from one batched universe read."""
+        quotes = await self._all_quotes()
+        return (
+            self._breadth_from(quotes),
+            self._gainers_from(quotes, limit),
+            self._losers_from(quotes, limit),
+        )
 
     async def get_stock_detail(self, symbol: str) -> StockDetailOut:
         stock = await self.repo.get_stock_by_symbol(symbol)
@@ -189,7 +265,14 @@ class MarketQueryService:
         stocks = await self.repo.list_stocks_by_sector(sector)
         if not stocks:
             raise SectorNotFoundError(sector)
-        quotes = [await self._quote(s) for s in stocks]
+        snapshots = await self.repo.get_market_snapshots(
+            (stock.id for stock in stocks), known_stocks=stocks
+        )
+        quotes = [
+            _quote_from_prices(stock, list(snapshots[stock.id].prices))
+            for stock in stocks
+            if stock.id in snapshots
+        ]
         changes = [q.change_percent for q in quotes if q.change_percent is not None]
         avg = sum(changes) / len(changes) if changes else None
         return SectorPerformanceOut(
@@ -237,28 +320,13 @@ class MarketQueryService:
         return overview
 
     async def get_gainers(self, limit: int = 5) -> list[QuoteOut]:
-        quotes = [q for q in await self._all_quotes() if q.change_percent is not None]
-        quotes.sort(key=lambda q: q.change_percent, reverse=True)
-        return quotes[:limit]
+        return self._gainers_from(await self._all_quotes(), limit)
 
     async def get_losers(self, limit: int = 5) -> list[QuoteOut]:
-        quotes = [q for q in await self._all_quotes() if q.change_percent is not None]
-        quotes.sort(key=lambda q: q.change_percent)
-        return quotes[:limit]
+        return self._losers_from(await self._all_quotes(), limit)
 
     async def get_breadth(self) -> BreadthOut:
-        quotes = [q for q in await self._all_quotes() if q.change_percent is not None]
-        advancers = sum(1 for q in quotes if q.change_percent > 0)
-        decliners = sum(1 for q in quotes if q.change_percent < 0)
-        unchanged = sum(1 for q in quotes if q.change_percent == 0)
-        ratio = advancers / decliners if decliners else None
-        return BreadthOut(
-            advancers=advancers,
-            decliners=decliners,
-            unchanged=unchanged,
-            total=len(quotes),
-            advance_decline_ratio=ratio,
-        )
+        return self._breadth_from(await self._all_quotes())
 
     async def get_technical_summary(self) -> TechnicalSummaryOut:
         rows = await self.repo.list_latest_indicators_with_close()

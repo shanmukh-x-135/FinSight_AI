@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 
+import { AIAnalysisState } from "@/components/AIAnalysisState";
+
 /**
  * Reusable Analytics page template (design doc §7.4):
  *   Header → Summary Cards → Charts → AI Analysis → Supporting Tables.
  *
  * Screens compose these slots so the layout stays consistent across Market,
- * Portfolio, and Historical Similarity pages. The AI Analysis slot is a
- * placeholder until the intelligence layer (Phase 6/7) fills it.
+ * Portfolio, and Historical Similarity pages. The shared empty state keeps the
+ * slot honest when a successful response contains no current signal.
  */
 export interface AnalyticsPageTemplateProps {
   title: string;
@@ -53,9 +55,10 @@ export function AnalyticsPageTemplate({
 
       <Section heading="AI Analysis">
         {aiAnalysis ?? (
-          <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            AI-generated analysis and evidence will appear here in a later phase.
-          </div>
+          <AIAnalysisState
+            status="empty"
+            message="No AI analysis is available for this view."
+          />
         )}
       </Section>
 

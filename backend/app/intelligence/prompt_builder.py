@@ -72,6 +72,15 @@ def historical_section(slice_: dict) -> tuple[str, str]:
 
 
 def portfolio_section(slice_: dict) -> tuple[str, str]:
+    if not slice_.get("valuation_complete", True):
+        symbols = ", ".join(slice_.get("unpriced_symbols") or [])
+        fallback = (
+            "Portfolio valuation is unavailable because current prices are missing for "
+            f"{symbols or 'one or more holdings'}. Cost basis is "
+            f"₹{slice_['total_cost']:,.0f}; return, allocation, health, and risk metrics "
+            "are withheld until pricing is complete."
+        )
+        return _prompt("portfolio", slice_), fallback
     fallback = (
         f"Portfolio value ₹{slice_['total_value']:,.0f}"
         + (f", {slice_['total_return_percent']:+.2f}% overall"

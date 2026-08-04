@@ -37,6 +37,7 @@ def _latin1(text: str) -> str:
 def _strip_inline(text: str) -> str:
     """Remove Markdown bold/italic markers for the flat PDF text."""
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"^\*(.+)\*$", r"\1", text)
     text = re.sub(r"_(.+?)_", r"\1", text)
     return text
 

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
+import { AIAnalysisState } from "@/components/AIAnalysisState";
 import { DataTable, type Column } from "@/components/DataTable";
 import { Heatmap } from "@/components/Heatmap";
 import { EconomicEventsCard, TechnicalSummaryCard } from "@/components/MarketContext";
@@ -50,6 +51,7 @@ export default function MarketPage() {
   const [calendar, setCalendar] = useState<EconomicCalendar | null>(null);
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [risks, setRisks] = useState<Recommendation[]>([]);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,9 +80,10 @@ export default function MarketPage() {
           if (!cancelled) {
             setRecs(r.watchlist);
             setRisks(r.risk_alerts);
+            setAiUnavailable(false);
           }
         } catch {
-          /* leave AI analysis empty */
+          if (!cancelled) setAiUnavailable(true);
         }
       } catch {
         if (!cancelled) setError("Could not load market data.");
@@ -129,26 +132,35 @@ export default function MarketPage() {
     </div>
   );
 
-  const aiAnalysis =
-    recs.length === 0 && risks.length === 0 ? undefined : (
-      <div className="grid gap-4 lg:grid-cols-2">
-        {[...recs, ...risks].map((r) => (
-          <AIInsightCard
-            key={`${r.action}-${r.symbol}`}
-            title={`${r.symbol}${r.name ? ` · ${r.name}` : ""}`}
-            narrative={r.explanation}
-            action={r.action}
-            confidence={r.confidence}
-            evidence={{
-              evidence: r.evidence,
-              risks: r.risks,
-              confidence: r.confidence,
-              historicalContext: r.historical_context,
-            }}
-          />
-        ))}
-      </div>
-    );
+  const aiAnalysis = aiUnavailable ? (
+    <AIAnalysisState
+      status="unavailable"
+      message="AI analysis is temporarily unavailable. The market data above is still current."
+    />
+  ) : recs.length === 0 && risks.length === 0 ? (
+    <AIAnalysisState
+      status="empty"
+      message="No watch or avoid signals met the recommendation thresholds for this session."
+    />
+  ) : (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {[...recs, ...risks].map((r) => (
+        <AIInsightCard
+          key={`${r.action}-${r.symbol}`}
+          title={`${r.symbol}${r.name ? ` · ${r.name}` : ""}`}
+          narrative={r.explanation}
+          action={r.action}
+          confidence={r.confidence}
+          evidence={{
+            evidence: r.evidence,
+            risks: r.risks,
+            confidence: r.confidence,
+            historicalContext: r.historical_context,
+          }}
+        />
+      ))}
+    </div>
+  );
 
   const tables = (
     <div className="space-y-8">

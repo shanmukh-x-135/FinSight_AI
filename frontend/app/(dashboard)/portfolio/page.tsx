@@ -10,7 +10,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
+import { AIAnalysisState } from "@/components/AIAnalysisState";
+import { DataTable, type Column } from "@/components/DataTable";
 import { DonutChart } from "@/components/donut-chart";
+import { MetricCard, toneOf } from "@/components/MetricCard";
 import { AnalyticsPageTemplate } from "@/components/templates/AnalyticsPageTemplate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,37 +23,19 @@ import {
   ApiError,
   intelligenceApi,
   portfolioApi,
+  type HoldingAnalytics,
   type PortfolioAnalytics,
   type PortfolioDetail,
   type Recommendation,
 } from "@/lib/api";
-
-const money = (n: number | null | undefined) =>
-  n == null ? "—" : `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-const pct = (n: number | null | undefined) =>
-  n == null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
-const signClass = (n: number | null | undefined) =>
-  n == null ? "" : n > 0 ? "text-green-600" : n < 0 ? "text-red-600" : "";
-
-function Metric({ label, value, sub, valueClass }: {
-  label: string; value: string; sub?: string; valueClass?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="pt-5">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className={`mt-1 text-xl font-bold ${valueClass ?? ""}`}>{value}</p>
-        {sub && <p className={`text-xs ${valueClass ?? "text-muted-foreground"}`}>{sub}</p>}
-      </CardContent>
-    </Card>
-  );
-}
+import { money, pct, signClass } from "@/lib/utils";
 
 export default function PortfolioPage() {
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
   const [insights, setInsights] = useState<Recommendation[]>([]);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,8 +61,10 @@ export default function PortfolioPage() {
       setInsights(
         [...recs.watchlist, ...recs.risk_alerts].filter((r) => held.has(r.symbol)),
       );
+      setAiUnavailable(false);
     } catch {
       setInsights([]);
+      setAiUnavailable(true);
     }
   }, []);
 
@@ -159,21 +146,29 @@ export default function PortfolioPage() {
   const a = analytics;
 
   const summaryCards = a && (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Metric label="Total Value" value={money(a.total_value)} />
-      <Metric
-        label="Total Return"
-        value={money(a.total_unrealized_pnl)}
-        sub={pct(a.total_return_percent)}
-        valueClass={signClass(a.total_unrealized_pnl)}
-      />
-      <Metric
-        label="Today's P&L"
-        value={money(a.daily_pnl)}
-        sub={pct(a.daily_pnl_percent)}
-        valueClass={signClass(a.daily_pnl)}
-      />
-      <Metric label="Health Score" value={`${a.health_score}`} sub={`risk: ${a.risk_level}`} />
+    <div className="space-y-4">
+      {!a.valuation_complete && (
+        <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+          Valuation metrics are unavailable until prices arrive for {a.unpriced_symbols.join(", ")}.
+          Known cost basis: {money(a.total_cost)}.
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Total Value" value={money(a.total_value)} />
+        <MetricCard
+          label="Total Return"
+          value={money(a.total_unrealized_pnl)}
+          sub={pct(a.total_return_percent)}
+          tone={toneOf(a.total_unrealized_pnl)}
+        />
+        <MetricCard
+          label="Today's P&L"
+          value={money(a.daily_pnl)}
+          sub={pct(a.daily_pnl_percent)}
+          tone={toneOf(a.daily_pnl)}
+        />
+        <MetricCard label="Health Score" value={a.health_score ?? "—"} sub={`risk: ${a.risk_level}`} />
+      </div>
     </div>
   );
 
@@ -202,8 +197,8 @@ export default function PortfolioPage() {
           <CardTitle className="text-base">Portfolio Health</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-3 text-sm">
-          <div><p className="text-muted-foreground">Diversification</p><p className="font-semibold">{a.diversification_score}/100</p></div>
-          <div><p className="text-muted-foreground">Top holding</p><p className="font-semibold">{a.top_holding_weight_percent.toFixed(1)}%</p></div>
+          <div><p className="text-muted-foreground">Diversification</p><p className="font-semibold">{a.diversification_score == null ? "—" : `${a.diversification_score}/100`}</p></div>
+          <div><p className="text-muted-foreground">Top holding</p><p className="font-semibold">{a.top_holding_weight_percent == null ? "—" : `${a.top_holding_weight_percent.toFixed(1)}%`}</p></div>
           <div><p className="text-muted-foreground">Volatility</p><p className="font-semibold">{a.volatility_percent == null ? "—" : `${a.volatility_percent.toFixed(2)}%`}</p></div>
           <div><p className="text-muted-foreground">Risk level</p><p className="font-semibold capitalize">{a.risk_level}</p></div>
           <div><p className="text-muted-foreground">Holdings</p><p className="font-semibold">{a.number_of_holdings}</p></div>
@@ -213,7 +208,17 @@ export default function PortfolioPage() {
     </div>
   );
 
-  const aiAnalysis = insights.length > 0 && (
+  const aiAnalysis = aiUnavailable ? (
+    <AIAnalysisState
+      status="unavailable"
+      message="AI analysis is temporarily unavailable. Portfolio analytics remain available."
+    />
+  ) : insights.length === 0 ? (
+    <AIAnalysisState
+      status="empty"
+      message="No current watch or avoid signals match this portfolio's holdings."
+    />
+  ) : (
     <div className="grid gap-4 lg:grid-cols-2">
       {insights.map((r) => (
         <AIInsightCard
@@ -235,44 +240,64 @@ export default function PortfolioPage() {
 
   const tables = a && (
     <div className="flex flex-col gap-6">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-muted-foreground">
-              <th className="py-2 pr-3">Symbol</th>
-              <th className="py-2 pr-3 text-right">Qty</th>
-              <th className="py-2 pr-3 text-right">Avg</th>
-              <th className="py-2 pr-3 text-right">Price</th>
-              <th className="py-2 pr-3 text-right">Value</th>
-              <th className="py-2 pr-3 text-right">P&L</th>
-              <th className="py-2 pr-3 text-right">Return</th>
-              <th className="py-2 pr-3 text-right">Weight</th>
-              <th className="py-2 pr-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {a.holdings.length === 0 && (
-              <tr><td colSpan={9} className="py-4 text-muted-foreground">No holdings yet — add one below.</td></tr>
-            )}
-            {a.holdings.map((h) => (
-              <tr key={h.id} className="border-b">
-                <td className="py-2 pr-3 font-medium">{h.symbol}</td>
-                <td className="py-2 pr-3 text-right">{h.quantity}</td>
-                <td className="py-2 pr-3 text-right">{money(h.avg_buy_price)}</td>
-                <td className="py-2 pr-3 text-right">{money(h.current_price)}</td>
-                <td className="py-2 pr-3 text-right">{money(h.market_value)}</td>
-                <td className={`py-2 pr-3 text-right ${signClass(h.unrealized_pnl)}`}>{money(h.unrealized_pnl)}</td>
-                <td className={`py-2 pr-3 text-right ${signClass(h.return_percent)}`}>{pct(h.return_percent)}</td>
-                <td className="py-2 pr-3 text-right">{h.weight_percent.toFixed(1)}%</td>
-                <td className="py-2 pr-3 text-right whitespace-nowrap">
-                  <button className="text-blue-600 hover:underline" onClick={() => onEdit(h.id)}>Edit</button>
-                  <button className="ml-3 text-red-600 hover:underline" onClick={() => onRemove(h.id)}>Remove</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<HoldingAnalytics>
+        columns={[
+          { key: "symbol", header: "Symbol", className: "font-medium", render: (h) => h.symbol },
+          { key: "quantity", header: "Qty", align: "right", render: (h) => h.quantity },
+          { key: "average", header: "Avg", align: "right", render: (h) => money(h.avg_buy_price) },
+          { key: "price", header: "Price", align: "right", render: (h) => money(h.current_price) },
+          { key: "value", header: "Value", align: "right", render: (h) => money(h.market_value) },
+          {
+            key: "pnl",
+            header: "P&L",
+            align: "right",
+            render: (h) => (
+              <span className={signClass(h.unrealized_pnl)}>{money(h.unrealized_pnl)}</span>
+            ),
+          },
+          {
+            key: "return",
+            header: "Return",
+            align: "right",
+            render: (h) => (
+              <span className={signClass(h.return_percent)}>{pct(h.return_percent)}</span>
+            ),
+          },
+          {
+            key: "weight",
+            header: "Weight",
+            align: "right",
+            render: (h) => h.weight_percent == null ? "—" : `${h.weight_percent.toFixed(1)}%`,
+          },
+          {
+            key: "actions",
+            header: <span className="sr-only">Actions</span>,
+            align: "right",
+            className: "whitespace-nowrap",
+            render: (h) => (
+              <>
+                <button
+                  type="button"
+                  className="text-blue-600 hover:underline"
+                  onClick={() => onEdit(h.id)}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="ml-3 text-red-600 hover:underline"
+                  onClick={() => onRemove(h.id)}
+                >
+                  Remove
+                </button>
+              </>
+            ),
+          },
+        ] satisfies Column<HoldingAnalytics>[]}
+        rows={a.holdings}
+        rowKey={(holding) => holding.id}
+        emptyMessage="No holdings yet — add one below."
+      />
 
       <Card>
         <CardHeader>
@@ -314,7 +339,7 @@ export default function PortfolioPage() {
       subtitle={detail?.name}
       summaryCards={summaryCards}
       charts={charts}
-      aiAnalysis={aiAnalysis || undefined}
+      aiAnalysis={aiAnalysis}
       tables={tables}
     />
   );

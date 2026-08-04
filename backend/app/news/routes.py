@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_admin_user
 from app.auth.models import User
 from app.news.dependencies import get_news_client, get_news_scorer
 from app.news.service import NewsService
@@ -36,6 +36,13 @@ async def stock_sentiment(symbol: str, db: AsyncSession = Depends(get_db)) -> di
     return envelope(data=await NewsService(db).get_stock_sentiment(symbol))
 
 
+@news_router.get(
+    "/sentiment/sector/{sector}", summary="Daily article-weighted sentiment for a sector"
+)
+async def sector_sentiment(sector: str, db: AsyncSession = Depends(get_db)) -> dict:
+    return envelope(data=await NewsService(db).get_sector_sentiment(sector))
+
+
 @news_admin_router.post(
     "/jobs/news-ingestion/run",
     summary="Manually trigger news ingestion + sentiment scoring (dev/ops)",
@@ -43,7 +50,7 @@ async def stock_sentiment(symbol: str, db: AsyncSession = Depends(get_db)) -> di
     "daily sentiment. Auth-protected.",
 )
 async def run_news_ingestion(
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
     client: NewsClient = Depends(get_news_client),
     scorer: SentimentScorer = Depends(get_news_scorer),

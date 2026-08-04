@@ -11,6 +11,11 @@ here (design doc's "analytics before AI").
 `.NS` suffix (e.g. `RELIANCE.NS`). The default universe is a spread of large-cap
 NSE names across sectors (`app/market/constants.py`).
 
+The default ingestion also fetches four global macro proxies (USD/INR, crude
+oil, gold, and the US 10-year Treasury yield). They reuse `daily_prices` but are
+stored with `is_active=false`; consequently they feed historical similarity
+without appearing in equity APIs, breadth, sectors, watchlists, or portfolios.
+
 The client (`app/shared/clients/yfinance_client.py`):
 - **retries** transient failures (`market_fetch_max_attempts`, linear backoff);
 - **validates** — drops bars with NaN / non-finite / non-positive OHLC, or
@@ -25,18 +30,29 @@ returns `not_configured`. Neither path substitutes static or mocked events.
 
 ## Ingestion pipeline
 
-`fetch → validate → store prices → compute indicators → store` per symbol
+`fetch → validate → store prices → compute indicators → store` per equity
 (`app/market/service.py::MarketIngestionService`). Each symbol is **isolated**:
 one bad symbol logs and is skipped (its transaction rolled back), never aborting
 the batch. yfinance is blocking, so calls run off the event loop via
-`asyncio.to_thread`.
+`asyncio.to_thread`; every price/fundamentals call is bounded by
+`MARKET_FETCH_TIMEOUT_SECONDS` even where the provider SDK has no consistent
+timeout parameter.
+Macro proxies follow the same fetch/validation/deadline path but store only
+prices because equity indicators and fundamentals do not apply to them.
+
+Read-side composition uses `MarketRepository.get_market_snapshots`: stock
+metadata, the latest two prices, and the latest indicator are assembled in at
+most three queries regardless of universe size. Portfolio, watchlist, dashboard,
+sector, and intelligence candidate paths share this batch primitive.
 
 ### Trigger
 
 - **Scheduled** (normal path): APScheduler cron job, weekdays at
   `MARKET_INGESTION_HOUR:MINUTE` in `MARKET_TIMEZONE` (default 18:30 IST, after
-  NSE close/settlement). Registered in `app/scheduler/scheduler.py`.
-- **Manual** (dev/ops): `POST /api/v1/admin/jobs/market-ingestion/run`
+  NSE close/settlement). Registered in `app/scheduler/scheduler.py`. The full
+  market→news→history pipeline holds a non-blocking PostgreSQL advisory lock, so
+  only one application worker runs it at a time.
+- **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
   synchronously and returns `{requested, succeeded, failed}`.
 
@@ -60,7 +76,8 @@ RELIANCE bars matched the stored value to 10 decimals.
 
 ## Data model (migration `0003_market`)
 
-- **stocks** — `symbol (unique), name, sector (indexed), industry, exchange, is_active`.
+- **stocks** — `symbol (unique), name, sector (indexed), industry, exchange, is_active`;
+  inactive rows identify cross-asset macro proxies.
 - **daily_prices** — `stock_id, date, open/high/low/close, volume`; unique + index on `(stock_id, date)` (queried by date range constantly).
 - **indicators** — `stock_id, date`, one column per indicator; unique on `(stock_id, date)`.
 - **fundamentals** — 1:1 with stock: `market_cap, pe_ratio, eps, dividend_yield, week52_high/low`.
@@ -89,11 +106,11 @@ Daily % change is computed from the two most recent `daily_prices` rows.
 
 `backend/tests/market/`:
 - **Indicators** — reference-value goldens (hand-derived) + property checks.
-- **Ingestion** — fake client: full-pipeline storage, partial-failure isolation,
-  idempotency; yfinance retry (success-after-transient, exhaustion) and NaN/invalid
-  bar dropping.
+- **Ingestion** — fake client: full-pipeline storage, inactive macro-proxy
+  persistence, partial-failure isolation, idempotency; yfinance retry
+  (success-after-transient, exhaustion) and NaN/invalid bar dropping.
 - **API** — seeded reads (gainers/losers/breadth/technical summary/sector/detail/
-  indicators/economic events, 404s) and the auth-gated admin trigger.
+  indicators/economic events, 404s) and the administrator-gated trigger.
 - **Economic calendar** — HTTPX mock transport verifies authenticated date-range
   requests, parsing, malformed-row isolation, ordering, and graceful provider
   failure/unconfigured behavior.

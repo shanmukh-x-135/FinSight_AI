@@ -23,10 +23,10 @@ by default.
 ```
 User → Next.js (frontend) → REST API → FastAPI (backend)
                                           │
-              ┌───────────────┬───────────┼───────────────┐
-          PostgreSQL        Redis        FAISS      Background Scheduler
-                                                          │
-                                                     LLM APIs (Gemini)
+              ┌───────────────────┬────────┼────────────────────┐
+          PostgreSQL            FAISS   Background Scheduler   Providers
+                                         │                    (market/RSS,
+                                market → news → history        Gemini optional)
 ```
 
 The frontend talks **only** to the backend; nothing calls the database or vector
@@ -41,29 +41,35 @@ store directly.
 | `market`        | Market data ingestion, technical indicators, sectors, fundamentals   | Phase 2     |
 | `portfolio`     | Portfolio/watchlist CRUD, diversification, exposure, risk             | Phase 3     |
 | `history`       | Feature engineering, embeddings, FAISS similarity, statistics        | Phase 4     |
+| `news`          | RSS ingestion, company tagging, sentiment, daily aggregation           | Phase 5     |
 | `intelligence`  | RAG, context/prompt builders, recommendations, report composition    | Phase 6     |
 | `reports`       | Report listing/detail, Markdown/PDF export                           | Phase 8     |
 | `chat`          | Conversational assistant reusing the RAG pipeline                    | Phase 9     |
 | `scheduler`     | Orchestrates post-market-close background jobs                        | Phase 2+    |
 
-## What exists as of Phase 0
+## Implemented through Phase 8
 
-- FastAPI app factory (`app/main.py::create_app`) with centralized exception
-  handlers and a request-ID middleware.
-- Structured JSON logging (`config/logging.py`) correlated by request ID.
-- Async SQLAlchemy engine + session dependency (`app/shared/database.py`).
-- Alembic configured with an empty baseline migration (`0001_baseline`).
-- Health probes: `GET /health`, `GET /health/db`.
-- Next.js placeholder landing page that reports backend connectivity.
-- Docker Compose bringing up Postgres + backend + frontend.
+- FastAPI app factory with request IDs, structured JSON logging, global envelope
+  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0008`).
+- JWT/Argon2 auth with refresh rotation, preferences, rate limiting, persisted
+  administrator capability, and ownership-scoped resources.
+- Deterministic market indicators, batched market snapshots, portfolio/risk
+  analytics, RSS sentiment, FAISS analogues, recommendations, and grounded prose.
+- A cross-worker-locked post-close market→news→history scheduler.
+- Next.js App Router screens for auth, dashboard, market, history, portfolio,
+  watchlist, settings, and reports; shared evidence disclosures and Plotly
+  allocation visualization.
+- Stored structured reports rendered on demand from one Markdown source into
+  Markdown or PDF, with browser and extracted-PDF parity tests.
+- Docker Compose for the real stack, 228 backend tests, 37 frontend tests, and
+  two Playwright Chromium journeys.
 
-Every feature-module folder exists (with `__init__.py`) but is otherwise empty —
-each later phase fills in its own module using the standard internal layout
-described in `CONTRIBUTING.md`.
+`chat` and `infrastructure` are deliberate Phase 9/10 scaffolding, not partially
+implemented current features.
 
 ## Configuration
 
 - `config/settings.py` — Pydantic `BaseSettings`, validated once at startup.
 - `config/logging.py` — JSON logging + request-ID context.
-- `config/constants.py`, `config/feature_flags.py`, `config/prompts.py`
+- `config/constants.py`, `config/prompts.py`
   (prompts populated from Phase 6).

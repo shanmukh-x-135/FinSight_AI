@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     # ----- Market data & scheduler -----------------------------------------
     market_fetch_max_attempts: int = 3
+    market_fetch_timeout_seconds: float = 30.0
     scheduler_enabled: bool = True
     market_timezone: str = "Asia/Kolkata"      # NSE/BSE trading timezone (IST)
     # Post-market-close ingestion time (local to market_timezone). NSE closes
@@ -76,12 +77,8 @@ class Settings(BaseSettings):
     market_ingestion_hour: int = 18
     market_ingestion_minute: int = 30
 
-    # ----- Cache (optional) ------------------------------------------------
-    redis_url: str | None = None
-
     # ----- AI / external providers (used from later phases) ----------------
     gemini_api_key: str | None = None
-    news_api_key: str | None = None
     trading_economics_api_key: str | None = None
     economic_calendar_timeout_seconds: int = 10
 

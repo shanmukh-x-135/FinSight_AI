@@ -32,6 +32,10 @@ FEATURE_NAMES: tuple[str, ...] = (
     "avg_atr_pct",
     "avg_macd_hist_pct",
     "avg_sentiment",   # real news sentiment (Phase 5); neutral 0.0 when no news
+    "usd_inr_return",
+    "crude_oil_return",
+    "gold_return",
+    "us_10y_yield_return",
 )
 
 # Neutral value used when a date has no news sentiment. Dates before news existed
@@ -58,11 +62,23 @@ class StockDay:
     sentiment: float | None = None
 
 
+@dataclass(frozen=True)
+class MacroDay:
+    """Daily returns for the persisted cross-asset macro proxies."""
+
+    usd_inr_return: float
+    crude_oil_return: float
+    gold_return: float
+    us_10y_yield_return: float
+
+
 def _mean(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
-def compute_session_feature(stock_days: list[StockDay]) -> dict[str, float] | None:
+def compute_session_feature(
+    stock_days: list[StockDay], *, macro: MacroDay | None
+) -> dict[str, float] | None:
     """Aggregate per-stock data into a market feature dict.
 
     Returns ``None`` if the day lacks enough data to form a *complete* vector
@@ -73,7 +89,7 @@ def compute_session_feature(stock_days: list[StockDay]) -> dict[str, float] | No
         for sd in stock_days
         if sd.prev_close and sd.prev_close > 0 and sd.close > 0
     ]
-    if len(returns) < MIN_STOCKS_FOR_SESSION:
+    if len(returns) < MIN_STOCKS_FOR_SESSION or macro is None:
         return None
 
     advancers = sum(1 for r in returns if r > 0)
@@ -120,6 +136,10 @@ def compute_session_feature(stock_days: list[StockDay]) -> dict[str, float] | No
         "avg_atr_pct": atr,
         "avg_macd_hist_pct": macd,
         "avg_sentiment": avg_sentiment,
+        "usd_inr_return": macro.usd_inr_return,
+        "crude_oil_return": macro.crude_oil_return,
+        "gold_return": macro.gold_return,
+        "us_10y_yield_return": macro.us_10y_yield_return,
     }
 
 
@@ -131,8 +151,8 @@ def vector_from_features(features: dict[str, float]) -> list[float]:
 class Normalizer:
     """Z-score standardizer fitted on the corpus and reused for queries.
 
-    Zero-variance features (e.g. the constant sentiment placeholder) map to 0 to
-    avoid division by zero — they simply don't affect distance.
+    Zero-variance features map to 0 to avoid division by zero, so they simply
+    don't affect distance.
     """
 
     def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:

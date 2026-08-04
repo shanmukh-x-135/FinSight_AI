@@ -7,8 +7,10 @@ technical indicators, news sentiment, and Retrieval-Augmented Generation (RAG)
 to produce market and portfolio reports. It is a research assistant, not a
 price-prediction engine — every insight carries evidence, confidence, and risk.
 
-> **Status:** Phase 0 — Project Setup (skeleton). Both servers boot, the backend
-> talks to PostgreSQL, and health checks pass. Feature work begins in Phase 1.
+> **Status:** Phases 0–8 are implemented: authentication, market ingestion,
+> portfolio analytics, historical similarity, news/sentiment, evidence-grounded
+> intelligence, the dashboard, and report browse/detail/Markdown/PDF export.
+> Phase 9 (AI Chat) is the next product phase.
 
 ## Architecture
 
@@ -25,10 +27,9 @@ finsight-ai/
 ├── backend/            FastAPI app (app/), config (config/), Alembic, tests
 ├── frontend/           Next.js + TypeScript + Tailwind + Shadcn UI
 ├── docker/             Dockerfiles for backend and frontend
-├── docs/               Design/architecture notes (per-phase docs added later)
+├── docs/               Architecture and completed-feature documentation
 ├── scripts/            Dev/ops helper scripts
-├── tests/              Cross-cutting integration/e2e/fixtures (per design §6.10)
-├── infrastructure/     IaC notes/scripts
+├── infrastructure/     Reserved for Phase 10 deployment assets
 └── docker-compose.yml  Local full-stack dev
 ```
 
@@ -50,12 +51,13 @@ This starts three services:
 
 | Service  | URL                     | Notes                          |
 |----------|-------------------------|--------------------------------|
-| Frontend | http://localhost:3000   | Landing page shows API status  |
+| Frontend | http://localhost:3000   | Landing, auth, and dashboard   |
 | Backend  | http://localhost:8000   | `/docs` for OpenAPI            |
 | Postgres | localhost:5432          | user/pass/db all `finsight`    |
 
 The backend applies Alembic migrations on startup, then serves. Open
-http://localhost:3000 — it should read **"Backend connected."**
+http://localhost:3000 — it should read **"Backend connected"** and offer
+registration/login links.
 
 ## Running natively (without Docker)
 
@@ -90,7 +92,14 @@ curl http://localhost:8000/health/db       # {"status":"ok","database":"reachabl
 
 ```bash
 cd backend
-pytest                                     # smoke tests use an in-memory SQLite DB
+./.venv/bin/python -m pytest               # 233 tests; SQLite in-memory
+./.venv/bin/ruff check .                   # Python lint gate
+
+cd ../frontend
+npm test                                  # Vitest + Testing Library
+npm run lint
+npm run build -- --webpack                # type-check + production build
+npm run test:e2e                          # real Docker stack + Chromium flows
 ```
 
 ## Environment variables

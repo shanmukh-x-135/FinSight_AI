@@ -25,6 +25,24 @@ DEFAULT_UNIVERSE: tuple[str, ...] = (
 
 DEFAULT_EXCHANGE = "NSE"
 
+# Cross-asset macro proxies persisted as inactive ``Stock`` rows so the existing
+# validated OHLC pipeline can be reused without including them in stock breadth,
+# sectors, portfolios, or watchlists. Values are converted to daily returns by
+# the historical feature-engineering pipeline.
+MACRO_PROXIES: dict[str, tuple[str, str]] = {
+    "INR=X": ("USD/INR", "Currency"),
+    "CL=F": ("WTI Crude Oil", "Commodity"),
+    "GC=F": ("Gold", "Commodity"),
+    "^TNX": ("US 10-Year Treasury Yield", "Rates"),
+}
+
+MACRO_FEATURE_SYMBOLS: dict[str, str] = {
+    "usd_inr_return": "INR=X",
+    "crude_oil_return": "CL=F",
+    "gold_return": "GC=F",
+    "us_10y_yield_return": "^TNX",
+}
+
 # How much daily history to pull per ingestion (enough to warm up EMA-50 / BB-20).
 HISTORY_PERIOD = "1y"
 

@@ -73,9 +73,12 @@ class PortfolioService:
         self, user_id: int, portfolio_id: int
     ) -> PortfolioDetailOut:
         portfolio = await self._owned_portfolio(user_id, portfolio_id)
+        stocks = await self.market.get_stocks_by_ids(
+            item.stock_id for item in portfolio.items
+        )
         holdings = []
         for item in portfolio.items:
-            stock = await self.market.get_stock_by_id(item.stock_id)
+            stock = stocks.get(item.stock_id)
             holdings.append(
                 HoldingOut(
                     id=item.id,
@@ -149,13 +152,17 @@ class PortfolioService:
         self, user_id: int, portfolio_id: int
     ) -> PortfolioAnalyticsOut:
         portfolio = await self._owned_portfolio(user_id, portfolio_id)
+        snapshots = await self.market.get_market_snapshots(
+            item.stock_id for item in portfolio.items
+        )
         inputs: list[HoldingInput] = []
         for item in portfolio.items:
-            stock = await self.market.get_stock_by_id(item.stock_id)
-            prices = await self.market.get_last_two_prices(item.stock_id)
+            snapshot = snapshots.get(item.stock_id)
+            stock = snapshot.stock if snapshot else None
+            prices = snapshot.prices if snapshot else ()
             latest = prices[0] if prices else None
             previous = prices[1] if len(prices) > 1 else None
-            indicator = await self.market.get_latest_indicator(item.stock_id)
+            indicator = snapshot.indicator if snapshot else None
             inputs.append(
                 HoldingInput(
                     id=item.id,
@@ -174,10 +181,14 @@ class PortfolioService:
     # ----- Watchlist -------------------------------------------------------
     async def list_watchlist(self, user_id: int) -> list[WatchlistItemOut]:
         items = await self.repo.list_watchlist(user_id)
+        snapshots = await self.market.get_market_snapshots(
+            item.stock_id for item in items
+        )
         out: list[WatchlistItemOut] = []
         for item in items:
-            stock = await self.market.get_stock_by_id(item.stock_id)
-            prices = await self.market.get_last_two_prices(item.stock_id)
+            snapshot = snapshots.get(item.stock_id)
+            stock = snapshot.stock if snapshot else None
+            prices = snapshot.prices if snapshot else ()
             latest = prices[0] if prices else None
             previous = prices[1] if len(prices) > 1 else None
             change = change_pct = None

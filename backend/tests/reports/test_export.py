@@ -7,12 +7,15 @@ a missing optional section, and special/Unicode characters in generated text.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 
 import pytest
 from httpx import AsyncClient
+from pypdf import PdfReader
 
 from app.intelligence.models import Report
 from app.reports.exporters import render_markdown, render_pdf
+from app.reports.exporters.pdf import _latin1, _strip_inline
 
 PW = "S3curePass!"
 
@@ -47,8 +50,42 @@ def test_markdown_scales_historical_return_ratio(make_sections) -> None:
     # Historical returns use decimal ratios, unlike already-scaled market and
     # portfolio percentages. 0.4 must therefore render as 40%, not 0.4%.
     assert "**Avg next-day return:** +40.00%" in md
-    assert "AAA.NS (+5.00%)" in md
+    assert "AAA.NS — Alpha (₹105.00; +5.00%)" in md
     assert "**Total return:** -3.50%" in md
+
+
+def test_markdown_contains_all_screen_summary_facts(make_sections) -> None:
+    md = render_markdown(_report(make_sections()))
+
+    assert (
+        "**Breadth:** 3 advancers / 1 decliners / 0 unchanged "
+        "(4 tracked; A/D ratio 3.00)"
+    ) in md
+    assert "BBB.NS — Beta (₹96.00; -4.00%)" in md
+    assert "**Diversification:** 50/100" in md
+    assert "**Similar sessions:** 5 (top-5 nearest)" in md
+    assert "60% of 5 similar historical sessions closed higher" in md
+
+
+def test_markdown_deduplicates_structured_historical_evidence(make_sections) -> None:
+    sections = make_sections()
+    historical_line = "60% of 5 similar historical sessions closed higher"
+    sections["recommendations"][0]["evidence"].append(historical_line)
+    md = render_markdown(_report(sections))
+
+    assert md.count(historical_line) == 1
+
+
+def test_markdown_and_screen_share_five_item_news_limit(make_sections) -> None:
+    sections = make_sections()
+    sections["news"]["notable"] = [
+        {"title": f"Story {index}", "sentiment_label": "neutral", "tags": []}
+        for index in range(1, 7)
+    ]
+    md = render_markdown(_report(sections))
+
+    assert "Story 5" in md
+    assert "Story 6" not in md
 
 
 def test_markdown_skips_missing_optional_sections(make_sections) -> None:
@@ -76,6 +113,29 @@ def test_markdown_handles_empty_recommendations(make_sections) -> None:
 def test_pdf_renders_happy_path(make_sections) -> None:
     pdf = render_pdf(render_markdown(_report(make_sections())))
     assert pdf[:4] == b"%PDF" and len(pdf) > 1000
+
+
+def test_pdf_text_contains_every_markdown_line(make_sections) -> None:
+    markdown = render_markdown(_report(make_sections()))
+    pdf = render_pdf(markdown)
+    reader = PdfReader(BytesIO(pdf))
+    extracted = " ".join(
+        (page.extract_text() or "") for page in reader.pages
+    )
+    extracted = " ".join(extracted.split())
+
+    for line in markdown.splitlines():
+        if not line:
+            continue
+        expected = _latin1(_strip_inline(line))
+        if expected.startswith("### "):
+            expected = expected[4:]
+        elif expected.startswith("## "):
+            expected = expected[3:]
+        elif expected.startswith("# "):
+            expected = expected[2:]
+        expected = " ".join(expected.split())
+        assert expected in extracted, f"PDF omitted Markdown line: {line}"
 
 
 def test_pdf_handles_long_text(make_sections) -> None:

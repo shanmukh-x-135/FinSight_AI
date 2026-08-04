@@ -59,6 +59,13 @@ Portfolio-level:
   `0.4 × diversification_score + 0.3 × (100 − top_holding_weight) + 0.3 × clamp(50 + total_return_percent, 0, 100)`.
 - **risk_level** — from concentration: `high` if top weight ≥ 50%, `medium` if ≥ 30%, else `low`.
 
+Price availability is explicit: if any holding has no current close,
+`valuation_complete` is false, `unpriced_symbols` identifies it, and valuation,
+return, allocation, health, and risk metrics are `null`/`unknown` rather than
+reporting a false zero value or total loss. The known cost basis remains
+available. If only a previous close is missing, valuation remains valid while
+daily P&L is withheld.
+
 Weights/thresholds live in `app/portfolio/constants.py`.
 
 ### Worked example (from the unit tests)
@@ -76,14 +83,13 @@ Verified live too: a real RELIANCE+TCS portfolio produced hand-checkable returns
 ## Frontend
 
 - **Portfolio page** (`/portfolio`) — first use of the **Analytics page template**
+  with a responsive, client-only Plotly sector-allocation donut. Its compact
+  external legend remains readable without hover, while Plotly supplies precise
+  interactive percentages; browser-only loading is isolated behind
+  `next/dynamic` so App Router prerendering remains safe.
   (Summary Cards → Charts → AI Analysis → Details): metric cards, a sector
   **allocation donut**, a health card, and the holdings table with add/edit/remove.
 - **Watchlist page** (`/watchlist`) — add/remove/pin with live quotes.
-
-**Charting note:** the sector allocation uses a lightweight, dependency-free SVG
-donut (`components/donut-chart.tsx`) rather than Plotly. The design doc's Plotly
-choice is deferred to Phase 7's richer dashboard charts; a zero-dependency donut
-keeps this phase robust and fast.
 
 ## Testing
 

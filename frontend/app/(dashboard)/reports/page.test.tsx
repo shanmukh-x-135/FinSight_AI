@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { reportsApi } from "@/lib/api";
@@ -33,6 +34,24 @@ describe("ReportsPage loading", () => {
     );
     expect(reportsApi.list).toHaveBeenCalledWith({
       report_type: undefined,
+      start_date: undefined,
+      end_date: undefined,
+      limit: 10,
+      offset: 0,
+    });
+  });
+
+  it("applies the shared controlled report-type filter", async () => {
+    const user = userEvent.setup();
+    render(<ReportsPage />);
+    await screen.findByRole("link", { name: "Open →" });
+
+    await user.click(screen.getByRole("combobox", { name: "Type" }));
+    await user.click(screen.getByRole("option", { name: "Weekly" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(reportsApi.list).toHaveBeenLastCalledWith({
+      report_type: "weekly",
       start_date: undefined,
       end_date: undefined,
       limit: 10,
