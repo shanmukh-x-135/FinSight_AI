@@ -109,5 +109,10 @@ appear. All three cases are covered by tests.
 - **Detail UI:** unit coverage locks percentage units, report/market/portfolio/
   historical facts, recommendation historical evidence, and the five-item news
   limit against the Markdown contract.
+- **Browser E2E:** the real Compose stack is rebuilt before Chromium logs in,
+  generates a report through the UI, opens the exact returned report ID,
+  expands evidence, downloads both formats, verifies their filenames, checks
+  Markdown title/provenance, and validates the PDF signature and non-trivial
+  size (`frontend/e2e/reports.spec.ts`; run with `npm run test:e2e`).
 - Live-verified against the Docker stack: generated a real report, listed +
   filtered it, and exported valid Markdown and a valid PDF (`%PDF`, ~4 KB).

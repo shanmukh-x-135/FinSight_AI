@@ -271,7 +271,7 @@
   - **Resolved 2026-08-05:** Screen, Markdown, and therefore PDF expose the same report provenance, complete breadth facts, mover details, portfolio metrics (including diversification), top-K historical statistics/disclaimer, recommendation historical context, and five-item news limit. Shared historical evidence is deduplicated. Backend and frontend parity regressions cover every corrected field.
 
   - **Resolved 2026-08-04:** Report executive, market, portfolio, historical, recommendation, and risk narratives all use the required shared evidence disclosure.
-  - Focused report-page unit coverage now exists for historical units, but comprehensive report integration/E2E coverage is still missing.
+  - **Resolved 2026-08-05:** Report-detail unit tests cover units and all parity fields. A real-stack Chromium flow logs in, generates a report, opens the returned ID, expands evidence, downloads both formats, validates filenames/Markdown provenance, and checks valid non-trivial PDF bytes.
   - **Resolved 2026-08-04:** Frontend lint failed in the reports page and auth context due react-hooks/set-state-in-effect: frontend/app/(dashboard)/reports/page.tsx:73, frontend/lib/auth-context.tsx:56.
 
   Therefore, the v0.9.0-reports tag exists, but Phase 8 is not genuinely complete.
@@ -386,7 +386,7 @@
   - Backend: 218 passed
   - Backend coverage: 97% overall
   - Frontend unit tests: 35 passed
-  - Frontend Playwright E2E: 1 passed against the rebuilt Docker Compose stack
+  - Frontend Playwright E2E: 2 passed against the rebuilt Docker Compose stack
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack
   - Default Turbopack build could not be verified because this execution environment prohibited its internal port binding
@@ -416,7 +416,7 @@
 
   4. Close Phase 8:
       - **Completed 2026-08-05:** exact screen/Markdown/PDF content parity;
-      - report-page integration tests;
+      - **Completed 2026-08-05:** report-page integration and real-stack export E2E tests;
       - **completed 2026-08-04:** fix frontend lint.
 
   5. Refresh environment templates and documentation.
