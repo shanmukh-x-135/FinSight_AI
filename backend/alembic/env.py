@@ -11,21 +11,21 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
-from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.shared.database import Base
-from config.settings import settings
+from alembic import context
 
 # Import model modules so ``Base.metadata`` is fully populated for autogenerate
 # and offline SQL. Add new feature models here as later phases introduce them.
 from app.auth import models as _auth_models  # noqa: E402,F401
-from app.market import models as _market_models  # noqa: E402,F401
-from app.portfolio import models as _portfolio_models  # noqa: E402,F401
-from app.news import models as _news_models  # noqa: E402,F401
 from app.history import models as _history_models  # noqa: E402,F401
 from app.intelligence import models as _intelligence_models  # noqa: E402,F401
+from app.market import models as _market_models  # noqa: E402,F401
+from app.news import models as _news_models  # noqa: E402,F401
+from app.portfolio import models as _portfolio_models  # noqa: E402,F401
+from app.shared.database import Base
+from config.settings import settings
 
 config = context.config
 

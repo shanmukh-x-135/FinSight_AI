@@ -65,5 +65,5 @@ described in `CONTRIBUTING.md`.
 
 - `config/settings.py` — Pydantic `BaseSettings`, validated once at startup.
 - `config/logging.py` — JSON logging + request-ID context.
-- `config/constants.py`, `config/feature_flags.py`, `config/prompts.py`
+- `config/constants.py`, `config/prompts.py`
   (prompts populated from Phase 6).

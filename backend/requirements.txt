@@ -28,7 +28,7 @@ APScheduler==3.11.3          # background job scheduling (post-market-close)
 
 # --- Historical intelligence (vector similarity) ---
 faiss-cpu==1.15.0            # FAISS index for historical-session similarity search
-# numpy is already pulled in by yfinance; used by feature engineering / embeddings
+numpy>=2,<3                   # direct dependency: feature engineering / embeddings
 
 # --- Reports / export ---
 fpdf2>=2.8,<3                # pure-Python PDF export (no system libs); Markdown→PDF
@@ -46,3 +46,4 @@ pytest-cov==6.0.0            # coverage measurement (auth target 80%+)
 httpx==0.28.1
 aiosqlite==0.20.0            # ephemeral DB for fast unit/smoke tests
 pypdf>=6,<7                  # extract generated PDF text for export parity tests
+ruff>=0.12,<1                # Python linting (configured in pyproject.toml)

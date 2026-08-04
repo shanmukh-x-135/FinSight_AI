@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence.service import IntelligenceService
-from app.market.models import Stock
 from app.portfolio.models import Portfolio, PortfolioItem
 
 

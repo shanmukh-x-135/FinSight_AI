@@ -76,12 +76,8 @@ class Settings(BaseSettings):
     market_ingestion_hour: int = 18
     market_ingestion_minute: int = 30
 
-    # ----- Cache (optional) ------------------------------------------------
-    redis_url: str | None = None
-
     # ----- AI / external providers (used from later phases) ----------------
     gemini_api_key: str | None = None
-    news_api_key: str | None = None
     trading_economics_api_key: str | None = None
     economic_calendar_timeout_seconds: int = 10
 

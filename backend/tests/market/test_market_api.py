@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.dependencies import get_economic_calendar_client, get_market_client
 from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
-from app.shared.clients.market_data import FundamentalsData, PriceBar
 from app.shared.clients.economic_calendar import EconomicEventData
+from app.shared.clients.market_data import FundamentalsData, PriceBar
 
 D1, D2 = date(2024, 1, 1), date(2024, 1, 2)
 

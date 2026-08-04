@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+
 @pytest.mark.asyncio
 async def test_similar_before_build_returns_409(
     client: AsyncClient, seeded_market: None, tmp_data_dir: str

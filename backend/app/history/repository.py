@@ -12,13 +12,13 @@ from datetime import date
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice, Indicator, Stock
-from app.news.models import SentimentDaily
 from app.history.models import (
     HistoricalEmbedding,
     HistoricalSession,
     HistoricalStatistics,
 )
+from app.market.models import DailyPrice, Indicator, Stock
+from app.news.models import SentimentDaily
 
 
 class HistoryRepository:

@@ -8,7 +8,6 @@ Fine for the modest tracked universe run once per day.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from typing import Iterable
 
 from sqlalchemy import and_, func, select

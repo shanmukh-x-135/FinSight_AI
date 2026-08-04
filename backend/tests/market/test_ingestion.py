@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
+from app.market.models import DailyPrice, Fundamentals, Indicator
 from app.market.repository import MarketRepository
 from app.market.service import MarketIngestionService, compute_indicator_points
 from app.shared.clients.market_data import (

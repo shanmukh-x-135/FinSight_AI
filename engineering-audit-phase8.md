@@ -340,15 +340,11 @@
 
   - chat/ is empty.
   - tests/integration, tests/fixtures, and infrastructure remain placeholders. The obsolete tests/e2e placeholder was replaced by the frontend-owned Playwright suite.
-  - feature_flags.py is unused.
-  - redis_url and news_api_key are configured but unused.
-  - Default create-next-app public SVGs appear unused.
+  - **Resolved 2026-08-05:** Removed the unused feature-flag placeholder, unimplemented Redis/News API settings, and unreferenced create-next-app public SVGs.
 
   ### Dependency hygiene
 
-  - NumPy is directly imported but only relied upon transitively through yfinance rather than declared directly: backend/requirements.txt:29.
-  - Ruff configuration exists but Ruff is not installed in the project venv/requirements.
-  - shadcn is in production dependencies even though it is a scaffolding CLI rather than an imported runtime package.
+  - **Resolved 2026-08-05:** NumPy is declared directly, Ruff is a declared executable dev/test dependency matching `pyproject.toml`, and the shadcn scaffolding CLI is a frontend devDependency.
   - Plotly is absent despite the roadmap naming it for portfolio allocation.
 
   ### UI consistency
@@ -366,7 +362,7 @@
   - Automated grounding/rejection/retry tests and a manually reviewed 12-scenario deterministic benchmark now exist. The configured-provider runner is ready, but a Gemini run remains unverified because no API key is configured in this workspace.
   - **Resolved 2026-08-04:** Regression tests now cover historical percentage units in shared formatting, the history page, report detail, and Markdown export.
   - **Resolved 2026-08-05:** A pypdf regression reads the generated PDF from memory and verifies every non-empty, sanitized Markdown line is extractable from the PDF text. The test also exposed and fixed leaked single-asterisk emphasis markers.
-  - No scheduler multi-instance or admin-role tests.
+  - **Resolved 2026-08-05:** Scheduler contention and PostgreSQL advisory-lock SQL are tested; admin job routes have explicit 401/403/allow coverage.
   - No accessibility or performance tests.
 
   ### Documentation gaps
