@@ -17,6 +17,7 @@ Two backends behind one interface:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from config.logging import get_logger
@@ -26,7 +27,7 @@ logger = get_logger(__name__)
 
 
 class LLMClient(Protocol):
-    def generate(self, system: str, prompt: str, fallback: str) -> str:
+    async def generate(self, system: str, prompt: str, fallback: str) -> str:
         """Return prose for ``prompt``. ``fallback`` is deterministic text used
         if the model is unavailable/fails, so callers always get valid output."""
         ...
@@ -39,7 +40,7 @@ class DeterministicNarrator:
     from the structured facts, so this backend needs no model.
     """
 
-    def generate(self, system: str, prompt: str, fallback: str) -> str:
+    async def generate(self, system: str, prompt: str, fallback: str) -> str:
         return fallback
 
 
@@ -48,21 +49,32 @@ class GeminiClient:
 
     def __init__(self, api_key: str) -> None:
         from google import genai  # noqa: PLC0415 — optional dependency
+        from google.genai import types  # noqa: PLC0415 — optional dependency
 
-        self._client = genai.Client(api_key=api_key)
+        self._timeout: float = settings.llm_timeout_seconds
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=self._timeout * 1000),
+        )
         self._model = settings.llm_model
         self._retries = settings.llm_max_retries
 
-    def generate(self, system: str, prompt: str, fallback: str) -> str:
+    async def generate(self, system: str, prompt: str, fallback: str) -> str:
         contents = f"{system}\n\n{prompt}"
         for attempt in range(1, self._retries + 1):
             try:
-                resp = self._client.models.generate_content(
-                    model=self._model, contents=contents
-                )
+                async with asyncio.timeout(self._timeout):
+                    resp = await self._client.aio.models.generate_content(
+                        model=self._model, contents=contents
+                    )
                 text = (getattr(resp, "text", None) or "").strip()
                 if text:
                     return text
+            except TimeoutError:
+                logger.warning(
+                    "gemini_generate_timeout",
+                    extra={"attempt": attempt, "timeout_seconds": self._timeout},
+                )
             except Exception as exc:  # noqa: BLE001 — network/quota/etc.
                 logger.warning(
                     "gemini_generate_failed",

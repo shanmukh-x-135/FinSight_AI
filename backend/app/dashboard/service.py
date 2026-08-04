@@ -43,10 +43,12 @@ class DashboardService:
         system = pb.system_instruction()
         for rec in watchlist + risk_alerts:
             prompt, fallback = pb.recommendation_explanation(rec)
-            rec.explanation = self.llm.generate(system, prompt, fallback)
+            rec.explanation = await self.llm.generate(system, prompt, fallback)
 
         market_prompt, market_fallback = pb.market_section(market)
-        ai_market_summary = self.llm.generate(system, market_prompt, market_fallback)
+        ai_market_summary = await self.llm.generate(
+            system, market_prompt, market_fallback
+        )
 
         return {
             "market": market,

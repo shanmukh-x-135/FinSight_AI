@@ -54,7 +54,7 @@ class IntelligenceService:
         system = pb.system_instruction()
         for rec in watchlist + risk_alerts:
             prompt, fallback = pb.recommendation_explanation(rec)
-            rec.explanation = self.llm.generate(system, prompt, fallback)
+            rec.explanation = await self.llm.generate(system, prompt, fallback)
         return {
             "watchlist": [_rec_to_dict(r) for r in watchlist],
             "risk_alerts": [_rec_to_dict(r) for r in risk_alerts],

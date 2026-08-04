@@ -223,11 +223,9 @@
 
   - No 10–15-scenario regression benchmark exists. The documentation re-labels the ordinary unit suite as the benchmark.
   - Tests primarily use the deterministic narrator, not real-model responses: backend/tests/intelligence/test_report_generation.py:1.
-  - llm_timeout_seconds is configured but never used. Gemini calls are synchronous and can block the async request worker: backend/app/intelligence/llm_client.py:46.
+  - **Resolved 2026-08-04:** Gemini generation now uses the SDK's native async client, configures its transport timeout from llm_timeout_seconds, and enforces the same deadline around every retry attempt.
   - Explainability validation checks only that deterministic fields and prose are non-empty. It does not validate LLM claims against context, reject hallucinations, or retry malformed/ungrounded prose: backend/app/
     intelligence/explainability.py:23.
-
-  - The documented claim that Gemini has timeout enforcement is inaccurate.
 
   The deterministic fallback path is strong; the actual generative-AI quality gate required by the roadmap is incomplete.
 
@@ -324,7 +322,7 @@
 
   - **Resolved 2026-08-04:** Historical percentages understated by 100× in UI and export.
   - Missing portfolio prices are treated as zero value/full loss.
-  - Gemini timeout setting is unused; synchronous inference can block async workers.
+  - **Resolved 2026-08-04:** Gemini timeout is enforced at both the SDK transport and coroutine levels, and provider inference no longer blocks async workers.
   - Explainability validation does not validate model claims.
   - Any authenticated user can invoke expensive admin jobs.
   - Scheduler has no leader election or distributed lock, so multi-worker deployment could duplicate ingestion.
@@ -342,7 +340,7 @@
   - chat/ is empty.
   - tests/e2e, tests/integration, tests/fixtures, and infrastructure are placeholders.
   - feature_flags.py is unused.
-  - redis_url, news_api_key, and llm_timeout_seconds are configured but unused.
+  - redis_url and news_api_key are configured but unused.
   - Default create-next-app public SVGs appear unused.
 
   ### Dependency hygiene
@@ -374,7 +372,7 @@
 
   - Root README and architecture document still describe Phase 0.
   - Historical docs still say sentiment is a placeholder.
-  - AI docs claim timeout handling that is not implemented.
+  - **Resolved 2026-08-04:** AI documentation now matches the implemented async retry and per-attempt timeout behavior.
   - Frontend docs claim every insight has evidence and formatters/tables are single-source, which the code contradicts.
   - No AI chat, deployment, accessibility, performance, or walkthrough documentation.
 
@@ -384,7 +382,7 @@
 
   Verification results:
 
-  - Backend: 197 passed
+  - Backend: 201 passed
   - Backend coverage: 97% overall
   - Frontend unit tests: 17 passed
   - Alembic: single head at 0007_reports
@@ -404,7 +402,7 @@
 
   1. **Completed 2026-08-04:** Correct historical units across the history UI, report detail, Markdown, and PDF; add regression tests.
   2. Close Phase 6 AI guarantees:
-      - enforce timeout/non-blocking Gemini calls;
+      - **Completed 2026-08-04:** enforce timeout/non-blocking Gemini calls;
       - validate model output against supplied evidence;
       - add the required scenario benchmark.
 

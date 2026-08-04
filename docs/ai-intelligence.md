@@ -23,12 +23,18 @@ Provider-agnostic (`app/intelligence/llm_client.py`):
 
 | Backend | When | Notes |
 |---------|------|-------|
-| **Gemini Flash** (`google-genai`) | `GEMINI_API_KEY` set | Design doc's model. Retry + timeout; **degrades to the fallback on any failure — never raises**. Needs the AI extra (`requirements-ai.txt`). |
+| **Gemini Flash** (`google-genai`) | `GEMINI_API_KEY` set | Design doc's model. Native async calls, retry + per-attempt timeout; **degrades to the fallback on any failure — never raises**. Needs the AI extra (`requirements-ai.txt`). |
 | **DeterministicNarrator** | default | Renders the prose directly from the structured facts. No API key, no cost, reproducible, offline-testable. The prompt builder always supplies a grounded fallback narrative, so output is always valid. |
 
 Same trade-off as FinBERT/Plotly in earlier phases: the design-doc model is
 integrated and selectable, but the default keeps the system reproducible and
 cost-free. The evidence/rankings are identical either way.
+
+Gemini generation uses `client.aio.models.generate_content`, so provider I/O
+does not block FastAPI's event loop. `LLM_TIMEOUT_SECONDS` is applied both to
+the SDK transport (milliseconds) and as an `asyncio` deadline around each
+attempt. Timeouts, quota errors, empty responses, and exhausted retries all
+return the deterministic grounded fallback.
 
 ## Pipeline
 
@@ -107,6 +113,9 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
   reports across runs.
 - **No price prediction** — enforced by prompt constraints; the historical
   section is explicitly framed as context, "not a forecast".
+- **Provider reliability** — tests cover native async generation, event-loop
+  progress during an in-flight request, configured transport timeout, retries,
+  timeout fallback, empty output, and provider exceptions.
 
 ~97% coverage across the intelligence modules. Live: a real report cited RELIANCE
 with RSI/EMA/MACD/sector/historical evidence and real risks, confidence 54%, and
