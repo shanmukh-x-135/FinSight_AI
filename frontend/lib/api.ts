@@ -416,3 +416,94 @@ export interface DashboardSummary {
 export const dashboardApi = {
   summary: () => request<DashboardSummary>("/api/v1/dashboard/summary", { auth: true }),
 };
+
+// ----- Reports (Phase 8) ----------------------------------------------------
+export interface ReportSummary {
+  id: number;
+  report_type: string;
+  created_at: string;
+}
+
+export interface ReportSections {
+  executive_summary?: string;
+  market_summary?: {
+    narrative?: string;
+    breadth?: Breadth;
+    gainers?: Quote[];
+    losers?: Quote[];
+  };
+  portfolio_summary?: {
+    narrative?: string;
+    total_value?: number;
+    total_return_percent?: number | null;
+    health_score?: number;
+    risk_level?: string;
+    diversification_score?: number;
+    number_of_holdings?: number;
+  };
+  historical_summary?: {
+    narrative?: string;
+    statistics?: HistoryStatistics;
+  };
+  recommendations?: Recommendation[];
+  risk_alerts?: Recommendation[];
+  news?: { notable?: { title: string; sentiment_label?: string; tags?: string[] }[] };
+  meta?: { prompt_version?: string; llm_backend?: string; generated_at?: string };
+}
+
+export interface Report {
+  id: number;
+  user_id: number | null;
+  report_type: string;
+  sections: ReportSections;
+  created_at: string;
+}
+
+export interface ReportFilters {
+  report_type?: string;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const reportsApi = {
+  list: (f: ReportFilters = {}) => {
+    const p = new URLSearchParams();
+    if (f.report_type) p.set("report_type", f.report_type);
+    if (f.start_date) p.set("start_date", f.start_date);
+    if (f.end_date) p.set("end_date", f.end_date);
+    if (f.limit != null) p.set("limit", String(f.limit));
+    if (f.offset != null) p.set("offset", String(f.offset));
+    const qs = p.toString();
+    return request<ReportSummary[]>(`/api/v1/reports${qs ? `?${qs}` : ""}`, { auth: true });
+  },
+  get: (id: number) => request<Report>(`/api/v1/reports/${id}`, { auth: true }),
+  generate: () =>
+    request<Report>("/api/v1/reports/generate", { method: "POST", auth: true }),
+};
+
+/**
+ * Download a report export (Markdown or PDF). The export endpoint returns a
+ * binary file (not the JSON envelope), so this bypasses `request()` and streams
+ * the blob with the Bearer token, then triggers a browser download.
+ */
+export async function downloadReport(id: number, fmt: "markdown" | "pdf"): Promise<void> {
+  const token = tokenStore.getAccess();
+  const res = await fetch(`${API_URL}/api/v1/reports/${id}/export?format=${fmt}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new ApiError(`Export failed (${res.status})`, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `finsight-report-${id}.${fmt === "pdf" ? "pdf" : "md"}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

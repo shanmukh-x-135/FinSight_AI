@@ -55,6 +55,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <Link href="/watchlist" className="hover:text-foreground">
               Watchlist
             </Link>
+            <Link href="/reports" className="hover:text-foreground">
+              Reports
+            </Link>
             <Link href="/settings" className="hover:text-foreground">
               Settings
             </Link>
@@ -73,6 +76,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <Link href="/market" className="whitespace-nowrap hover:text-foreground">Market</Link>
         <Link href="/history" className="whitespace-nowrap hover:text-foreground">History</Link>
         <Link href="/portfolio" className="whitespace-nowrap hover:text-foreground">Portfolio</Link>
+        <Link href="/reports" className="whitespace-nowrap hover:text-foreground">Reports</Link>
         <Link href="/watchlist" className="whitespace-nowrap hover:text-foreground">Watchlist</Link>
         <Link href="/settings" className="whitespace-nowrap hover:text-foreground">Settings</Link>
       </nav>
