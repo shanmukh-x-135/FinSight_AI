@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     # ----- AI / external providers (used from later phases) ----------------
     gemini_api_key: str | None = None
     news_api_key: str | None = None
+    trading_economics_api_key: str | None = None
+    economic_calendar_timeout_seconds: int = 10
 
     # ----- News & sentiment (Phase 5) --------------------------------------
     # Sentiment scorer: "lexicon" (dependency-free default) or "finbert"

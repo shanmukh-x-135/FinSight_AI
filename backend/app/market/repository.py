@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -164,6 +164,38 @@ class MarketRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def list_latest_indicators_with_close(
+        self,
+    ) -> list[tuple[Indicator, float | None]]:
+        latest = (
+            select(
+                Indicator.stock_id.label("stock_id"),
+                func.max(Indicator.date).label("latest_date"),
+            )
+            .group_by(Indicator.stock_id)
+            .subquery()
+        )
+        result = await self.db.execute(
+            select(Indicator, DailyPrice.close)
+            .join(
+                latest,
+                and_(
+                    Indicator.stock_id == latest.c.stock_id,
+                    Indicator.date == latest.c.latest_date,
+                ),
+            )
+            .join(Stock, Stock.id == Indicator.stock_id)
+            .outerjoin(
+                DailyPrice,
+                and_(
+                    DailyPrice.stock_id == Indicator.stock_id,
+                    DailyPrice.date == Indicator.date,
+                ),
+            )
+            .where(Stock.is_active.is_(True))
+        )
+        return [(indicator, close) for indicator, close in result.all()]
 
     async def get_indicator_history(
         self, stock_id: int, limit: int = 60

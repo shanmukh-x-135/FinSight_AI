@@ -14,15 +14,18 @@ import { useEffect, useState } from "react";
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { Heatmap } from "@/components/Heatmap";
+import { EconomicEventsCard, TechnicalSummaryCard } from "@/components/MarketContext";
 import { MetricCard } from "@/components/MetricCard";
 import { AnalyticsPageTemplate } from "@/components/templates/AnalyticsPageTemplate";
 import {
   intelligenceApi,
   marketApi,
   type Breadth,
+  type EconomicCalendar,
   type Quote,
   type Recommendation,
   type SectorOverview,
+  type TechnicalSummary,
 } from "@/lib/api";
 import { money, pct, signClass } from "@/lib/utils";
 
@@ -43,6 +46,8 @@ export default function MarketPage() {
   const [gainers, setGainers] = useState<Quote[]>([]);
   const [losers, setLosers] = useState<Quote[]>([]);
   const [sectors, setSectors] = useState<SectorOverview[]>([]);
+  const [technical, setTechnical] = useState<TechnicalSummary | null>(null);
+  const [calendar, setCalendar] = useState<EconomicCalendar | null>(null);
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [risks, setRisks] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,17 +57,21 @@ export default function MarketPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [b, g, l, s] = await Promise.all([
+        const [b, g, l, s, t, e] = await Promise.all([
           marketApi.breadth(),
           marketApi.gainers(5),
           marketApi.losers(5),
           marketApi.sectors(),
+          marketApi.technicalSummary(),
+          marketApi.economicEvents(14),
         ]);
         if (cancelled) return;
         setBreadth(b);
         setGainers(g);
         setLosers(l);
         setSectors(s);
+        setTechnical(t);
+        setCalendar(e);
         // Recommendations are user-scoped and best-effort — don't fail the page.
         try {
           const r = await intelligenceApi.recommendations();
@@ -105,13 +114,19 @@ export default function MarketPage() {
   );
 
   const charts = (
-    <Heatmap
-      cells={sectors.map((s) => ({
-        label: s.sector,
-        value: s.average_change_percent,
-        sub: `${s.stock_count} stock${s.stock_count === 1 ? "" : "s"}`,
-      }))}
-    />
+    <div className="space-y-6">
+      <Heatmap
+        cells={sectors.map((s) => ({
+          label: s.sector,
+          value: s.average_change_percent,
+          sub: `${s.stock_count} stock${s.stock_count === 1 ? "" : "s"}`,
+        }))}
+      />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <TechnicalSummaryCard summary={technical} />
+        <EconomicEventsCard calendar={calendar} />
+      </div>
+    </div>
   );
 
   const aiAnalysis =
@@ -155,7 +170,7 @@ export default function MarketPage() {
   return (
     <AnalyticsPageTemplate
       title="Market Intelligence"
-      subtitle="End-of-day breadth, sectors, movers, and AI analysis"
+      subtitle="End-of-day breadth, technicals, events, sectors, movers, and AI analysis"
       summaryCards={summaryCards}
       charts={charts}
       aiAnalysis={aiAnalysis}

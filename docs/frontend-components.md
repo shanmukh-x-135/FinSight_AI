@@ -24,6 +24,8 @@ of components, and every AI insight uses the same evidence expander.
 | `MetricCard` | `label, value, sub?, tone?, icon?` | A single KPI tile. `tone` (`positive`/`negative`/`neutral`/`default`) colours the value; `toneOf(n)` derives it from a signed number. |
 | `StockCard` | `symbol, name?, sector?, price?, changePercent?` | Compact quote tile for movers/opportunities; colours the change by sign. |
 | `DashboardWatchlist` | `items, maxItems?` | Compact user-watchlist card with real quotes, pin emphasis, empty/truncated states, and management navigation. |
+| `TechnicalSummaryCard` | `summary` | Market-wide latest RSI, EMA, MACD, and ATR aggregates computed by the backend. |
+| `EconomicEventsCard` | `calendar` | Horizontally scrollable, provider-attributed India event cards with explicit unavailable/unconfigured states. |
 | `AIInsightCard` | `title, narrative, action?, confidence?, evidence?` | Standard container for any AI-written insight. Shows the prose + an optional action badge/confidence, and mounts `EvidencePanel` when `evidence` is supplied. Never computes anything. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
@@ -51,7 +53,7 @@ shared components.
 | Screen | Template | Key components | Backend data |
 |--------|----------|----------------|--------------|
 | **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `DashboardWatchlist`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
-| **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors}` + `GET /recommendations` |
+| **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `TechnicalSummaryCard`, `EconomicEventsCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors,technical-summary,economic-events}` + `GET /recommendations` |
 | **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
 | **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, table | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
 | **Watchlist** (`/watchlist`) | Management | table + form | `GET/POST/PATCH/DELETE /watchlist` |
