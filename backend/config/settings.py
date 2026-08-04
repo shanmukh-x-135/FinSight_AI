@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     news_api_key: str | None = None
 
+    # ----- News & sentiment (Phase 5) --------------------------------------
+    # Sentiment scorer: "lexicon" (dependency-free default) or "finbert"
+    # (design doc's model; requires the ML extras in requirements-ml.txt).
+    # FinBERT auto-falls back to lexicon if transformers/torch are unavailable.
+    sentiment_backend: str = "lexicon"
+    news_max_articles_per_feed: int = 50
+
     # ----- CORS ------------------------------------------------------------
     # ``NoDecode`` stops pydantic-settings from JSON-parsing the env value, so a
     # plain comma-separated string reaches our validator below.
