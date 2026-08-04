@@ -84,7 +84,8 @@ fpdf2's core fonts are latin-1 only, so any Unicode the LLM might emit is
 arrows, ellipses map to safe equivalents, and anything still unrepresentable is
 replaced (never crashes). Long text wraps via `multi_cell` (with the cursor
 reset to the left margin each block); missing optional sections just don't
-appear. All three cases are covered by tests.
+appear. Single- and double-asterisk/underscore emphasis markers are removed
+before rendering. All cases are covered by tests.
 
 ## Frontend
 
@@ -105,7 +106,9 @@ appear. All three cases are covered by tests.
   it skips missing sections and handles empty recommendations. PDF renders for
   the happy path, **unusually long text**, **special/Unicode characters**, and
   **missing sections**; the export endpoints return the right content-type/
-  disposition and reject unknown formats (`tests/reports/test_export.py`).
+  disposition and reject unknown formats. A pypdf regression extracts the
+  generated in-memory PDF and proves every non-empty sanitized Markdown line is
+  present in its text (`tests/reports/test_export.py`).
 - **Detail UI:** unit coverage locks percentage units, report/market/portfolio/
   historical facts, recommendation historical evidence, and the five-item news
   limit against the Markdown contract.

@@ -365,7 +365,7 @@
   - No successful FinBERT inference test.
   - Automated grounding/rejection/retry tests and a manually reviewed 12-scenario deterministic benchmark now exist. The configured-provider runner is ready, but a Gemini run remains unverified because no API key is configured in this workspace.
   - **Resolved 2026-08-04:** Regression tests now cover historical percentage units in shared formatting, the history page, report detail, and Markdown export.
-  - PDF tests verify a valid PDF header but do not extract and compare its textual contents with Markdown/UI.
+  - **Resolved 2026-08-05:** A pypdf regression reads the generated PDF from memory and verifies every non-empty, sanitized Markdown line is extractable from the PDF text. The test also exposed and fixed leaked single-asterisk emphasis markers.
   - No scheduler multi-instance or admin-role tests.
   - No accessibility or performance tests.
 
@@ -383,7 +383,7 @@
 
   Verification results:
 
-  - Backend: 218 passed
+  - Backend: 219 passed
   - Backend coverage: 97% overall
   - Frontend unit tests: 35 passed
   - Frontend Playwright E2E: 2 passed against the rebuilt Docker Compose stack

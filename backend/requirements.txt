@@ -45,3 +45,4 @@ pytest-asyncio==0.25.2
 pytest-cov==6.0.0            # coverage measurement (auth target 80%+)
 httpx==0.28.1
 aiosqlite==0.20.0            # ephemeral DB for fast unit/smoke tests
+pypdf>=6,<7                  # extract generated PDF text for export parity tests
