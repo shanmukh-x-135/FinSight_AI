@@ -7,14 +7,23 @@ Fine for the modest tracked universe run once per day.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
+from typing import Iterable
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
 from app.shared.clients.market_data import FundamentalsData, PriceBar
+
+
+@dataclass(frozen=True)
+class MarketSnapshot:
+    stock: Stock
+    prices: tuple[DailyPrice, ...]
+    indicator: Indicator | None
 
 
 class MarketRepository:
@@ -61,9 +70,86 @@ class MarketRepository:
         result = await self.db.execute(select(Stock).where(Stock.id == stock_id))
         return result.scalar_one_or_none()
 
+    async def get_stocks_by_ids(self, stock_ids: Iterable[int]) -> dict[int, Stock]:
+        ids = list(dict.fromkeys(stock_ids))
+        if not ids:
+            return {}
+        result = await self.db.execute(select(Stock).where(Stock.id.in_(ids)))
+        return {stock.id: stock for stock in result.scalars()}
+
     async def list_active_stocks(self) -> list[Stock]:
         result = await self.db.execute(select(Stock).where(Stock.is_active.is_(True)))
         return list(result.scalars().all())
+
+    async def get_market_snapshots(
+        self,
+        stock_ids: Iterable[int],
+        *,
+        known_stocks: Iterable[Stock] | None = None,
+    ) -> dict[int, MarketSnapshot]:
+        """Load metadata, latest two prices, and latest indicator in ≤3 queries."""
+        ids = list(dict.fromkeys(stock_ids))
+        if not ids:
+            return {}
+
+        if known_stocks is None:
+            stocks = list((await self.get_stocks_by_ids(ids)).values())
+        else:
+            id_set = set(ids)
+            stocks = [stock for stock in known_stocks if stock.id in id_set]
+
+        price_partition = (
+            select(
+                DailyPrice,
+                func.row_number()
+                .over(
+                    partition_by=DailyPrice.stock_id,
+                    order_by=DailyPrice.date.desc(),
+                )
+                .label("row_number"),
+            )
+            .where(DailyPrice.stock_id.in_(ids))
+            .subquery()
+        )
+        latest_price = aliased(DailyPrice, price_partition)
+        price_result = await self.db.execute(
+            select(latest_price)
+            .where(price_partition.c.row_number <= 2)
+            .order_by(latest_price.stock_id, latest_price.date.desc())
+        )
+        prices_by_stock: dict[int, list[DailyPrice]] = {}
+        for price in price_result.scalars():
+            prices_by_stock.setdefault(price.stock_id, []).append(price)
+
+        indicator_partition = (
+            select(
+                Indicator,
+                func.row_number()
+                .over(
+                    partition_by=Indicator.stock_id,
+                    order_by=Indicator.date.desc(),
+                )
+                .label("row_number"),
+            )
+            .where(Indicator.stock_id.in_(ids))
+            .subquery()
+        )
+        latest_indicator = aliased(Indicator, indicator_partition)
+        indicator_result = await self.db.execute(
+            select(latest_indicator).where(indicator_partition.c.row_number == 1)
+        )
+        indicators = {
+            indicator.stock_id: indicator for indicator in indicator_result.scalars()
+        }
+
+        return {
+            stock.id: MarketSnapshot(
+                stock=stock,
+                prices=tuple(prices_by_stock.get(stock.id, [])),
+                indicator=indicators.get(stock.id),
+            )
+            for stock in stocks
+        }
 
     async def list_stocks_by_sector(self, sector: str) -> list[Stock]:
         result = await self.db.execute(

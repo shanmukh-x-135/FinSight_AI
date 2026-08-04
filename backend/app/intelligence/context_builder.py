@@ -42,9 +42,7 @@ class ContextBuilder:
 
     # ----- Slices ----------------------------------------------------------
     async def build_market_slice(self) -> dict:
-        breadth = await self.market_q.get_breadth()
-        gainers = await self.market_q.get_gainers(5)
-        losers = await self.market_q.get_losers(5)
+        breadth, gainers, losers = await self.market_q.get_market_overview(5)
         return {
             "breadth": breadth.model_dump(mode="json"),
             "gainers": [g.model_dump(mode="json") for g in gainers],
@@ -90,11 +88,15 @@ class ContextBuilder:
     async def build_candidates(self, history_slice: dict | None) -> list[CandidateInput]:
         stocks = await self.market_repo.list_active_stocks()
         sentiment_map = await self.news_repo.get_latest_sentiment_map()
+        snapshots = await self.market_repo.get_market_snapshots(
+            (stock.id for stock in stocks), known_stocks=stocks
+        )
 
         # First pass: day quotes, to compute sector momentum.
         quotes: dict[int, tuple] = {}
         for s in stocks:
-            prices = await self.market_repo.get_last_two_prices(s.id)
+            snapshot = snapshots.get(s.id)
+            prices = snapshot.prices if snapshot else ()
             if not prices:
                 continue
             latest = prices[0]
@@ -120,7 +122,7 @@ class ContextBuilder:
 
         candidates: list[CandidateInput] = []
         for stock_id, (s, price, change) in quotes.items():
-            ind = await self.market_repo.get_latest_indicator(stock_id)
+            ind = snapshots[stock_id].indicator
             ema20_dist = (
                 (price - ind.ema_20) / ind.ema_20 * 100
                 if ind and ind.ema_20 else None

@@ -31,6 +31,11 @@ one bad symbol logs and is skipped (its transaction rolled back), never aborting
 the batch. yfinance is blocking, so calls run off the event loop via
 `asyncio.to_thread`.
 
+Read-side composition uses `MarketRepository.get_market_snapshots`: stock
+metadata, the latest two prices, and the latest indicator are assembled in at
+most three queries regardless of universe size. Portfolio, watchlist, dashboard,
+sector, and intelligence candidate paths share this batch primitive.
+
 ### Trigger
 
 - **Scheduled** (normal path): APScheduler cron job, weekdays at

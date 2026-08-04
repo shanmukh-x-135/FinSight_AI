@@ -334,7 +334,7 @@
   - **Resolved 2026-08-05:** Money/percentage/sign formatting is centralized in frontend/lib/utils.ts across StockCard, Heatmap, Portfolio, and Watchlist.
   - **Resolved 2026-08-05:** Portfolio reuses `MetricCard` for all summary metrics.
   - **Resolved 2026-08-05:** Portfolio and Watchlist reuse the responsive `DataTable`, including shared loading and empty states.
-  - Market, portfolio, dashboard, and intelligence context assembly perform repeated per-stock queries rather than batched joins.
+  - **Resolved 2026-08-05:** `MarketRepository.get_market_snapshots` batches stock metadata, latest-two prices, and latest indicators in at most three queries using window functions. Market overview, sectors, portfolio/detail/watchlist, dashboard, and intelligence candidates reuse it; a query-count regression test proves cardinality does not scale with stock count.
 
   ### Placeholder or unused surfaces
 
