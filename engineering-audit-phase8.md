@@ -268,8 +268,7 @@
   Why the DoD still fails:
 
   - **Resolved 2026-08-04:** Historical returns were exported/displayed with the same 100× units error: backend/app/reports/exporters/markdown.py:126, frontend/app/(dashboard)/reports/[id]/page.tsx:171.
-  - Export content does not fully match the screen. For example, Markdown includes diversification and tracked breadth totals that the detail page omits: backend/app/reports/exporters/markdown.py:95, frontend/app/
-    (dashboard)/reports/[id]/page.tsx:130.
+  - **Resolved 2026-08-05:** Screen, Markdown, and therefore PDF expose the same report provenance, complete breadth facts, mover details, portfolio metrics (including diversification), top-K historical statistics/disclaimer, recommendation historical context, and five-item news limit. Shared historical evidence is deduplicated. Backend and frontend parity regressions cover every corrected field.
 
   - **Resolved 2026-08-04:** Report executive, market, portfolio, historical, recommendation, and risk narratives all use the required shared evidence disclosure.
   - Focused report-page unit coverage now exists for historical units, but comprehensive report integration/E2E coverage is still missing.
@@ -384,9 +383,9 @@
 
   Verification results:
 
-  - Backend: 215 passed
+  - Backend: 218 passed
   - Backend coverage: 97% overall
-  - Frontend unit tests: 33 passed
+  - Frontend unit tests: 35 passed
   - Frontend Playwright E2E: 1 passed against the rebuilt Docker Compose stack
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack
@@ -416,7 +415,7 @@
       - **Completed 2026-08-05:** browser E2E coverage for the Phase 7 acceptance flow.
 
   4. Close Phase 8:
-      - exact screen/Markdown/PDF content parity;
+      - **Completed 2026-08-05:** exact screen/Markdown/PDF content parity;
       - report-page integration tests;
       - **completed 2026-08-04:** fix frontend lint.
 

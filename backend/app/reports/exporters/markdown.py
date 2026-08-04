@@ -33,8 +33,18 @@ def _num(n: Any, digits: int = 2) -> str:
     return f"{n:,.{digits}f}" if isinstance(n, (int, float)) else str(n)
 
 
+def _money(n: Any) -> str:
+    return "—" if n is None else f"₹{_num(n)}"
+
+
 def _lines(*parts: str) -> str:
     return "\n".join(parts)
+
+
+def _quote_md(quote: dict) -> str:
+    symbol = quote.get("symbol", "?")
+    identity = f"{symbol} — {quote['name']}" if quote.get("name") else symbol
+    return f"{identity} ({_money(quote.get('close'))}; {_pct(quote.get('change_percent'))})"
 
 
 def _recommendation_md(rec: dict) -> list[str]:
@@ -52,10 +62,21 @@ def _recommendation_md(rec: dict) -> list[str]:
     if rec.get("explanation"):
         out.append("")
         out.append(rec["explanation"])
-    if rec.get("evidence"):
+    evidence = list(rec.get("evidence") or [])
+    historical = rec.get("historical_context") or {}
+    probability = historical.get("bullish_probability")
+    sample_size = historical.get("sample_size")
+    if probability is not None and sample_size:
+        historical_line = (
+            f"{round(probability * 100)}% of {sample_size} similar historical "
+            "sessions closed higher"
+        )
+        if historical_line not in evidence:
+            evidence.append(historical_line)
+    if evidence:
         out.append("")
         out.append("**Evidence:**")
-        out.extend(f"- {e}" for e in rec["evidence"])
+        out.extend(f"- {item}" for item in evidence)
     if rec.get("risks"):
         out.append("")
         out.append("**Risks:**")
@@ -102,16 +123,18 @@ def render_markdown(report: Report) -> str:
         if b:
             out.append(
                 f"- **Breadth:** {b.get('advancers', '—')} advancers / "
-                f"{b.get('decliners', '—')} decliners "
-                f"({b.get('total', '—')} tracked)"
+                f"{b.get('decliners', '—')} decliners / "
+                f"{b.get('unchanged', '—')} unchanged "
+                f"({b.get('total', '—')} tracked; A/D ratio "
+                f"{_num(b.get('advance_decline_ratio'))})"
             )
         gainers = market.get("gainers") or []
         if gainers:
-            g = ", ".join(f"{q['symbol']} ({_pct(q.get('change_percent'))})" for q in gainers[:5])
+            g = ", ".join(_quote_md(quote) for quote in gainers[:5])
             out.append(f"- **Top gainers:** {g}")
         losers = market.get("losers") or []
         if losers:
-            lo = ", ".join(f"{q['symbol']} ({_pct(q.get('change_percent'))})" for q in losers[:5])
+            lo = ", ".join(_quote_md(quote) for quote in losers[:5])
             out.append(f"- **Top losers:** {lo}")
         out.append("")
 
@@ -122,7 +145,7 @@ def render_markdown(report: Report) -> str:
         if portfolio.get("narrative"):
             out.append(portfolio["narrative"])
             out.append("")
-        out.append(f"- **Total value:** ₹{_num(portfolio.get('total_value'))}")
+        out.append(f"- **Total value:** {_money(portfolio.get('total_value'))}")
         out.append(f"- **Total return:** {_pct(portfolio.get('total_return_percent'))}")
         out.append(f"- **Health score:** {_num(portfolio.get('health_score'), 0)} "
                    f"(risk: {portfolio.get('risk_level', '—')})")

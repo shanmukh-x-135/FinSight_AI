@@ -68,6 +68,15 @@ stored sections → render_markdown() → Markdown  ─┬─→  .md  (text/mar
   light-default pattern as FinBERT/Gemini/Plotly). Supports a Markdown subset:
   `#`/`##`/`###` headings, `-` bullets, `**bold**`, paragraph breaks.
 
+The detail screen and Markdown intentionally expose the same report facts:
+report provenance; full breadth (advancers/decliners/unchanged/tracked/A-D
+ratio); mover symbol/name/price/change; portfolio value/return/health/risk/
+diversification/holdings; historical sample/top-K/probability/average return;
+recommendation confidence/evidence/risks/historical context; and the first five
+notable news items. Raw sector-allocation arrays and individual similarity rows
+remain internal in both renderers. Tests lock this parity and deduplicate
+historical evidence already present in the recommendation evidence list.
+
 ### Robustness (the roadmap's PDF edge cases)
 
 fpdf2's core fonts are latin-1 only, so any Unicode the LLM might emit is
@@ -91,10 +100,14 @@ appear. All three cases are covered by tests.
 
 - **API:** auth, type filter, date filter, pagination (multi-page, no overlap),
   detail, ownership 404 (`tests/reports/test_reports_api.py`).
-- **Export:** Markdown contains every section / skips missing ones / handles
-  empty recommendations; PDF renders for the happy path, **unusually long
-  text**, **special/Unicode characters**, and **missing sections**; the export
-  endpoints return the right content-type/disposition and reject unknown
-  formats (`tests/reports/test_export.py`).
+- **Export:** Markdown contains every section, every screen-visible summary
+  fact, the shared five-item news limit, and deduplicated historical evidence;
+  it skips missing sections and handles empty recommendations. PDF renders for
+  the happy path, **unusually long text**, **special/Unicode characters**, and
+  **missing sections**; the export endpoints return the right content-type/
+  disposition and reject unknown formats (`tests/reports/test_export.py`).
+- **Detail UI:** unit coverage locks percentage units, report/market/portfolio/
+  historical facts, recommendation historical evidence, and the five-item news
+  limit against the Markdown contract.
 - Live-verified against the Docker stack: generated a real report, listed +
   filtered it, and exported valid Markdown and a valid PDF (`%PDF`, ~4 KB).
