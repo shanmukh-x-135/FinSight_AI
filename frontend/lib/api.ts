@@ -297,3 +297,122 @@ export const watchlistApi = {
   remove: (id: number) =>
     request<null>(`/api/v1/watchlist/${id}`, { method: "DELETE", auth: true }),
 };
+
+// ----- Market types (Phase 2 reads, surfaced in Phase 7) --------------------
+export interface Quote {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  date: string | null;
+  close: number | null;
+  previous_close: number | null;
+  change: number | null;
+  change_percent: number | null;
+  volume: number | null;
+}
+
+export interface Breadth {
+  advancers: number;
+  decliners: number;
+  unchanged: number;
+  total: number;
+  advance_decline_ratio: number | null;
+}
+
+export interface SectorOverview {
+  sector: string;
+  stock_count: number;
+  average_change_percent: number | null;
+}
+
+export const marketApi = {
+  gainers: (limit = 5) => request<Quote[]>(`/api/v1/market/gainers?limit=${limit}`),
+  losers: (limit = 5) => request<Quote[]>(`/api/v1/market/losers?limit=${limit}`),
+  breadth: () => request<Breadth>("/api/v1/market/breadth"),
+  sectors: () => request<SectorOverview[]>("/api/v1/market/sectors"),
+};
+
+// ----- Historical similarity types (Phase 4 reads) --------------------------
+export interface SessionSummary {
+  date: string;
+  avg_return: number;
+  pct_advancers: number;
+  advance_decline_ratio: number;
+  avg_rsi: number;
+}
+
+export interface SimilarSession extends SessionSummary {
+  similarity_score: number;
+  distance: number;
+  next_day_return: number | null;
+  outcome: string | null;
+}
+
+export interface HistoryStatistics {
+  k: number;
+  sample_size: number;
+  bullish_count: number;
+  bearish_count: number;
+  neutral_count: number;
+  bullish_probability: number | null;
+  avg_next_day_return: number | null;
+  median_next_day_return: number | null;
+  std_next_day_return: number | null;
+  best_case_return: number | null;
+  worst_case_return: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+}
+
+export interface SimilarityResult {
+  query_date: string;
+  query_summary: SessionSummary;
+  similar_sessions: SimilarSession[];
+  statistics: HistoryStatistics;
+}
+
+export const historyApi = {
+  similar: (k?: number) =>
+    request<SimilarityResult>(`/api/v1/history/similar${k ? `?k=${k}` : ""}`),
+};
+
+// ----- Intelligence types (Phase 6 output) ----------------------------------
+export interface Recommendation {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  action: string;
+  confidence: number;
+  score: number;
+  evidence: string[];
+  risks: string[];
+  historical_context: {
+    bullish_probability: number | null;
+    sample_size: number | null;
+  };
+  explanation: string;
+}
+
+export interface Recommendations {
+  watchlist: Recommendation[];
+  risk_alerts: Recommendation[];
+}
+
+export const intelligenceApi = {
+  recommendations: () =>
+    request<Recommendations>("/api/v1/recommendations", { auth: true }),
+};
+
+// ----- Dashboard summary (Phase 7 — batched home screen) --------------------
+export interface DashboardSummary {
+  market: { breadth: Breadth; gainers: Quote[]; losers: Quote[] };
+  ai_market_summary: string;
+  portfolio: PortfolioAnalytics | null;
+  opportunities: Recommendation[];
+  risk_alerts: Recommendation[];
+  history: SimilarityResult | null;
+}
+
+export const dashboardApi = {
+  summary: () => request<DashboardSummary>("/api/v1/dashboard/summary", { auth: true }),
+};
