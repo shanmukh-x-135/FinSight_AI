@@ -39,9 +39,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <Link href="/dashboard" className="font-semibold">
             FinSight AI
           </Link>
-          <nav className="flex gap-4 text-sm text-muted-foreground">
+          <nav className="hidden gap-4 text-sm text-muted-foreground sm:flex">
             <Link href="/dashboard" className="hover:text-foreground">
               Dashboard
+            </Link>
+            <Link href="/market" className="hover:text-foreground">
+              Market
+            </Link>
+            <Link href="/history" className="hover:text-foreground">
+              History
             </Link>
             <Link href="/portfolio" className="hover:text-foreground">
               Portfolio
@@ -61,7 +67,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </Button>
         </div>
       </header>
-      <main className="flex-1 p-6">{children}</main>
+      {/* Mobile nav strip — prioritized screens, horizontally scrollable. */}
+      <nav className="flex gap-4 overflow-x-auto border-b px-6 py-2 text-sm text-muted-foreground sm:hidden">
+        <Link href="/dashboard" className="whitespace-nowrap hover:text-foreground">Dashboard</Link>
+        <Link href="/market" className="whitespace-nowrap hover:text-foreground">Market</Link>
+        <Link href="/history" className="whitespace-nowrap hover:text-foreground">History</Link>
+        <Link href="/portfolio" className="whitespace-nowrap hover:text-foreground">Portfolio</Link>
+        <Link href="/watchlist" className="whitespace-nowrap hover:text-foreground">Watchlist</Link>
+        <Link href="/settings" className="whitespace-nowrap hover:text-foreground">Settings</Link>
+      </nav>
+      <main className="flex-1 p-4 sm:p-6">{children}</main>
     </div>
   );
 }
