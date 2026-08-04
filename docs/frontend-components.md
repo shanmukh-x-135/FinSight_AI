@@ -29,7 +29,7 @@ of components, and every AI insight uses the same evidence expander.
 | `AIInsightCard` | `title, narrative, evidence, action?, confidence?` | Standard container for any AI-written insight. Evidence is required at compile time, so every narrative mounts the same disclosure. Never computes anything. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
-| `DataTable<T>` | `columns, rows, rowKey, emptyMessage?` | Generic table matching the app's table styling; used for gainers/losers/holdings/similar-sessions instead of bespoke `<table>` markup. |
+| `DataTable<T>` | `columns, rows, rowKey, loading?, loadingMessage?, emptyMessage?` | Generic responsive table with shared loading/empty states; used for gainers/losers/holdings/watchlist/similar-sessions instead of bespoke `<table>` markup. |
 
 `EvidencePanel` and `AIInsightCard` are client components (`"use client"`) — the
 expander holds toggle state. The rest are pure/presentational, so they render in
@@ -55,8 +55,8 @@ shared components.
 | **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `DashboardWatchlist`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
 | **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `TechnicalSummaryCard`, `EconomicEventsCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors,technical-summary,economic-events}` + `GET /recommendations` |
 | **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
-| **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, table | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
-| **Watchlist** (`/watchlist`) | Management | table + form | `GET/POST/PATCH/DELETE /watchlist` |
+| **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, `DataTable` | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
+| **Watchlist** (`/watchlist`) | Management | `DataTable` + form | `GET/POST/PATCH/DELETE /watchlist` |
 
 ### The batched dashboard endpoint
 
@@ -87,9 +87,10 @@ never a static mock.
 ## Tests
 
 - **Component tests** (`components/*.test.tsx`, Vitest + Testing Library):
-  `MetricCard`, `EvidencePanel`, `AIInsightCard`, and `DashboardWatchlist` —
-  including evidence disclosure and populated, pinned, empty, and truncated
-  watchlist states. Run with `npm test`.
+  `MetricCard`, `DataTable`, `EvidencePanel`, `AIInsightCard`, and
+  `DashboardWatchlist` — including table loading/empty/actions, evidence
+  disclosure, and populated, pinned, empty, and truncated watchlist states.
+  Run with `npm test`.
 - **Type/build:** `npm run build` type-checks every screen against the API
   client types in `lib/api.ts`.
 - **Browser E2E:** `npm run test:e2e` rebuilds and waits for the real Docker

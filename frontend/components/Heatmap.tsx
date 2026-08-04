@@ -1,3 +1,5 @@
+import { pct } from "@/lib/utils";
+
 /**
  * Heatmap — a grid of tiles coloured by a signed value (sector day-change %).
  * Green for positive, red for negative, intensity scaled by magnitude. Pure and
@@ -19,9 +21,6 @@ function tileStyle(value: number | null): React.CSSProperties {
   return { backgroundColor: `rgba(${rgb}, ${alpha})` };
 }
 
-const fmtPct = (n: number | null) =>
-  n == null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
-
 export interface HeatmapProps {
   cells: HeatmapCell[];
   emptyMessage?: string;
@@ -41,7 +40,7 @@ export function Heatmap({ cells, emptyMessage = "No sector data yet." }: Heatmap
           title={c.sub}
         >
           <p className="truncate text-xs font-medium">{c.label}</p>
-          <p className="mt-1 text-sm font-bold tabular-nums">{fmtPct(c.value)}</p>
+          <p className="mt-1 text-sm font-bold tabular-nums">{pct(c.value)}</p>
           {c.sub && <p className="truncate text-[11px] text-muted-foreground">{c.sub}</p>}
         </div>
       ))}

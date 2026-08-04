@@ -236,7 +236,7 @@
   - Dashboard has a batched endpoint.
   - Recommendations expose real evidence.
   - Responsive grids and mobile navigation exist.
-  - Sixteen component tests pass.
+  - Nineteen shared-component tests pass.
 
   Missing:
 
@@ -249,7 +249,7 @@
       - pct_advancers is also a fraction but is displayed directly as a percent.
       - See frontend/app/(dashboard)/history/page.tsx:69 and frontend/lib/utils.ts:12.
 
-  - Documentation claims formatters and tables are single-source shared components, but portfolio/watchlist duplicate both.
+  - **Resolved 2026-08-05:** Portfolio and Watchlist now use the shared `DataTable`; Portfolio uses `MetricCard`; StockCard, Heatmap, Portfolio, and Watchlist use the shared money/percentage/sign formatters. `DataTable` gained accessible, tested loading/empty/action states without adding a second grid abstraction.
 
   ### Phase 8 — Reports: PARTIAL
 
@@ -329,9 +329,9 @@
   ### Duplication and missing abstractions
 
   - Report reads/ownership exist in both intelligence and reports repositories/services: backend/app/intelligence/repository.py:11.
-  - Money/percentage formatters are repeated across shared utilities, StockCard, portfolio, and watchlist.
-  - Portfolio recreates its own metric component instead of using MetricCard.
-  - Portfolio/watchlist use raw tables despite DataTable.
+  - **Resolved 2026-08-05:** Money/percentage/sign formatting is centralized in frontend/lib/utils.ts across StockCard, Heatmap, Portfolio, and Watchlist.
+  - **Resolved 2026-08-05:** Portfolio reuses `MetricCard` for all summary metrics.
+  - **Resolved 2026-08-05:** Portfolio and Watchlist reuse the responsive `DataTable`, including shared loading and empty states.
   - Market, portfolio, dashboard, and intelligence context assembly perform repeated per-stock queries rather than batched joins.
 
   ### Placeholder or unused surfaces
@@ -351,8 +351,8 @@
 
   ### UI consistency
 
-  - Some AI cards have evidence; other AI narrative cards silently omit it.
-  - Shared formatting and table conventions are not consistently followed.
+  - **Resolved 2026-08-04:** Every AI narrative card requires and renders evidence.
+  - **Resolved 2026-08-05:** Shared formatting, metric-card, and table conventions are consistently applied across Phase 7 screens.
   - Market AI failure is silently swallowed and shown as a generic future-phase placeholder.
   - Reports use a native <select> while other forms use the shared select primitive.
 
@@ -383,7 +383,7 @@
 
   - Backend: 215 passed
   - Backend coverage: 97% overall
-  - Frontend unit tests: 26 passed
+  - Frontend unit tests: 29 passed
   - Frontend Playwright E2E: 1 passed against the rebuilt Docker Compose stack
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack

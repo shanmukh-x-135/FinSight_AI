@@ -7,17 +7,12 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import { DataTable, type Column } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ApiError, watchlistApi, type WatchlistItem } from "@/lib/api";
-
-const money = (n: number | null) =>
-  n == null ? "—" : `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-const pct = (n: number | null) =>
-  n == null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
-const signClass = (n: number | null) =>
-  n == null ? "" : n > 0 ? "text-green-600" : n < 0 ? "text-red-600" : "";
+import { money, pct, signClass } from "@/lib/utils";
 
 export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
@@ -93,53 +88,71 @@ export default function WatchlistPage() {
         </CardContent>
       </Card>
 
-      <div className="mt-6 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-muted-foreground">
-              <th className="py-2 pr-3" />
-              <th className="py-2 pr-3">Symbol</th>
-              <th className="py-2 pr-3">Name</th>
-              <th className="py-2 pr-3">Sector</th>
-              <th className="py-2 pr-3 text-right">Price</th>
-              <th className="py-2 pr-3 text-right">Change</th>
-              <th className="py-2 pr-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={7} className="py-4 text-muted-foreground">Loading…</td></tr>
-            )}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={7} className="py-4 text-muted-foreground">Your watchlist is empty.</td></tr>
-            )}
-            {items.map((item) => (
-              <tr key={item.id} className="border-b">
-                <td className="py-2 pr-3">
-                  <button
-                    aria-label={item.pinned ? "Unpin" : "Pin"}
-                    onClick={() => togglePin(item)}
-                    className={item.pinned ? "text-amber-500" : "text-muted-foreground hover:text-foreground"}
-                  >
-                    {item.pinned ? "★" : "☆"}
-                  </button>
-                </td>
-                <td className="py-2 pr-3 font-medium">{item.symbol}</td>
-                <td className="py-2 pr-3">{item.name ?? "—"}</td>
-                <td className="py-2 pr-3">{item.sector ?? "—"}</td>
-                <td className="py-2 pr-3 text-right">{money(item.current_price)}</td>
-                <td className={`py-2 pr-3 text-right ${signClass(item.change_percent)}`}>
+      <div className="mt-6">
+        <DataTable<WatchlistItem>
+          columns={[
+            {
+              key: "pin",
+              header: <span className="sr-only">Pin</span>,
+              render: (item) => (
+                <button
+                  type="button"
+                  aria-label={item.pinned ? "Unpin" : "Pin"}
+                  onClick={() => togglePin(item)}
+                  className={
+                    item.pinned
+                      ? "text-amber-500"
+                      : "text-muted-foreground hover:text-foreground"
+                  }
+                >
+                  {item.pinned ? "★" : "☆"}
+                </button>
+              ),
+            },
+            {
+              key: "symbol",
+              header: "Symbol",
+              className: "font-medium",
+              render: (item) => item.symbol,
+            },
+            { key: "name", header: "Name", render: (item) => item.name ?? "—" },
+            { key: "sector", header: "Sector", render: (item) => item.sector ?? "—" },
+            {
+              key: "price",
+              header: "Price",
+              align: "right",
+              render: (item) => money(item.current_price),
+            },
+            {
+              key: "change",
+              header: "Change",
+              align: "right",
+              render: (item) => (
+                <span className={signClass(item.change_percent)}>
                   {pct(item.change_percent)}
-                </td>
-                <td className="py-2 pr-3 text-right">
-                  <button className="text-red-600 hover:underline" onClick={() => remove(item.id)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </span>
+              ),
+            },
+            {
+              key: "actions",
+              header: <span className="sr-only">Actions</span>,
+              align: "right",
+              render: (item) => (
+                <button
+                  type="button"
+                  className="text-red-600 hover:underline"
+                  onClick={() => remove(item.id)}
+                >
+                  Remove
+                </button>
+              ),
+            },
+          ] satisfies Column<WatchlistItem>[]}
+          rows={items}
+          rowKey={(item) => item.id}
+          loading={loading}
+          emptyMessage="Your watchlist is empty."
+        />
       </div>
     </div>
   );
