@@ -1,16 +1,42 @@
-"""Prompt template registry (placeholder).
+"""Versioned prompt templates (design doc §5.9).
 
-Phase 0 only reserves this module so later phases (Phase 6 — AI Intelligence)
-can add versioned, structured prompt templates here instead of scattering raw
-strings through the codebase. Intentionally empty of real prompts for now.
-
-See the Engineering Design Document §5.9 (Prompt Strategy) for the structure
-these templates must follow: system instructions, structured analytics,
-retrieved knowledge, required output format, and validation constraints.
+Prompts are structured, not open-ended: a system instruction that fixes the
+persona and hard constraints, then per-section instructions. The actual facts
+are injected by ``app/intelligence/prompt_builder.py``; the LLM only writes
+prose over those facts. Keeping the templates here (and mirrored in
+``docs/prompts/``) makes prompt changes reviewable in git history.
 """
 
 from __future__ import annotations
 
-# Populated in Phase 6. Kept as an explicit, empty registry so its shape is
-# established from the start.
-PROMPT_TEMPLATES: dict[str, str] = {}
+from app.intelligence.constants import PROMPT_CONSTRAINTS
+
+PROMPT_VERSION = "1.0"
+
+SYSTEM_INSTRUCTION = (
+    "You are FinSight AI, a financial research assistant. You explain market "
+    "behavior using the evidence provided — you do not give investment advice and "
+    "you do not decide for the user. Constraints:\n"
+    + "\n".join(f"- {c}" for c in PROMPT_CONSTRAINTS)
+)
+
+# Per-section instructions. Facts are appended by the prompt builder.
+SECTION_INSTRUCTIONS: dict[str, str] = {
+    "market": "Write a concise market summary paragraph from these facts.",
+    "historical": (
+        "Summarize how today compares to similar historical sessions and what "
+        "typically followed, framed as scenarios/probabilities — not a prediction."
+    ),
+    "portfolio": "Summarize this portfolio's health, performance, and risks.",
+    "recommendation": (
+        "Explain, in one or two sentences, why this stock is on the watchlist, "
+        "citing the evidence, and note the risks. Do not predict a price."
+    ),
+    "executive": "Write a short executive summary tying these sections together.",
+}
+
+# Registry (populated for discoverability / future expansion).
+PROMPT_TEMPLATES: dict[str, str] = {
+    "system": SYSTEM_INSTRUCTION,
+    **{f"section.{k}": v for k, v in SECTION_INSTRUCTIONS.items()},
+}

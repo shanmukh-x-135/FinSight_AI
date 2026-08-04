@@ -25,6 +25,7 @@ from app.market import models as _market_models  # noqa: E402,F401
 from app.portfolio import models as _portfolio_models  # noqa: E402,F401
 from app.news import models as _news_models  # noqa: E402,F401
 from app.history import models as _history_models  # noqa: E402,F401
+from app.intelligence import models as _intelligence_models  # noqa: E402,F401
 
 config = context.config
 

@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     sentiment_backend: str = "lexicon"
     news_max_articles_per_feed: int = 50
 
+    # ----- AI intelligence / RAG (Phase 6) ---------------------------------
+    # LLM produces prose only; evidence/confidence/risks/rankings are deterministic.
+    # Uses Gemini when GEMINI_API_KEY is set (needs requirements-ai.txt); otherwise
+    # a deterministic narrator (reproducible, cost-free) renders the prose.
+    llm_model: str = "gemini-2.0-flash"
+    llm_max_retries: int = 2
+    llm_timeout_seconds: int = 30
+    top_n_recommendations: int = 5
+
     # ----- CORS ------------------------------------------------------------
     # ``NoDecode`` stops pydantic-settings from JSON-parsing the env value, so a
     # plain comma-separated string reaches our validator below.
