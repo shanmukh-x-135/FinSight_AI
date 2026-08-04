@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { AIAnalysisState } from "@/components/AIAnalysisState";
+
 /**
  * Reusable Analytics page template (design doc §7.4):
  *   Header → Summary Cards → Charts → AI Analysis → Supporting Tables.
@@ -53,9 +55,10 @@ export function AnalyticsPageTemplate({
 
       <Section heading="AI Analysis">
         {aiAnalysis ?? (
-          <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            AI-generated analysis and evidence will appear here in a later phase.
-          </div>
+          <AIAnalysisState
+            status="empty"
+            message="No AI analysis is available for this view."
+          />
         )}
       </Section>
 

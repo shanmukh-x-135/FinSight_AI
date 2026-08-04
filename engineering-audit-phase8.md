@@ -228,7 +228,7 @@
 
   The deterministic fallback path is strong; the actual generative-AI quality gate required by the roadmap is incomplete.
 
-  ### Phase 7 — Dashboard UI: PARTIAL
+  ### Phase 7 — Dashboard UI: COMPLETE
 
   Evidence:
 
@@ -236,9 +236,9 @@
   - Dashboard has a batched endpoint.
   - Recommendations expose real evidence.
   - Responsive grids and mobile navigation exist.
-  - Nineteen shared-component tests pass.
+  - Twenty-one shared-component tests pass.
 
-  Missing:
+  Closure evidence:
 
   - **Resolved 2026-08-04:** The batched dashboard response now includes the authenticated user's quote-enriched watchlist, and the page renders it with a tested responsive card using real prices, changes, pin state, empty state, truncation, and management navigation.
   - **Resolved 2026-08-04:** Market Intelligence now includes a batched deterministic RSI/EMA/MACD/ATR summary and upcoming India economic events from an optional Trading Economics adapter. Provider configuration/failure is explicit and never replaced with mock events; backend and responsive component states are tested.
@@ -250,6 +250,9 @@
       - See frontend/app/(dashboard)/history/page.tsx:69 and frontend/lib/utils.ts:12.
 
   - **Resolved 2026-08-05:** Portfolio and Watchlist now use the shared `DataTable`; Portfolio uses `MetricCard`; StockCard, Heatmap, Portfolio, and Watchlist use the shared money/percentage/sign formatters. `DataTable` gained accessible, tested loading/empty/action states without adding a second grid abstraction.
+  - **Resolved 2026-08-05:** Market and Portfolio distinguish successful no-signal results from recommendation-service failures using the shared `AIAnalysisState`; no Analytics screen claims implemented AI belongs to a later phase.
+
+  The Definition of Done is satisfied: Dashboard, Market Intelligence, and Historical Similarity use real APIs; every AI insight requires real evidence; the Phase 7 browser acceptance flow passes against the rebuilt stack; and responsive grids/navigation remain intact.
 
   ### Phase 8 — Reports: PARTIAL
 
@@ -353,7 +356,7 @@
 
   - **Resolved 2026-08-04:** Every AI narrative card requires and renders evidence.
   - **Resolved 2026-08-05:** Shared formatting, metric-card, and table conventions are consistently applied across Phase 7 screens.
-  - Market AI failure is silently swallowed and shown as a generic future-phase placeholder.
+  - **Resolved 2026-08-05:** Market/Portfolio AI failures and legitimate empty results have distinct shared states; the stale future-phase placeholder was removed.
   - Reports use a native <select> while other forms use the shared select primitive.
 
   ### Missing tests
@@ -383,7 +386,7 @@
 
   - Backend: 215 passed
   - Backend coverage: 97% overall
-  - Frontend unit tests: 29 passed
+  - Frontend unit tests: 33 passed
   - Frontend Playwright E2E: 1 passed against the rebuilt Docker Compose stack
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack

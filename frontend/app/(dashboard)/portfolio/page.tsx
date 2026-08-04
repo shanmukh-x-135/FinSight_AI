@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
+import { AIAnalysisState } from "@/components/AIAnalysisState";
 import { DataTable, type Column } from "@/components/DataTable";
 import { DonutChart } from "@/components/donut-chart";
 import { MetricCard, toneOf } from "@/components/MetricCard";
@@ -34,6 +35,7 @@ export default function PortfolioPage() {
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
   const [insights, setInsights] = useState<Recommendation[]>([]);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,8 +61,10 @@ export default function PortfolioPage() {
       setInsights(
         [...recs.watchlist, ...recs.risk_alerts].filter((r) => held.has(r.symbol)),
       );
+      setAiUnavailable(false);
     } catch {
       setInsights([]);
+      setAiUnavailable(true);
     }
   }, []);
 
@@ -196,7 +200,17 @@ export default function PortfolioPage() {
     </div>
   );
 
-  const aiAnalysis = insights.length > 0 && (
+  const aiAnalysis = aiUnavailable ? (
+    <AIAnalysisState
+      status="unavailable"
+      message="AI analysis is temporarily unavailable. Portfolio analytics remain available."
+    />
+  ) : insights.length === 0 ? (
+    <AIAnalysisState
+      status="empty"
+      message="No current watch or avoid signals match this portfolio's holdings."
+    />
+  ) : (
     <div className="grid gap-4 lg:grid-cols-2">
       {insights.map((r) => (
         <AIInsightCard
@@ -317,7 +331,7 @@ export default function PortfolioPage() {
       subtitle={detail?.name}
       summaryCards={summaryCards}
       charts={charts}
-      aiAnalysis={aiAnalysis || undefined}
+      aiAnalysis={aiAnalysis}
       tables={tables}
     />
   );

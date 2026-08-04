@@ -27,6 +27,7 @@ of components, and every AI insight uses the same evidence expander.
 | `TechnicalSummaryCard` | `summary` | Market-wide latest RSI, EMA, MACD, and ATR aggregates computed by the backend. |
 | `EconomicEventsCard` | `calendar` | Horizontally scrollable, provider-attributed India event cards with explicit unavailable/unconfigured states. |
 | `AIInsightCard` | `title, narrative, evidence, action?, confidence?` | Standard container for any AI-written insight. Evidence is required at compile time, so every narrative mounts the same disclosure. Never computes anything. |
+| `AIAnalysisState` | `status, message` | Shared honest empty/unavailable state for Analytics-template AI slots; prevents service failures from looking like unfinished features. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
 | `DataTable<T>` | `columns, rows, rowKey, loading?, loadingMessage?, emptyMessage?` | Generic responsive table with shared loading/empty states; used for gainers/losers/holdings/watchlist/similar-sessions instead of bespoke `<table>` markup. |
@@ -87,8 +88,9 @@ never a static mock.
 ## Tests
 
 - **Component tests** (`components/*.test.tsx`, Vitest + Testing Library):
-  `MetricCard`, `DataTable`, `EvidencePanel`, `AIInsightCard`, and
-  `DashboardWatchlist` — including table loading/empty/actions, evidence
+  `MetricCard`, `DataTable`, `AIAnalysisState`, `EvidencePanel`,
+  `AIInsightCard`, and `DashboardWatchlist` — including table
+  loading/empty/actions, explicit AI empty/unavailable outcomes, evidence
   disclosure, and populated, pinned, empty, and truncated watchlist states.
   Run with `npm test`.
 - **Type/build:** `npm run build` type-checks every screen against the API
