@@ -23,7 +23,7 @@ import {
   type Recommendation,
   type Report,
 } from "@/lib/api";
-import { money, pct } from "@/lib/utils";
+import { money, pct, ratioPct } from "@/lib/utils";
 
 function RecCard({ r }: { r: Recommendation }) {
   return (
@@ -178,7 +178,7 @@ export default function ReportDetailPage() {
                 label="Closed Higher"
                 value={hist.statistics.bullish_probability == null ? "—" : `${Math.round(hist.statistics.bullish_probability * 100)}%`}
               />
-              <MetricCard label="Avg Next-Day" value={pct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
+              <MetricCard label="Avg Next-Day" value={ratioPct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
             </div>
           )}
         </>
