@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
+import { AIInsightCard } from "@/components/AIInsightCard";
 import { DonutChart } from "@/components/donut-chart";
 import { AnalyticsPageTemplate } from "@/components/templates/AnalyticsPageTemplate";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ApiError,
+  intelligenceApi,
   portfolioApi,
   type PortfolioAnalytics,
   type PortfolioDetail,
+  type Recommendation,
 } from "@/lib/api";
 
 const money = (n: number | null | undefined) =>
@@ -47,6 +50,7 @@ export default function PortfolioPage() {
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
+  const [insights, setInsights] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +68,17 @@ export default function PortfolioPage() {
     ]);
     setAnalytics(a);
     setDetail(d);
+
+    // AI insights relevant to what the user actually holds (best-effort).
+    try {
+      const held = new Set(a.holdings.map((h) => h.symbol));
+      const recs = await intelligenceApi.recommendations();
+      setInsights(
+        [...recs.watchlist, ...recs.risk_alerts].filter((r) => held.has(r.symbol)),
+      );
+    } catch {
+      setInsights([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -198,6 +213,26 @@ export default function PortfolioPage() {
     </div>
   );
 
+  const aiAnalysis = insights.length > 0 && (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {insights.map((r) => (
+        <AIInsightCard
+          key={`${r.action}-${r.symbol}`}
+          title={`${r.symbol}${r.name ? ` · ${r.name}` : ""}`}
+          narrative={r.explanation}
+          action={r.action}
+          confidence={r.confidence}
+          evidence={{
+            evidence: r.evidence,
+            risks: r.risks,
+            confidence: r.confidence,
+            historicalContext: r.historical_context,
+          }}
+        />
+      ))}
+    </div>
+  );
+
   const tables = a && (
     <div className="flex flex-col gap-6">
       <div className="overflow-x-auto">
@@ -279,6 +314,7 @@ export default function PortfolioPage() {
       subtitle={detail?.name}
       summaryCards={summaryCards}
       charts={charts}
+      aiAnalysis={aiAnalysis || undefined}
       tables={tables}
     />
   );
