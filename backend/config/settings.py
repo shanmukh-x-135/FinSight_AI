@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 60
 
+    # ----- Historical intelligence (FAISS) ---------------------------------
+    # Directory for the persisted FAISS index + normalizer (mount a volume in
+    # production so it survives container restarts). Relative to the backend CWD.
+    data_dir: str = "./data"
+    history_top_k: int = 10          # neighbours returned by similarity search
+
     # ----- Market data & scheduler -----------------------------------------
     market_fetch_max_attempts: int = 3
     scheduler_enabled: bool = True
