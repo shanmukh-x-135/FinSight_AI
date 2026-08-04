@@ -146,21 +146,29 @@ export default function PortfolioPage() {
   const a = analytics;
 
   const summaryCards = a && (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <MetricCard label="Total Value" value={money(a.total_value)} />
-      <MetricCard
-        label="Total Return"
-        value={money(a.total_unrealized_pnl)}
-        sub={pct(a.total_return_percent)}
-        tone={toneOf(a.total_unrealized_pnl)}
-      />
-      <MetricCard
-        label="Today's P&L"
-        value={money(a.daily_pnl)}
-        sub={pct(a.daily_pnl_percent)}
-        tone={toneOf(a.daily_pnl)}
-      />
-      <MetricCard label="Health Score" value={a.health_score} sub={`risk: ${a.risk_level}`} />
+    <div className="space-y-4">
+      {!a.valuation_complete && (
+        <div role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+          Valuation metrics are unavailable until prices arrive for {a.unpriced_symbols.join(", ")}.
+          Known cost basis: {money(a.total_cost)}.
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Total Value" value={money(a.total_value)} />
+        <MetricCard
+          label="Total Return"
+          value={money(a.total_unrealized_pnl)}
+          sub={pct(a.total_return_percent)}
+          tone={toneOf(a.total_unrealized_pnl)}
+        />
+        <MetricCard
+          label="Today's P&L"
+          value={money(a.daily_pnl)}
+          sub={pct(a.daily_pnl_percent)}
+          tone={toneOf(a.daily_pnl)}
+        />
+        <MetricCard label="Health Score" value={a.health_score ?? "—"} sub={`risk: ${a.risk_level}`} />
+      </div>
     </div>
   );
 
@@ -189,8 +197,8 @@ export default function PortfolioPage() {
           <CardTitle className="text-base">Portfolio Health</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-3 text-sm">
-          <div><p className="text-muted-foreground">Diversification</p><p className="font-semibold">{a.diversification_score}/100</p></div>
-          <div><p className="text-muted-foreground">Top holding</p><p className="font-semibold">{a.top_holding_weight_percent.toFixed(1)}%</p></div>
+          <div><p className="text-muted-foreground">Diversification</p><p className="font-semibold">{a.diversification_score == null ? "—" : `${a.diversification_score}/100`}</p></div>
+          <div><p className="text-muted-foreground">Top holding</p><p className="font-semibold">{a.top_holding_weight_percent == null ? "—" : `${a.top_holding_weight_percent.toFixed(1)}%`}</p></div>
           <div><p className="text-muted-foreground">Volatility</p><p className="font-semibold">{a.volatility_percent == null ? "—" : `${a.volatility_percent.toFixed(2)}%`}</p></div>
           <div><p className="text-muted-foreground">Risk level</p><p className="font-semibold capitalize">{a.risk_level}</p></div>
           <div><p className="text-muted-foreground">Holdings</p><p className="font-semibold">{a.number_of_holdings}</p></div>
@@ -259,7 +267,7 @@ export default function PortfolioPage() {
             key: "weight",
             header: "Weight",
             align: "right",
-            render: (h) => `${h.weight_percent.toFixed(1)}%`,
+            render: (h) => h.weight_percent == null ? "—" : `${h.weight_percent.toFixed(1)}%`,
           },
           {
             key: "actions",

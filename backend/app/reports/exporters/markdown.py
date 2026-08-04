@@ -145,6 +145,10 @@ def render_markdown(report: Report) -> str:
         if portfolio.get("narrative"):
             out.append(portfolio["narrative"])
             out.append("")
+        if portfolio.get("valuation_complete") is False:
+            symbols = ", ".join(portfolio.get("unpriced_symbols") or []) or "unknown"
+            out.append(f"- **Valuation status:** Incomplete (missing prices: {symbols})")
+            out.append(f"- **Known cost basis:** {_money(portfolio.get('total_cost'))}")
         out.append(f"- **Total value:** {_money(portfolio.get('total_value'))}")
         out.append(f"- **Total return:** {_pct(portfolio.get('total_return_percent'))}")
         out.append(f"- **Health score:** {_num(portfolio.get('health_score'), 0)} "

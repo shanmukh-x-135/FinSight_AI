@@ -82,6 +82,46 @@ def test_empty_portfolio() -> None:
     assert a.health_score == 0.0
     assert a.risk_level == "low"
     assert a.diversification_score == 0.0
+    assert a.valuation_complete is True
+    assert a.unpriced_symbols == []
+
+
+def test_missing_price_is_unknown_not_a_total_loss() -> None:
+    unpriced = HoldingInput(
+        id=3, symbol="NOPRICE", name=None, sector="Tech",
+        quantity=4, avg_buy_price=250, current_price=None,
+    )
+    a = compute_portfolio_analytics(1, "Incomplete", [H1, unpriced])
+
+    assert a.valuation_complete is False
+    assert a.unpriced_symbols == ["NOPRICE"]
+    assert a.total_cost == pytest.approx(2000.0)
+    assert a.total_value is None
+    assert a.total_unrealized_pnl is None
+    assert a.total_return_percent is None
+    assert a.health_score is None
+    assert a.risk_level == "unknown"
+    assert a.sector_allocation == []
+    missing = next(h for h in a.holdings if h.symbol == "NOPRICE")
+    assert missing.market_value is None
+    assert missing.unrealized_pnl is None
+    assert missing.return_percent is None
+    assert missing.weight_percent is None
+
+
+def test_missing_previous_close_withholds_daily_pnl_only() -> None:
+    no_previous = HoldingInput(
+        id=3, symbol="NEW", name=None, sector="Tech",
+        quantity=2, avg_buy_price=90, current_price=100,
+    )
+    a = compute_portfolio_analytics(1, "No previous", [no_previous])
+
+    assert a.valuation_complete is True
+    assert a.total_value == pytest.approx(200.0)
+    assert a.total_unrealized_pnl == pytest.approx(20.0)
+    assert a.daily_pnl is None
+    assert a.daily_pnl_percent is None
+    assert a.holdings[0].daily_pnl is None
 
 
 def test_single_holding_is_fully_concentrated() -> None:

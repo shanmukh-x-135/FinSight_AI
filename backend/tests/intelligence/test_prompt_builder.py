@@ -41,6 +41,18 @@ def test_portfolio_fallback() -> None:
     assert "19,440" in fb and "high" in fb and "2 holdings" in fb
 
 
+def test_incomplete_portfolio_fallback_discloses_missing_prices() -> None:
+    slice_ = {
+        "valuation_complete": False,
+        "unpriced_symbols": ["NOPRICE.NS"],
+        "total_cost": 1000.0,
+    }
+    _prompt, fallback = pb.portfolio_section(slice_)
+    assert "unavailable" in fallback
+    assert "NOPRICE.NS" in fallback
+    assert "withheld" in fallback
+
+
 def test_executive_summary_combines_sections() -> None:
     sections = {
         "market_summary": {"narrative": "Market was mixed."},

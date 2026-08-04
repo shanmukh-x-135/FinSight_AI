@@ -322,7 +322,7 @@
   ### Correctness and security
 
   - **Resolved 2026-08-04:** Historical percentages understated by 100× in UI and export.
-  - Missing portfolio prices are treated as zero value/full loss.
+  - **Resolved 2026-08-05:** Missing current prices are represented as unavailable, not zero; total valuation, return, allocation, health, and risk are withheld with explicit unpriced symbols until coverage is complete. Missing previous closes likewise withhold daily P&L.
   - **Resolved 2026-08-04:** Gemini timeout is enforced at both the SDK transport and coroutine levels, and provider inference no longer blocks async workers.
   - **Resolved 2026-08-04:** Deterministic grounding validation now checks model prose against supplied JSON facts before it reaches reports, recommendations, or dashboard responses.
   - Any authenticated user can invoke expensive admin jobs.

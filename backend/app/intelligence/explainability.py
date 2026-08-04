@@ -183,6 +183,11 @@ def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
             word in lower for word in ("probability", "scenario", "context", "forecast")
         ):
             return GroundingResult(False, "historical summary omits uncertainty")
+    elif facts.get("valuation_complete") is False:
+        if "portfolio" not in lower:
+            return GroundingResult(False, "portfolio summary omits portfolio context")
+        if not any(word in lower for word in ("missing", "unavailable", "withheld")):
+            return GroundingResult(False, "portfolio summary hides incomplete valuation")
     elif "total_value" in facts and "health_score" in facts:
         if "portfolio" not in lower:
             return GroundingResult(False, "portfolio summary omits portfolio context")

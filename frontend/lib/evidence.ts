@@ -14,11 +14,11 @@ interface MarketFacts {
 }
 
 interface PortfolioFacts {
-  total_value?: number;
+  total_value?: number | null;
   total_return_percent?: number | null;
-  health_score?: number;
+  health_score?: number | null;
   risk_level?: string;
-  diversification_score?: number;
+  diversification_score?: number | null;
   number_of_holdings?: number;
 }
 
