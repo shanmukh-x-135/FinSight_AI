@@ -1,0 +1,91 @@
+# AI Chat (Phase 9)
+
+FinSight's conversational assistant explains the deterministic intelligence
+already produced by the platform. It does not create a parallel RAG path and it
+does not calculate recommendations or predict prices.
+
+## Reused intelligence pipeline
+
+`ChatService` imports and reuses:
+
+1. `ContextBuilder.build_chat_context()` for authenticated market, portfolio,
+   watchlist, historical-similarity, and tagged-news slices;
+2. `prompt_builder.chat_response()` and the shared versioned system prompt;
+3. the configured `LLMClient` (`DeterministicNarrator` by default, Gemini when
+   configured);
+4. `generate_grounded()` and `validate_grounded_narrative()` for the same
+   numeric, prediction/advice, evidence, source, confidence, and risk guards
+   used by reports.
+
+The conversational template is versioned separately as `chat-v1.0`, so adding
+Chat does not falsely invalidate the reviewed Phase 6 report benchmark.
+
+Question text and recent questions are marked as untrusted and kept outside the
+facts JSON. They help resolve conversational follow-ups but cannot establish a
+numeric fact.
+
+## Response contract
+
+Every assistant message contains:
+
+- `content` — validated explanation;
+- `evidence[]` — deterministic facts used by the answer;
+- `confidence` — deterministic 0–100 context-coverage score;
+- `sources[]` — typed labels and routes back to the supporting screen;
+- `risks[]` — uncertainty and data-timing limitations.
+
+The frontend renders these through the same `EvidencePanel` used elsewhere,
+plus direct source links. Suggested questions are conveniences only; they do not
+change the grounding path.
+
+## Streaming
+
+`POST /api/v1/chat?stream=true` returns `text/event-stream` with:
+
+| Event | Data |
+|---|---|
+| `meta` | Persisted user message |
+| `chunk` | `{ "delta": "..." }` validated answer fragment |
+| `complete` | Complete persisted structured assistant message |
+
+The server first generates and validates the complete answer, then atomically
+persists the user/assistant pair, and only then emits chunks. This preserves the
+Phase 6 safety guarantee: no unsupported provider token is exposed before
+validation. It also means a browser disconnect cannot leave half an assistant
+message in history. `Cache-Control: no-cache` and `X-Accel-Buffering: no`
+prevent intermediary buffering; the client rejects a stream without a terminal
+`complete` event.
+
+## Persistence and ownership
+
+Phase 9 reuses the `chat_history` table created in migration `0007_reports`.
+User rows store plain question text. Assistant rows store the structured answer
+as JSON in the existing text column, avoiding a schema migration while retaining
+evidence/source metadata after reload. Legacy plain assistant rows remain
+readable.
+
+Every repository read and delete includes `user_id`. There is no endpoint that
+accepts another user's ID, and two-account API tests prove isolation.
+
+## Endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/chat` | Grounded JSON request/response |
+| `POST /api/v1/chat?stream=true` | Same response over validated SSE |
+| `GET /api/v1/chat/history?limit=` | Current user's chronological history |
+| `DELETE /api/v1/chat/history` | Delete only the current user's history |
+
+All endpoints require a valid access token. JSON responses use the standard
+envelope; SSE uses its documented event contract.
+
+## Verification
+
+- Backend API tests cover authentication, input validation, portfolio/watchlist
+  grounding, unsupported advice rejection, SSE reconstruction, persistence,
+  empty portfolios, two-user ownership, and isolated deletion.
+- Frontend tests cover arbitrary network chunk boundaries, truncated streams,
+  suggested prompts, history, clearing, evidence, confidence, sources, and
+  risks.
+- Chromium exercises login → Assistant → streamed response → evidence → reload
+  persistence → history deletion against the real Compose stack.

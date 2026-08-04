@@ -30,6 +30,7 @@ class RagContext:
     portfolio: dict | None = None
     history: dict | None = None
     news: dict = field(default_factory=dict)
+    watchlist: list[dict] = field(default_factory=list)
     candidates: list[CandidateInput] = field(default_factory=list)
 
 
@@ -84,6 +85,11 @@ class ContextBuilder:
             if a.tags  # only company-tagged articles are "notable"
         ][:5]
         return {"notable": notable}
+
+    async def build_watchlist_slice(self, user_id: int) -> list[dict]:
+        """Return the authenticated user's quote-enriched watchlist facts."""
+        items = await PortfolioService(self.db).list_watchlist(user_id)
+        return [item.model_dump(mode="json") for item in items]
 
     async def build_candidates(self, history_slice: dict | None) -> list[CandidateInput]:
         stocks = await self.market_repo.list_active_stocks()
@@ -161,4 +167,15 @@ class ContextBuilder:
             history=history,
             news=await self.build_news_slice(),
             candidates=await self.build_candidates(history),
+        )
+
+    async def build_chat_context(self, user_id: int) -> RagContext:
+        """Compose the user-scoped slices available to conversational Q&A."""
+        history = await self.build_history_slice()
+        return RagContext(
+            market=await self.build_market_slice(),
+            portfolio=await self.build_portfolio_slice(user_id),
+            history=history,
+            news=await self.build_news_slice(),
+            watchlist=await self.build_watchlist_slice(user_id),
         )

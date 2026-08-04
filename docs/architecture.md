@@ -47,7 +47,7 @@ store directly.
 | `chat`          | Conversational assistant reusing the RAG pipeline                    | Phase 9     |
 | `scheduler`     | Orchestrates post-market-close background jobs                        | Phase 2+    |
 
-## Implemented through Phase 8
+## Implemented through Phase 9
 
 - FastAPI app factory with request IDs, structured JSON logging, global envelope
   errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0008`).
@@ -61,11 +61,16 @@ store directly.
   allocation visualization.
 - Stored structured reports rendered on demand from one Markdown source into
   Markdown or PDF, with browser and extracted-PDF parity tests.
-- Docker Compose for the real stack, 228 backend tests, 37 frontend tests, and
-  two Playwright Chromium journeys.
+- A grounded conversational assistant that reuses the Phase 6 context, prompt,
+  validation, and narration pipeline; responses stream over SSE only after
+  validation and persist in user-scoped history.
+- Next.js Assistant UI with incremental rendering, recent-question history,
+  confidence, sources, risks, and the shared evidence disclosure.
+- Docker Compose for the real stack, 240 backend tests, 41 frontend tests, and
+  three Playwright Chromium journeys.
 
-`chat` and `infrastructure` are deliberate Phase 9/10 scaffolding, not partially
-implemented current features.
+`infrastructure` is deliberate Phase 10 scaffolding, not a partially implemented
+current feature.
 
 ## Configuration
 

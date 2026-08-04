@@ -7,10 +7,11 @@ technical indicators, news sentiment, and Retrieval-Augmented Generation (RAG)
 to produce market and portfolio reports. It is a research assistant, not a
 price-prediction engine — every insight carries evidence, confidence, and risk.
 
-> **Status:** Phases 0–8 are implemented: authentication, market ingestion,
+> **Status:** Phases 0–9 are implemented: authentication, market ingestion,
 > portfolio analytics, historical similarity, news/sentiment, evidence-grounded
-> intelligence, the dashboard, and report browse/detail/Markdown/PDF export.
-> Phase 9 (AI Chat) is the next product phase.
+> intelligence, the dashboard, report browse/detail/Markdown/PDF export, and a
+> grounded streaming AI assistant with user-scoped history. Phase 10
+> (Deployment) is the next product phase.
 
 ## Architecture
 
@@ -92,7 +93,7 @@ curl http://localhost:8000/health/db       # {"status":"ok","database":"reachabl
 
 ```bash
 cd backend
-./.venv/bin/python -m pytest               # 233 tests; SQLite in-memory
+./.venv/bin/python -m pytest               # 240 tests; SQLite in-memory
 ./.venv/bin/ruff check .                   # Python lint gate
 
 cd ../frontend

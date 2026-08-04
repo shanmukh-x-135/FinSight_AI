@@ -1,9 +1,9 @@
 # FinSight AI Implementation Audit
 
-## Remediation closure — 2026-08-05 (current state)
+## Phase 9 closure — 2026-08-05 (current state)
 
 This section supersedes the original read-only snapshot retained below. Every
-Phase 0–8 conclusion was re-evaluated from the implementation after remediation,
+Phase 0–9 conclusion was re-evaluated from the implementation after remediation,
 not inferred from tags or the roadmap progress table.
 
 ### 1. Repository Architecture
@@ -39,7 +39,7 @@ not inferred from tags or the roadmap progress table.
 | 6 — AI Intelligence | COMPLETE | Satisfied for the deterministic default and configured Gemini adapter |
 | 7 — Dashboard UI | COMPLETE | Satisfied |
 | 8 — Reports | COMPLETE | Satisfied |
-| 9 — AI Chat | NOT STARTED | Not applicable yet |
+| 9 — AI Chat | COMPLETE | Satisfied |
 | 10 — Deployment | NOT STARTED | Not applicable yet |
 | 11 — Testing & Polish | NOT STARTED | Phase-specific deliverables remain future work |
 
@@ -121,11 +121,24 @@ templates, evidence disclosures, exhaustive export tests, and real-stack
 generate/open/export E2E. Report persistence has one repository owner. DoD:
 satisfied.
 
+#### Phase 9 — COMPLETE
+
+Evidence: authenticated JSON and SSE chat endpoints, shared Phase 6 context and
+prompt infrastructure, deterministic pre-stream grounding validation,
+portfolio/watchlist/market/history/news context, confidence/evidence/source/risk
+metadata, atomic persistence in the existing user-scoped chat table, chronological
+history and deletion, and a responsive Assistant page with recent-question
+history and the shared evidence disclosure. API tests cover authentication,
+validation, empty data, streaming reconstruction, persistence, unsupported-advice
+fallback, and two-account isolation. A real-stack browser flow covers stream,
+reload persistence, evidence, and deletion; five varied live questions were
+manually reviewed. DoD: satisfied.
+
 ### 3. Remaining Technical Debt
 
-- Phase 9 chat, Phase 10 production infrastructure, and Phase 11 accessibility,
+- Phase 10 production infrastructure and Phase 11 accessibility,
   performance/load, clean-clone, and full multi-page journey work have not been
-  pulled forward and should not be represented as Phase 0–8 defects.
+  pulled forward and should not be represented as Phase 0–9 defects.
 - A live Gemini benchmark needs a user-supplied API key; deterministic benchmark,
   adapter, timeout, retry, rejection, and fallback coverage are complete.
 - FII/DII historical flows need a trustworthy licensed/provider source before
@@ -146,25 +159,25 @@ historical percentage units, sector sentiment, and missing macro features.
 
 Verified current evidence:
 
-- Backend: **233 tests pass**; Ruff passes.
-- Frontend: **37 tests pass**; lint and the Next.js webpack production build pass.
-- Browser: **2 Chromium E2E flows pass** against the rebuilt real Compose stack.
+- Backend: **240 tests pass**; Ruff passes.
+- Frontend: **41 tests pass**; lint and the Next.js webpack production build pass.
+- Browser: **3 Chromium E2E flows pass** against the rebuilt real Compose stack.
 - Database: one Alembic head at `0008_user_admin`.
 - Live macro ingestion: all four proxies succeeded, each with 252–260 real bars.
 - Live history rebuild: 194 sessions, 15 dimensions, latest date 2026-08-04;
   Top-5 query returned five stored next-day outcomes.
 - Dependency audit: zero npm vulnerabilities at the last verification.
 
-The Phase 8 backlog is closed. The codebase is at the boundary between completed
-Reports and unstarted AI Chat.
+The Phase 9 backlog is closed. The codebase is at the boundary between completed
+AI Chat and unstarted Deployment.
 
 ### 5. Recommended Next Phase
 
-Resume at **Phase 9 — AI Chat**. Start with the roadmap's conversation model,
-user-scoped chat history, grounded context retrieval, streaming/error contract,
-and chat UI; keep recommendation computation in deterministic services and let
-the LLM explain only supplied facts. Phase 10 and Phase 11 should remain separate
-after Chat is runnable end-to-end.
+Resume at **Phase 10 — Deployment**. Phase 9 is complete because personal
+portfolio/watchlist context is grounded, validated before streaming, rendered
+incrementally, and stored behind strict user ownership. Production infrastructure,
+deployment configuration, observability, and operational hardening should remain
+Phase 10 work; broader accessibility and performance remain Phase 11.
 
 ---
 

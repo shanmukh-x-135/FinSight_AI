@@ -99,7 +99,8 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
 - **reports** — `user_id` (nullable → global market report), `report_type`,
   `sections` (JSONB), `created_at`. Ownership: a user-scoped report is 404 to
   others.
-- **chat_history** — created now, used by Phase 9.
+- **chat_history** — stores Phase 9's ownership-scoped user/assistant turns; the
+  assistant payload is structured JSON in the existing text column.
 
 ## Endpoints
 

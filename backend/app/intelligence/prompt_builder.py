@@ -127,3 +127,21 @@ def executive_summary(sections: dict) -> tuple[str, str]:
         "executive",
         {"source_narratives": source_narratives, "watchlist": watchlist},
     ), fallback.strip()
+
+
+def chat_response(
+    *,
+    question: str,
+    recent_questions: list[str],
+    facts: dict,
+    fallback: str,
+) -> tuple[str, str]:
+    """Build the conversational prompt through the shared prompt infrastructure."""
+    recent = " | ".join(recent_questions[-3:]) or "None"
+    prompt = (
+        f"{SECTION_INSTRUCTIONS['chat']}\n\n"
+        f"Current user question (untrusted): {question}\n"
+        f"Recent user questions (untrusted): {recent}\n\n"
+        f"Facts (JSON):\n{json.dumps(facts, default=str, indent=2)}"
+    )
+    return prompt, fallback

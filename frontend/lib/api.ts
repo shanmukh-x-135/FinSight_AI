@@ -119,6 +119,26 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   return parse<T>(res);
 }
 
+async function authenticatedFetch(
+  path: string,
+  init: RequestInit,
+  retried = false,
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = tokenStore.getAccess();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+  if (response.status === 401 && !retried && tokenStore.getRefresh()) {
+    const refreshed = await tryRefresh();
+    if (refreshed) return authenticatedFetch(path, init, true);
+  }
+  return response;
+}
+
 async function tryRefresh(): Promise<boolean> {
   const refresh_token = tokenStore.getRefresh();
   if (!refresh_token) return false;
@@ -525,6 +545,113 @@ export const reportsApi = {
   get: (id: number) => request<Report>(`/api/v1/reports/${id}`, { auth: true }),
   generate: () =>
     request<Report>("/api/v1/reports/generate", { method: "POST", auth: true }),
+};
+
+// ----- AI Chat (Phase 9) ---------------------------------------------------
+export interface ChatSource {
+  kind: "portfolio" | "watchlist" | "market" | "history" | "news";
+  label: string;
+  reference: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  evidence: string[];
+  confidence: number | null;
+  sources: ChatSource[];
+  risks: string[];
+}
+
+export interface ChatStreamHandlers {
+  onUser: (message: ChatMessage) => void;
+  onChunk: (delta: string) => void;
+  onComplete: (message: ChatMessage) => void;
+}
+
+interface ChatStreamEvent {
+  event: string;
+  data: Record<string, unknown>;
+}
+
+function parseSseBlock(block: string): ChatStreamEvent | null {
+  let event = "message";
+  const data: string[] = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event: ")) event = line.slice(7);
+    if (line.startsWith("data: ")) data.push(line.slice(6));
+  }
+  if (data.length === 0) return null;
+  return { event, data: JSON.parse(data.join("\n")) as Record<string, unknown> };
+}
+
+function userStreamMessage(value: unknown): ChatMessage {
+  const message = value as Pick<ChatMessage, "id" | "role" | "content" | "created_at">;
+  return { ...message, evidence: [], confidence: null, sources: [], risks: [] };
+}
+
+export const chatApi = {
+  history: (limit = 100) =>
+    request<ChatMessage[]>(`/api/v1/chat/history?limit=${limit}`, { auth: true }),
+
+  clear: () =>
+    request<{ deleted: number }>("/api/v1/chat/history", {
+      method: "DELETE",
+      auth: true,
+    }),
+
+  stream: async (
+    message: string,
+    handlers: ChatStreamHandlers,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const response = await authenticatedFetch("/api/v1/chat?stream=true", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+      signal,
+    });
+    if (!response.ok) {
+      await parse<never>(response);
+      return;
+    }
+    if (!response.body) {
+      throw new ApiError("Chat stream was unavailable.", response.status);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let completed = false;
+
+    function dispatch(parsed: ChatStreamEvent | null) {
+      if (parsed?.event === "meta") {
+        handlers.onUser(userStreamMessage(parsed.data.user));
+      } else if (parsed?.event === "chunk") {
+        handlers.onChunk(String(parsed.data.delta ?? ""));
+      } else if (parsed?.event === "complete") {
+        handlers.onComplete(parsed.data.assistant as ChatMessage);
+        completed = true;
+      }
+    }
+
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done }).replaceAll("\r\n", "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const parsed = parseSseBlock(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        dispatch(parsed);
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) dispatch(parseSseBlock(buffer.trim()));
+    if (!completed) throw new ApiError("Chat stream ended before completion.", 502);
+  },
 };
 
 /**

@@ -1,4 +1,4 @@
-# Frontend components & page templates (Phase 7)
+# Frontend components & page templates (Phases 7–9)
 
 Phase 7 turns the API into an application. The rule the roadmap insists on:
 **build the shared component library first, screens second** — the Analytics
@@ -58,6 +58,13 @@ shared components.
 | **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
 | **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, `DataTable` | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
 | **Watchlist** (`/watchlist`) | Management | `DataTable` + form | `GET/POST/PATCH/DELETE /watchlist` |
+| **AI Assistant** (`/chat`) | Conversation | message stream, recent-question history, `EvidencePanel` | `POST /chat?stream=true`, `GET/DELETE /chat/history` |
+
+The Assistant uses the same restrained card, type, colour, and evidence language
+as the analytical screens. Its desktop history rail moves below the conversation
+on narrow screens. Server-sent events progressively render validated prose; the
+completed response exposes confidence, sources, risks, and the shared evidence
+panel. Suggested questions are only input shortcuts and never mocked answers.
 
 ### The batched dashboard endpoint
 
@@ -80,7 +87,7 @@ never a static mock.
 ## Responsive behaviour
 
 - Desktop: full top nav (Dashboard · Market · History · Portfolio · Watchlist ·
-  Settings).
+  Reports · Assistant · Settings).
 - Mobile: the top nav collapses to a horizontally scrollable strip of the
   prioritized screens; summary grids collapse to one/two columns; wide tables
   scroll inside their own container. Advanced analytics remain desktop-first.
@@ -93,6 +100,9 @@ never a static mock.
   loading/empty/actions, explicit AI empty/unavailable outcomes, evidence
   disclosure, and populated, pinned, empty, and truncated watchlist states.
   Run with `npm test`.
+- **Assistant tests:** stream parsing across arbitrary network chunks, truncated
+  stream rejection, suggested questions, private-history load/delete, and
+  evidence/confidence/source/risk rendering.
 - **Type/build:** `npm run build` type-checks every screen against the API
   client types in `lib/api.ts`.
 - **Browser E2E:** `npm run test:e2e` rebuilds and waits for the real Docker
