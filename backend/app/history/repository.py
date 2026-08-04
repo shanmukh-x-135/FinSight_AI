@@ -13,6 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.models import DailyPrice, Indicator, Stock
+from app.news.models import SentimentDaily
 from app.history.models import (
     HistoricalEmbedding,
     HistoricalSession,
@@ -31,6 +32,15 @@ class HistoryRepository:
             .join(Stock, Stock.id == DailyPrice.stock_id)
             .where(Stock.is_active.is_(True))
             .order_by(DailyPrice.stock_id, DailyPrice.date)
+        )
+        return [(r[0], r[1], r[2]) for r in result.all()]
+
+    async def get_sentiment_rows(self) -> list[tuple[int, date, float]]:
+        """(stock_id, date, avg_sentiment) from the daily sentiment aggregate."""
+        result = await self.db.execute(
+            select(
+                SentimentDaily.stock_id, SentimentDaily.date, SentimentDaily.avg_sentiment
+            )
         )
         return [(r[0], r[1], r[2]) for r in result.all()]
 

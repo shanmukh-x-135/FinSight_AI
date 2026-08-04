@@ -113,6 +113,10 @@ class HistoryService:
         """Assemble each date's complete market feature vector from Phase 2 data."""
         price_rows = await self.repo.get_price_rows()  # (stock_id, date, close), sorted
         indicator_rows = await self.repo.get_indicator_rows()
+        sentiment_rows = await self.repo.get_sentiment_rows()
+        sentiment_by: dict[tuple[int, date], float] = {
+            (sid, d): value for sid, d, value in sentiment_rows
+        }
 
         close_by: dict[tuple[int, date], float] = {}
         prev_by: dict[tuple[int, date], float | None] = {}
@@ -150,6 +154,7 @@ class HistoryService:
                         bb_lower=ind[6] if ind else None,
                         atr=ind[7] if ind else None,
                         macd_hist=ind[8] if ind else None,
+                        sentiment=sentiment_by.get((sid, d)),
                     )
                 )
             feat = compute_session_feature(stock_days)
