@@ -26,7 +26,7 @@ of components, and every AI insight uses the same evidence expander.
 | `DashboardWatchlist` | `items, maxItems?` | Compact user-watchlist card with real quotes, pin emphasis, empty/truncated states, and management navigation. |
 | `TechnicalSummaryCard` | `summary` | Market-wide latest RSI, EMA, MACD, and ATR aggregates computed by the backend. |
 | `EconomicEventsCard` | `calendar` | Horizontally scrollable, provider-attributed India event cards with explicit unavailable/unconfigured states. |
-| `AIInsightCard` | `title, narrative, action?, confidence?, evidence?` | Standard container for any AI-written insight. Shows the prose + an optional action badge/confidence, and mounts `EvidencePanel` when `evidence` is supplied. Never computes anything. |
+| `AIInsightCard` | `title, narrative, evidence, action?, confidence?` | Standard container for any AI-written insight. Evidence is required at compile time, so every narrative mounts the same disclosure. Never computes anything. |
 | `EvidencePanel` | `evidence[], risks?, confidence?, historicalContext?, extra?` | **Research Mode "Show Evidence"** disclosure. The one reusable expander behind every AI insight — reveals the real indicators, historical analogs, risks, and confidence bar. |
 | `Heatmap` | `cells: {label, value, sub?}[]` | Sector heatmap — a grid of tiles coloured green/red by signed value, intensity by magnitude. Dependency-free (no chart lib). |
 | `DataTable<T>` | `columns, rows, rowKey, emptyMessage?` | Generic table matching the app's table styling; used for gainers/losers/holdings/similar-sessions instead of bespoke `<table>` markup. |
@@ -70,10 +70,11 @@ historical-similarity slice. Rankings and evidence remain deterministic (Phase
 
 ## Research Mode — "Show Evidence" everywhere
 
-The same `EvidencePanel` is mounted by `AIInsightCard` on the Dashboard, Market,
-and Portfolio screens, and directly on the History screen — so evidence looks
-and behaves identically on every AI insight. It renders the *real* deterministic
-inputs (indicators, historical analogs, risks, confidence), never a static mock.
+The same `EvidencePanel` is required by `AIInsightCard` on the Dashboard, Market,
+History, Portfolio, and Report screens, so evidence looks and behaves identically
+on every AI insight. Shared evidence builders render the *real* deterministic
+market, portfolio, historical, recommendation, and executive-summary inputs,
+never a static mock.
 
 ## Responsive behaviour
 

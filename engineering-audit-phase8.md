@@ -242,7 +242,7 @@
 
   - **Resolved 2026-08-04:** The batched dashboard response now includes the authenticated user's quote-enriched watchlist, and the page renders it with a tested responsive card using real prices, changes, pin state, empty state, truncation, and management navigation.
   - **Resolved 2026-08-04:** Market Intelligence now includes a batched deterministic RSI/EMA/MACD/ATR summary and upcoming India economic events from an optional Trading Economics adapter. Provider configuration/failure is explicit and never replaced with mock events; backend and responsive component states are tested.
-  - “Show Evidence on every AI insight” is false. Dashboard market summary and report executive/market/portfolio/history narrative cards omit evidence: frontend/app/(dashboard)/dashboard/page.tsx:84.
+  - **Resolved 2026-08-04:** Every `AIInsightCard` now requires evidence at compile time. Dashboard market prose and report executive/market/portfolio/history narratives expose shared deterministic fact-to-evidence disclosures; recommendation and historical cards retain their existing real evidence. Tests cover market, portfolio, historical, executive, percentage-unit, and sparse-evidence paths.
   - The committed cross-cutting E2E directory is empty.
   - **Resolved 2026-08-04:** Historical percentage display was wrong by 100×:
       - avg_return and next-day returns are decimal fractions, but pct() appends % without multiplying.
@@ -268,7 +268,7 @@
   - Export content does not fully match the screen. For example, Markdown includes diversification and tracked breadth totals that the detail page omits: backend/app/reports/exporters/markdown.py:95, frontend/app/
     (dashboard)/reports/[id]/page.tsx:130.
 
-  - Several report narratives use AIInsightCard without evidence, contradicting the Research Mode contract.
+  - **Resolved 2026-08-04:** Report executive, market, portfolio, historical, recommendation, and risk narratives all use the required shared evidence disclosure.
   - Focused report-page unit coverage now exists for historical units, but comprehensive report integration/E2E coverage is still missing.
   - **Resolved 2026-08-04:** Frontend lint failed in the reports page and auth context due react-hooks/set-state-in-effect: frontend/app/(dashboard)/reports/page.tsx:73, frontend/lib/auth-context.tsx:56.
 
@@ -383,7 +383,7 @@
 
   - Backend: 215 passed
   - Backend coverage: 97% overall
-  - Frontend unit tests: 23 passed
+  - Frontend unit tests: 26 passed
   - Alembic: single head at 0007_reports
   - Frontend production build: passed using webpack
   - Default Turbopack build could not be verified because this execution environment prohibited its internal port binding
@@ -408,7 +408,7 @@
   3. Close Phase 7:
       - **Completed 2026-08-04:** dashboard watchlist;
       - **Completed 2026-08-04:** market technical summary and economic events;
-      - evidence on every AI narrative;
+      - **Completed 2026-08-04:** evidence on every AI narrative;
       - browser E2E coverage.
 
   4. Close Phase 8:

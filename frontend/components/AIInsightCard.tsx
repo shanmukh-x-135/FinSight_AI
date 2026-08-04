@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
  * AIInsightCard — the standard container for any AI-written insight.
  *
  * Renders the LLM prose (or deterministic narrative) with a title, an optional
- * action badge, and — when evidence is supplied — the reusable EvidencePanel so
+ * action badge, and the reusable EvidencePanel so
  * "Show Evidence" behaves identically on every insight across every screen. The
  * card itself never computes anything; it displays already-built content.
  */
@@ -25,7 +25,7 @@ export interface AIInsightCardProps {
   narrative: string;
   action?: string;
   confidence?: number;
-  evidence?: EvidencePanelProps;
+  evidence: EvidencePanelProps;
 }
 
 export function AIInsightCard({ title, narrative, action, confidence, evidence }: AIInsightCardProps) {
@@ -47,7 +47,7 @@ export function AIInsightCard({ title, narrative, action, confidence, evidence }
       </CardHeader>
       <CardContent>
         <p className="text-sm leading-relaxed text-foreground/90">{narrative}</p>
-        {evidence && <EvidencePanel {...evidence} confidence={evidence.confidence ?? confidence} />}
+        <EvidencePanel {...evidence} confidence={evidence.confidence ?? confidence} />
       </CardContent>
     </Card>
   );

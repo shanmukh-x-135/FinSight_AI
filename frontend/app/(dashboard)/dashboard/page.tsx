@@ -18,6 +18,7 @@ import { MetricCard, toneOf } from "@/components/MetricCard";
 import { StockCard } from "@/components/StockCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { dashboardApi, type DashboardSummary } from "@/lib/api";
+import { marketNarrativeEvidence } from "@/lib/evidence";
 import { money, pct } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -87,7 +88,11 @@ export default function DashboardPage() {
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           AI Market Summary
         </h3>
-        <AIInsightCard title="Today's market" narrative={data.ai_market_summary} />
+        <AIInsightCard
+          title="Today's market"
+          narrative={data.ai_market_summary}
+          evidence={{ evidence: marketNarrativeEvidence(market) }}
+        />
       </section>
 
       <section>
