@@ -202,6 +202,18 @@ def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
             symbol in lower for symbol in watchlist
         ):
             return GroundingResult(False, "executive summary lacks a supplied anchor")
+    elif {"question", "evidence", "confidence", "sources", "risks"} <= facts.keys():
+        if not _mentions_number(narrative, facts["confidence"]):
+            return GroundingResult(False, "chat response omits supplied confidence")
+        evidence = [str(value) for value in facts["evidence"]]
+        if not evidence or not _mentions_source_anchor(narrative, evidence):
+            return GroundingResult(False, "chat response omits supplied evidence")
+        source_labels = [str(value["label"]) for value in facts["sources"]]
+        if not source_labels or not _mentions_source_anchor(narrative, source_labels):
+            return GroundingResult(False, "chat response omits a supplied source")
+        risks = [str(value) for value in facts["risks"]]
+        if not risks or not _mentions_source_anchor(narrative, risks):
+            return GroundingResult(False, "chat response omits a supplied risk")
 
     return GroundingResult(True)
 
