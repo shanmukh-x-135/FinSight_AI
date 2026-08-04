@@ -1,0 +1,11 @@
+# Optional extra for the Gemini Flash LLM backend (design doc §6.1).
+#
+# The default LLM backend is a deterministic narrator (no API key, no cost,
+# reproducible), so this is NOT in the base image. Install it and set
+# GEMINI_API_KEY to generate report/recommendation prose with Gemini:
+#
+#   pip install -r requirements-ai.txt
+#
+# Note: google-genai requires pydantic >= 2.13 (the base pin allows this).
+
+google-genai>=2.16

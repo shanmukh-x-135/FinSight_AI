@@ -6,7 +6,9 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 
 # --- Config / validation ---
-pydantic==2.10.4
+# Loosened so the optional Gemini extra (requirements-ai.txt) can coexist;
+# verified across 2.10–2.13.
+pydantic>=2.10,<3
 pydantic-settings==2.7.1
 
 # --- Database (async) ---
