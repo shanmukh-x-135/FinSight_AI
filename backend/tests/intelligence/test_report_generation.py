@@ -100,23 +100,3 @@ async def test_get_recommendations(
     data = await IntelligenceService(db_session).get_recommendations(user_id=None)
     assert "AAA.NS" in {r["symbol"] for r in data["watchlist"]}
     assert all(r["explanation"].strip() for r in data["watchlist"])
-
-
-@pytest.mark.asyncio
-async def test_report_ownership(
-    db_session: AsyncSession, seed_market: dict[str, int]
-) -> None:
-    from app.auth.models import User
-    from app.intelligence.exceptions import ReportNotFoundError
-
-    a = User(email="a@example.com", hashed_password="x")
-    b = User(email="b@example.com", hashed_password="x")
-    db_session.add_all([a, b])
-    await db_session.flush()
-
-    svc = IntelligenceService(db_session)
-    report = await svc.generate_report(user_id=a.id)
-    # Owner can read; other user cannot.
-    assert (await svc.get_report(report.id, a.id)).id == report.id
-    with pytest.raises(ReportNotFoundError):
-        await svc.get_report(report.id, b.id)

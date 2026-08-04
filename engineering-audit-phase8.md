@@ -330,7 +330,7 @@
 
   ### Duplication and missing abstractions
 
-  - Report reads/ownership exist in both intelligence and reports repositories/services: backend/app/intelligence/repository.py:11.
+  - **Resolved 2026-08-05:** `ReportRepository` is the single report persistence owner; intelligence delegates creation to it, while reports exclusively owns reads and ownership enforcement.
   - **Resolved 2026-08-05:** Money/percentage/sign formatting is centralized in frontend/lib/utils.ts across StockCard, Heatmap, Portfolio, and Watchlist.
   - **Resolved 2026-08-05:** Portfolio reuses `MetricCard` for all summary metrics.
   - **Resolved 2026-08-05:** Portfolio and Watchlist reuse the responsive `DataTable`, including shared loading and empty states.

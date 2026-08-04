@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder
-from app.intelligence.exceptions import ReportNotFoundError
 from app.intelligence.llm_client import LLMClient, generate_grounded, get_llm_client
 from app.intelligence.models import Report
 from app.intelligence.recommendation_engine import (
@@ -15,7 +14,7 @@ from app.intelligence.recommendation_engine import (
     select_watchlist,
 )
 from app.intelligence.report_generator import ReportGenerator, _rec_to_dict
-from app.intelligence.repository import IntelligenceRepository
+from app.reports.repository import ReportRepository
 from config.settings import settings
 
 
@@ -23,25 +22,15 @@ class IntelligenceService:
     def __init__(self, db: AsyncSession, llm: LLMClient | None = None) -> None:
         self.db = db
         self.llm = llm or get_llm_client()
-        self.repo = IntelligenceRepository(db)
+        self.report_repo = ReportRepository(db)
 
     async def generate_report(
         self, user_id: int | None, report_type: str = "daily"
     ) -> Report:
         sections = await ReportGenerator(self.db, self.llm).generate(user_id)
-        report = await self.repo.create_report(user_id, report_type, sections)
+        report = await self.report_repo.create_report(user_id, report_type, sections)
         await self.db.commit()
         return report
-
-    async def get_report(self, report_id: int, user_id: int) -> Report:
-        report = await self.repo.get_report(report_id)
-        # Not-found or not-owned (a user-scoped report of another user) → 404.
-        if report is None or (report.user_id is not None and report.user_id != user_id):
-            raise ReportNotFoundError()
-        return report
-
-    async def list_reports(self, user_id: int) -> list[Report]:
-        return await self.repo.list_reports(user_id)
 
     async def get_recommendations(self, user_id: int | None) -> dict:
         cb = ContextBuilder(self.db)
