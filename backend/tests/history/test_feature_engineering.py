@@ -35,6 +35,30 @@ def test_compute_session_feature_reference() -> None:
     assert f["avg_sentiment"] == 0.0
 
 
+def test_sentiment_is_averaged_into_feature() -> None:
+    # Phase 5 loop closure: per-stock sentiment averages into avg_sentiment
+    # (None values excluded).
+    days = [
+        StockDay(110, 100, 60, 100, 90, 120, 100, 11, 2.2, sentiment=0.5),
+        StockDay(99, 100, 40, 100, 100, 110, 90, 9.9, -0.99, sentiment=-0.1),
+        StockDay(105, 100, 50, 100, 100, 110, 100, 10.5, 1.05, sentiment=None),
+    ]
+    f = compute_session_feature(days)
+    assert f is not None
+    assert f["avg_sentiment"] == pytest.approx((0.5 - 0.1) / 2)
+
+
+def test_no_sentiment_defaults_neutral() -> None:
+    days = [
+        StockDay(110, 100, 60, 100, 90, 120, 100, 11, 2.2),
+        StockDay(99, 100, 40, 100, 100, 110, 90, 9.9, -0.99),
+        StockDay(105, 100, 50, 100, 100, 110, 100, 10.5, 1.05),
+    ]
+    f = compute_session_feature(days)
+    assert f is not None
+    assert f["avg_sentiment"] == 0.0
+
+
 def test_insufficient_stocks_returns_none() -> None:
     # Only 2 stocks with returns (< MIN_STOCKS_FOR_SESSION).
     days = [

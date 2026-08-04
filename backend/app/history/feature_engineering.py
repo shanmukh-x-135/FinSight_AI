@@ -31,20 +31,20 @@ FEATURE_NAMES: tuple[str, ...] = (
     "avg_bollinger_position",
     "avg_atr_pct",
     "avg_macd_hist_pct",
-    "avg_sentiment",   # placeholder (neutral) until Phase 5 wires real sentiment
+    "avg_sentiment",   # real news sentiment (Phase 5); neutral 0.0 when no news
 )
 
-# Neutral sentiment placeholder — a constant here, so after normalization it has
-# zero variance and contributes nothing to distance. Phase 5 replaces it with a
-# real, varying value that then starts to matter automatically.
-SENTIMENT_PLACEHOLDER = 0.0
+# Neutral value used when a date has no news sentiment. Dates before news existed
+# get a constant 0.0 (zero variance → no effect on distance); dates with news get
+# real, varying values that then contribute to similarity automatically.
+SENTIMENT_NEUTRAL = 0.0
 
 MIN_STOCKS_FOR_SESSION = 3
 
 
 @dataclass(frozen=True)
 class StockDay:
-    """One stock's data for one date (raw close + indicator values)."""
+    """One stock's data for one date (raw close + indicator + sentiment values)."""
 
     close: float
     prev_close: float | None
@@ -55,6 +55,7 @@ class StockDay:
     bb_lower: float | None
     atr: float | None
     macd_hist: float | None
+    sentiment: float | None = None
 
 
 def _mean(values: list[float]) -> float | None:
@@ -103,6 +104,10 @@ def compute_session_feature(stock_days: list[StockDay]) -> dict[str, float] | No
     if None in (avg_rsi, ema20, ema50, bb, atr, macd):
         return None
 
+    # Real news sentiment (Phase 5); neutral 0.0 when no article covered the day.
+    sentiments = [sd.sentiment for sd in stock_days if sd.sentiment is not None]
+    avg_sentiment = _mean(sentiments) if sentiments else SENTIMENT_NEUTRAL
+
     return {
         "avg_return": _mean(returns),
         "median_return": statistics.median(returns),
@@ -114,7 +119,7 @@ def compute_session_feature(stock_days: list[StockDay]) -> dict[str, float] | No
         "avg_bollinger_position": bb,
         "avg_atr_pct": atr,
         "avg_macd_hist_pct": macd,
-        "avg_sentiment": SENTIMENT_PLACEHOLDER,
+        "avg_sentiment": avg_sentiment,
     }
 
 

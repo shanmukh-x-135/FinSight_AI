@@ -1,0 +1,12 @@
+# Optional ML extras for the FinBERT sentiment backend (design doc §6.1).
+#
+# The default sentiment backend is a dependency-free lexicon, so these are NOT in
+# the base image (torch is large and FinBERT downloads a ~420MB model on first
+# use). Install these and set SENTIMENT_BACKEND=finbert to use ProsusAI/finbert:
+#
+#   pip install -r requirements-ml.txt
+#
+# Verified working on Python 3.13 (positive/negative/neutral scores are sane).
+
+transformers>=4.44
+torch>=2.4

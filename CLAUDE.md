@@ -16,8 +16,9 @@ probabilities are computed deterministically; the LLM only *explains* them.
 ## Stack
 
 - **Backend:** FastAPI · async SQLAlchemy 2 (asyncpg) · Alembic · pydantic-settings ·
-  PostgreSQL · APScheduler · yfinance (market data) · FAISS (similarity) ·
-  numpy · (Redis optional) · Gemini Flash + FinBERT (later). Python **3.12+**.
+  PostgreSQL · APScheduler · yfinance · FAISS · numpy · feedparser (RSS) ·
+  sentiment: lexicon default / FinBERT optional · (Redis optional) ·
+  Gemini Flash (later). Python **3.12+**.
 - **Frontend:** Next.js 16 · React 19 · TypeScript · Tailwind v4 · Shadcn UI (base-ui) ·
   Plotly (later). App Router, no `src/` dir (`app/` + `components/` at root).
 - **Infra:** Docker Compose (db + backend + frontend); prod targets Vercel + Render.
@@ -73,8 +74,7 @@ Native (no Docker) Postgres helper: `scripts/run_local_postgres.sh start`.
 | 2 — Market Data | `v0.3.0-market-data` | ✅ done | yfinance client (retry + NaN-drop), pure indicator engine (RSI/EMA/MACD/Bollinger/ATR, hand-verified), ingestion (per-symbol isolation), APScheduler cron + manual trigger, `stocks/daily_prices/indicators/fundamentals` (migration 0003), market read endpoints. ~97% coverage. Live-verified on real NSE data (independent RSI cross-check matched to 10 dp). See `docs/market-data.md`. |
 | 3 — Portfolio | `v0.4.0-portfolio` | ✅ done | Portfolio + holdings + watchlist CRUD (migration 0004), all user-scoped with strict ownership (404 on not-owned). Pure analytics engine (value/P&L/allocation/diversification-HHI/concentration/volatility/health/risk), hand-verified. Frontend: `/portfolio` (Analytics template — metric cards, SVG allocation donut, health card, holdings add/edit/remove) + `/watchlist` (pin/sort/quotes). ~99% coverage. Live-verified on real RELIANCE+TCS portfolio. See `docs/portfolio.md`. Note: sector chart is a dependency-free SVG donut; Plotly deferred to Phase 7. |
 | 4 — Historical Intelligence | `v0.5.0-historical-intelligence` | ✅ done | Core differentiator. Deterministic pipeline: daily market feature vectors (11-dim, sentiment placeholder) → shared persisted Normalizer (drift-proof) → FAISS IndexFlatL2 → Top-K similarity → statistics from real next-day outcomes. Split tables (migration 0005). `GET /history/similar` + admin rebuild (chained into scheduler). ~98% coverage; two-regime retrieval + determinism verified. Live: 199 real sessions, deterministic rebuild. FAISS index on persisted Docker volume. See `docs/historical-similarity.md`. |
-| 5 — News + Sentiment | `v0.6.0-news-sentiment` | ⏳ next — wires real sentiment into Phase 4's placeholder | |
-| 5 — News + Sentiment | `v0.6.0-news-sentiment` | | |
+| 5 — News + Sentiment | `v0.6.0-news-sentiment` | ✅ done | RSS ingestion (feedparser) + 2-layer dedupe, sentiment scoring (lexicon default; **FinBERT integrated+verified+selectable**, ML deps optional in requirements-ml.txt), company tagging (group-prefix false-positive guard — caught live), daily aggregation (migration 0006). **Closed Phase 4's sentiment placeholder** (StockDay.sentiment → feature vector; verified 0.0→0.4 end-to-end). News step chained into scheduler. ~94% coverage. Live: 100 real articles, correct tags. See `docs/news-sentiment.md`. |
 | 6 — AI Intelligence (RAG) | `v0.7.0-ai-intelligence` | | |
 | 7 — Dashboard UI | `v0.8.0-dashboard` | | |
 | 8 — Reports | `v0.9.0-reports` | | |

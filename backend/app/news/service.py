@@ -1,0 +1,172 @@
+"""News & sentiment business logic.
+
+Pipeline (deterministic classification, not generation): fetch → dedupe → score
+(FinBERT/lexicon) → tag to companies → aggregate daily sentiment per stock. The
+aggregate (`sentiment_daily`) is what the history module reads to close Phase 4's
+sentiment placeholder.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import statistics
+from collections import defaultdict
+from datetime import date
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.market.exceptions import StockNotFoundError
+from app.market.repository import MarketRepository
+from app.news.constants import DEFAULT_FEEDS
+from app.news.models import NewsArticle
+from app.news.repository import NewsRepository
+from app.news.schemas import (
+    IngestNewsResult,
+    NewsArticleOut,
+    SentimentDailyOut,
+    StockSentimentOut,
+)
+from app.news.tagging import build_aliases, tag_article
+from app.shared.clients.news_client import NewsClient, RssNewsClient
+from app.shared.ml.sentiment import SentimentScorer, get_sentiment_scorer
+from config.logging import get_logger
+from config.settings import settings
+
+logger = get_logger(__name__)
+
+
+class NewsService:
+    def __init__(
+        self,
+        db: AsyncSession,
+        scorer: SentimentScorer | None = None,
+        client: NewsClient | None = None,
+    ) -> None:
+        self.db = db
+        self.repo = NewsRepository(db)
+        self.market = MarketRepository(db)
+        self.scorer = scorer or get_sentiment_scorer()
+        self.client = client or RssNewsClient(
+            list(DEFAULT_FEEDS), max_per_feed=settings.news_max_articles_per_feed
+        )
+
+    # ----- Ingestion -------------------------------------------------------
+    async def ingest(self) -> IngestNewsResult:
+        items = await asyncio.to_thread(self.client.fetch)
+
+        # Dedupe against the DB (URL is the unique key)…
+        existing = await self.repo.existing_urls([i.url for i in items])
+        candidates = [i for i in items if i.url not in existing]
+        # …and collapse the same story arriving from multiple feeds (same title,
+        # different URL) within this batch, so aggregation isn't double-counted.
+        seen_titles: set[str] = set()
+        new_items = []
+        for item in candidates:
+            key = " ".join(item.title.lower().split())
+            if key in seen_titles:
+                continue
+            seen_titles.add(key)
+            new_items.append(item)
+
+        scores = (
+            self.scorer.score([f"{i.title}. {i.summary}" for i in new_items])
+            if new_items
+            else []
+        )
+
+        active = await self.market.list_active_stocks()
+        aliases = {s.id: build_aliases(s.symbol, s.name) for s in active}
+
+        tagged = 0
+        for item, sc in zip(new_items, scores, strict=True):
+            article = NewsArticle(
+                source=item.source[:200],
+                url=item.url[:1000],
+                title=item.title[:600],
+                summary=item.summary[:4000],
+                published_at=item.published_at,
+                sentiment_label=sc.label,
+                sentiment_score=sc.score,
+                sentiment_positive=sc.positive,
+                sentiment_negative=sc.negative,
+                sentiment_neutral=sc.neutral,
+            )
+            await self.repo.add_article(article)
+            stock_ids = tag_article(item.title, item.summary, aliases)
+            for sid in stock_ids:
+                await self.repo.add_tag(article.id, sid)
+            if stock_ids:
+                tagged += 1
+        await self.db.commit()
+
+        days = await self.aggregate()
+        logger.info(
+            "news_ingest_done",
+            extra={"fetched": len(items), "new": len(new_items), "tagged": tagged},
+        )
+        return IngestNewsResult(
+            fetched=len(items),
+            new_articles=len(new_items),
+            tagged_articles=tagged,
+            sentiment_days_updated=days,
+        )
+
+    async def aggregate(self) -> int:
+        """Recompute per-stock, per-day sentiment from all tagged articles."""
+        rows = await self.repo.all_tagged_rows()
+        buckets: dict[tuple[int, date], list[tuple[float, str]]] = defaultdict(list)
+        for stock_id, published_at, fetched_at, score, label in rows:
+            when = (published_at or fetched_at)
+            buckets[(stock_id, when.date())].append((score, label))
+
+        for (stock_id, day), scored in buckets.items():
+            avg = statistics.fmean(s for s, _ in scored)
+            pos = sum(1 for _, lbl in scored if lbl == "positive")
+            neg = sum(1 for _, lbl in scored if lbl == "negative")
+            neu = sum(1 for _, lbl in scored if lbl == "neutral")
+            await self.repo.upsert_sentiment_daily(
+                stock_id, day, avg=avg, pos=pos, neg=neg, neu=neu
+            )
+        await self.db.commit()
+        return len(buckets)
+
+    # ----- Reads -----------------------------------------------------------
+    async def list_recent(self, limit: int = 50) -> list[NewsArticleOut]:
+        articles = await self.repo.list_recent_articles(limit)
+        symbols = {s.id: s.symbol for s in await self.market.list_active_stocks()}
+        return [
+            NewsArticleOut(
+                id=a.id,
+                source=a.source,
+                url=a.url,
+                title=a.title,
+                summary=a.summary,
+                published_at=a.published_at,
+                sentiment_label=a.sentiment_label,
+                sentiment_score=a.sentiment_score,
+                tags=[symbols[t.stock_id] for t in a.tags if t.stock_id in symbols],
+            )
+            for a in articles
+        ]
+
+    async def get_stock_sentiment(self, symbol: str) -> StockSentimentOut:
+        stock = await self.market.get_stock_by_symbol(symbol)
+        if stock is None:
+            raise StockNotFoundError(symbol)
+        series = await self.repo.get_sentiment_series(stock.id)
+        return StockSentimentOut(
+            symbol=stock.symbol,
+            name=stock.name,
+            latest_sentiment=series[-1].avg_sentiment if series else None,
+            series=[
+                SentimentDailyOut(
+                    date=s.date,
+                    avg_sentiment=s.avg_sentiment,
+                    article_count=s.article_count,
+                    positive_count=s.positive_count,
+                    negative_count=s.negative_count,
+                    neutral_count=s.neutral_count,
+                )
+                for s in series
+            ],
+        )
