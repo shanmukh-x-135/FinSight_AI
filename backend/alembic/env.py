@@ -24,6 +24,7 @@ from app.intelligence import models as _intelligence_models  # noqa: E402,F401
 from app.market import models as _market_models  # noqa: E402,F401
 from app.news import models as _news_models  # noqa: E402,F401
 from app.portfolio import models as _portfolio_models  # noqa: E402,F401
+from app.scheduler import models as _scheduler_models  # noqa: E402,F401
 from app.shared.database import Base
 from config.settings import settings
 

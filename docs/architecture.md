@@ -45,7 +45,7 @@ store directly.
 | `intelligence`  | RAG, context/prompt builders, recommendations, report composition    | Phase 6     |
 | `reports`       | Report listing/detail, Markdown/PDF export                           | Phase 8     |
 | `chat`          | Conversational assistant reusing the RAG pipeline                    | Phase 9     |
-| `scheduler`     | Orchestrates post-market-close background jobs                        | Phase 2+    |
+| `scheduler`     | Durable, resumable post-market-close execution control                | Phase 2+    |
 
 ## Implemented through Phase 9
 
@@ -55,7 +55,8 @@ store directly.
   administrator capability, and ownership-scoped resources.
 - Deterministic market indicators, batched market snapshots, portfolio/risk
   analytics, RSS sentiment, FAISS analogues, recommendations, and grounded prose.
-- A cross-worker-locked post-close market→news→history scheduler.
+- A date-scoped, cross-worker-locked, durable and resumable
+  market→news→history EOD control plane, temporarily called by APScheduler.
 - Next.js App Router screens for auth, dashboard, market, history, portfolio,
   watchlist, settings, and reports; shared evidence disclosures and Plotly
   allocation visualization.

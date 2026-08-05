@@ -49,9 +49,11 @@ sector, and intelligence candidate paths share this batch primitive.
 
 - **Scheduled** (normal path): APScheduler cron job, weekdays at
   `MARKET_INGESTION_HOUR:MINUTE` in `MARKET_TIMEZONE` (default 18:30 IST, after
-  NSE close/settlement). Registered in `app/scheduler/scheduler.py`. The full
-  market→news→history pipeline holds a non-blocking PostgreSQL advisory lock, so
-  only one application worker runs it at a time.
+  NSE close/settlement). Registered in `app/scheduler/scheduler.py`. APScheduler
+  is temporarily a thin caller of the durable EOD control plane. The full
+  market→news→history execution is date-scoped, resumable, independently
+  checkpointed, and protected by a non-blocking PostgreSQL advisory lock. See
+  [EOD Control Plane](eod-control-plane.md).
 - **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
   synchronously and returns `{requested, succeeded, failed}`.
@@ -114,7 +116,9 @@ Daily % change is computed from the two most recent `daily_prices` rows.
 - **Economic calendar** — HTTPX mock transport verifies authenticated date-range
   requests, parsing, malformed-row isolation, ordering, and graceful provider
   failure/unconfigured behavior.
-- **Scheduler** — start/stop + job registration, disabled-flag, job body.
+- **Scheduler/control plane** — lifecycle and thin-caller wiring, PostgreSQL lock
+  SQL, cross-worker contention, state transitions, heartbeat, stale recovery,
+  sanitized failures, successful-step skipping, and retry/resume behavior.
 
 ~97% coverage across the market/scheduler/clients modules.
 

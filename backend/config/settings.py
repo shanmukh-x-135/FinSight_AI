@@ -65,17 +65,19 @@ class Settings(BaseSettings):
     # Directory for the persisted FAISS index + normalizer (mount a volume in
     # production so it survives container restarts). Relative to the backend CWD.
     data_dir: str = "./data"
-    history_top_k: int = 10          # neighbours returned by similarity search
+    history_top_k: int = 10  # neighbours returned by similarity search
 
     # ----- Market data & scheduler -----------------------------------------
     market_fetch_max_attempts: int = 3
     market_fetch_timeout_seconds: float = 30.0
     scheduler_enabled: bool = True
-    market_timezone: str = "Asia/Kolkata"      # NSE/BSE trading timezone (IST)
+    market_timezone: str = "Asia/Kolkata"  # NSE/BSE trading timezone (IST)
     # Post-market-close ingestion time (local to market_timezone). NSE closes
     # 15:30 IST; run after settlement to catch finalized end-of-day data.
     market_ingestion_hour: int = 18
     market_ingestion_minute: int = 30
+    pipeline_heartbeat_interval_seconds: float = Field(default=30.0, gt=0)
+    pipeline_stale_after_seconds: int = Field(default=900, gt=0)
 
     # ----- AI / external providers (used from later phases) ----------------
     gemini_api_key: str | None = None

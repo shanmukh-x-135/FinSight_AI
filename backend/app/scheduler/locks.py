@@ -8,8 +8,10 @@ with the same non-blocking semantics.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,10 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 _local_locks: dict[int, asyncio.Lock] = {}
 
 
+def pipeline_run_lock_id(pipeline_name: str, target_trading_date: date) -> int:
+    """Derive a stable signed 64-bit advisory-lock key for one logical run."""
+    identity = f"{pipeline_name}:{target_trading_date.isoformat()}".encode()
+    return int.from_bytes(
+        hashlib.blake2b(identity, digest_size=8).digest(), "big", signed=True
+    )
+
+
 @asynccontextmanager
-async def scheduler_job_lock(
-    db: AsyncSession, lock_id: int
-) -> AsyncIterator[bool]:
+async def pipeline_run_lock(db: AsyncSession, lock_id: int) -> AsyncIterator[bool]:
     """Yield whether this worker acquired the named non-blocking job lock."""
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
@@ -51,3 +59,7 @@ async def scheduler_job_lock(
         yield True
     finally:
         lock.release()
+
+
+# Backward-compatible name for existing callers during the P10.1 transition.
+scheduler_job_lock = pipeline_run_lock
