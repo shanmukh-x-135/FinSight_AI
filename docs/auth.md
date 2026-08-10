@@ -105,6 +105,13 @@ There is intentionally no public self-promotion endpoint. Missing credentials
 return 401, while an authenticated non-admin receives 403 with
 `error.type == "admin_access_required"`.
 
+For the first production administrator, register the account normally and then
+promote that exact user through the managed database console in a controlled
+maintenance window. Verify the email and affected-row count before committing;
+never expose self-promotion through a public endpoint. Re-login afterward so the
+operator can call the protected ingestion, history rebuild, and EOD status
+routes.
+
 ## Frontend token storage
 
 The frontend (`frontend/lib/api.ts`, `frontend/lib/auth-context.tsx`) stores the

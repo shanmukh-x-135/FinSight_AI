@@ -17,6 +17,12 @@ The logical run has a stable UUID correlation ID and an attempt counter. Retryin
 a failed or partial execution resumes that row and increments the attempt counter;
 it does not create a second logical run.
 
+Production schedules three weekday attempts for the same market-local date
+(16:45, 18:45, and 20:45 IST). Provider readiness gates premature data, and the
+durable completed checkpoint makes later attempts no-ops. The UTC cron expression
+is versioned and adjustable in `render.yaml`; application code does not hardcode
+those hours.
+
 ## State model
 
 Run states are `pending`, `running`, `partial`, `completed`, and `failed`.
@@ -74,6 +80,10 @@ gaps with atomic domain upserts, persistent news fingerprints, and report
 idempotency keys. See [Write Idempotency](write-idempotency.md).
 
 P10.5 also forwards the logical target into bounded per-symbol provider windows;
-see [Incremental Market Ingestion](incremental-market-ingestion.md). Later phases
-cover PostgreSQL-backed FAISS reconstruction, Gemini generation metadata,
-deployment resources, and provider accounts.
+see [Incremental Market Ingestion](incremental-market-ingestion.md). P10.6 makes
+PostgreSQL authoritative for deterministic FAISS reconstruction; see
+[Historical Intelligence](historical-similarity.md). P10.7 records actual Gemini
+model/response/usage and deterministic-fallback provenance across generated
+surfaces; see [AI Intelligence](ai-intelligence.md). Later phases cover
+deployment resources and provider accounts. P10.8 supplies the Render cron/API
+topology and operational contract; see [Production Deployment](deployment.md).

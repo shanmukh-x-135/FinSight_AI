@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from config.settings import Settings
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _settings(**overrides: object) -> Settings:
@@ -68,3 +72,14 @@ def test_development_keeps_local_defaults() -> None:
     )
 
     assert configured.cors_origins == ["http://localhost:3000"]
+
+
+def test_environment_example_covers_every_setting() -> None:
+    template = (BACKEND_ROOT / ".env.example").read_text()
+    missing = [
+        name.upper()
+        for name in Settings.model_fields
+        if f"{name.upper()}=" not in template
+    ]
+
+    assert missing == []

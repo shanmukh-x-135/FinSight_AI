@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# Render production topology: API + one-shot EOD cron + managed PostgreSQL.
+# Secret values are prompted for during Blueprint creation and never committed.
+services:
+  - type: web
+    name: finsight-api
+    runtime: docker
+    branch: main
+    plan: starter
+    region: singapore
+    dockerfilePath: ./docker/Dockerfile.backend
+    dockerContext: ./backend
+    healthCheckPath: /health/db
+    preDeployCommand: alembic upgrade head
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 60
+    buildFilter:
+      paths:
+        - backend/**
+        - docker/Dockerfile.backend
+        - render.yaml
+    envVars:
+      - fromGroup: finsight-production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finsight-db
+          property: connectionString
+      - key: DATA_DIR
+        value: /tmp/finsight-data
+      - key: CORS_ORIGINS
+        sync: false
+
+  - type: cron
+    name: finsight-eod
+    runtime: docker
+    branch: main
+    plan: starter
+    region: singapore
+    # 16:45, 18:45, and 20:45 IST. Later attempts resume the same durable run.
+    schedule: "15 11,13,15 * * 1-5"
+    dockerfilePath: ./docker/Dockerfile.backend
+    dockerContext: ./backend
+    dockerCommand: python -m app.scheduler.runner
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - backend/**
+        - docker/Dockerfile.backend
+        - render.yaml
+    envVars:
+      - fromGroup: finsight-production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finsight-db
+          property: connectionString
+      - key: DATA_DIR
+        value: /tmp/finsight-data
+      - key: CORS_ORIGINS
+        sync: false
+
+databases:
+  - name: finsight-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: finsight
+    user: finsight
+    postgresMajorVersion: "16"
+    ipAllowList: []
+
+envVarGroups:
+  - name: finsight-production
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DB_ECHO
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: JWT_SECRET
+        generateValue: true
