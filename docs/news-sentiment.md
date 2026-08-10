@@ -11,8 +11,8 @@ input* ("analytics before AI"); the LLM never scores it.
 RSS feeds → dedupe → sentiment score → company tag → aggregate (daily/stock) → history feature vector
 ```
 
-Wired into the post-close scheduler pipeline: **market ingest → news ingest →
-history rebuild**, so sentiment refreshes and the similarity index picks it up.
+Wired into the post-close EOD pipeline: **market ingest → news ingest → history
+rebuild**, so sentiment refreshes and the similarity index picks it up.
 
 ### 1. News source (`shared/clients/news_client.py`)
 

@@ -24,9 +24,9 @@ by default.
 User → Next.js (frontend) → REST API → FastAPI (backend)
                                           │
               ┌───────────────────┬────────┼────────────────────┐
-          PostgreSQL            FAISS   Background Scheduler   Providers
-                                         │                    (market/RSS,
-                                market → news → history        Gemini optional)
+          PostgreSQL            FAISS    External EOD Runner    Providers
+                                          │                    (market/RSS,
+                                 market → news → history       Gemini optional)
 ```
 
 The frontend talks **only** to the backend; nothing calls the database or vector
@@ -45,18 +45,19 @@ store directly.
 | `intelligence`  | RAG, context/prompt builders, recommendations, report composition    | Phase 6     |
 | `reports`       | Report listing/detail, Markdown/PDF export                           | Phase 8     |
 | `chat`          | Conversational assistant reusing the RAG pipeline                    | Phase 9     |
-| `scheduler`     | Durable, resumable post-market-close execution control                | Phase 2+    |
+| `scheduler`     | Durable control plane and one-shot external EOD runner                 | Phase 2+    |
 
 ## Implemented through Phase 9
 
 - FastAPI app factory with request IDs, structured JSON logging, global envelope
-  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0008`).
+  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0009`).
 - JWT/Argon2 auth with refresh rotation, preferences, rate limiting, persisted
   administrator capability, and ownership-scoped resources.
 - Deterministic market indicators, batched market snapshots, portfolio/risk
   analytics, RSS sentiment, FAISS analogues, recommendations, and grounded prose.
 - A date-scoped, cross-worker-locked, durable and resumable
-  market→news→history EOD control plane, temporarily called by APScheduler.
+  market→news→history EOD control plane invoked by a one-shot external process;
+  FastAPI web workers run no background scheduler.
 - Next.js App Router screens for auth, dashboard, market, history, portfolio,
   watchlist, settings, and reports; shared evidence disclosures and Plotly
   allocation visualization.
@@ -67,7 +68,7 @@ store directly.
   validation and persist in user-scoped history.
 - Next.js Assistant UI with incremental rendering, recent-question history,
   confidence, sources, risks, and the shared evidence disclosure.
-- Docker Compose for the real stack, 240 backend tests, 41 frontend tests, and
+- Docker Compose for the real stack, 260 backend tests, 41 frontend tests, and
   three Playwright Chromium journeys.
 
 `infrastructure` is deliberate Phase 10 scaffolding, not a partially implemented

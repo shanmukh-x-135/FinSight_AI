@@ -24,7 +24,6 @@ from app.market.routes import admin_router, market_router
 from app.news.routes import news_admin_router, news_router
 from app.portfolio.routes import portfolio_router, watchlist_router
 from app.reports.routes import reports_router
-from app.scheduler.scheduler import shutdown_scheduler, start_scheduler
 from app.shared.database import dispose_engine
 from app.shared.exceptions import register_exception_handlers
 from app.shared.middleware import RequestIDMiddleware
@@ -35,12 +34,10 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown hooks."""
     logger.info("app_startup", extra={"env": settings.app_env})
-    start_scheduler()
     yield
-    shutdown_scheduler()
     await dispose_engine()
     logger.info("app_shutdown")
 
