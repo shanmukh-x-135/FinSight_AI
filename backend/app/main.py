@@ -25,6 +25,7 @@ from app.market.routes import admin_router, market_router
 from app.news.routes import news_admin_router, news_router
 from app.portfolio.routes import portfolio_router, watchlist_router
 from app.reports.routes import reports_router
+from app.scheduler.routes import scheduler_admin_router
 from app.shared.database import dispose_engine
 from app.shared.exceptions import register_exception_handlers
 from app.shared.middleware import RequestIDMiddleware
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     app.include_router(intelligence_router, prefix=settings.api_v1_prefix)
     app.include_router(dashboard_router, prefix=settings.api_v1_prefix)
     app.include_router(chat_router, prefix=settings.api_v1_prefix)
+    app.include_router(scheduler_admin_router, prefix=settings.api_v1_prefix)
 
     return app
 

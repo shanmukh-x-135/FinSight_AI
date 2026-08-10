@@ -36,6 +36,19 @@ class PipelineRunRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_run(self, pipeline_name: str) -> PipelineRun | None:
+        result = await self.db.execute(
+            select(PipelineRun)
+            .options(selectinload(PipelineRun.steps))
+            .where(PipelineRun.pipeline_name == pipeline_name)
+            .order_by(
+                PipelineRun.target_trading_date.desc(),
+                PipelineRun.created_at.desc(),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_step(self, run_id: int, step_name: str) -> PipelineRunStep | None:
         result = await self.db.execute(
             select(PipelineRunStep).where(
