@@ -19,6 +19,7 @@ from app.chat.routes import chat_router
 from app.dashboard.routes import dashboard_router
 from app.health import router as health_router
 from app.history.routes import history_admin_router, history_router
+from app.intelligence.llm_client import close_llm_client
 from app.intelligence.routes import intelligence_router
 from app.market.routes import admin_router, market_router
 from app.news.routes import news_admin_router, news_router
@@ -38,7 +39,10 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown hooks."""
     logger.info("app_startup", extra={"env": settings.app_env})
     yield
-    await dispose_engine()
+    try:
+        await close_llm_client()
+    finally:
+        await dispose_engine()
     logger.info("app_shutdown")
 
 

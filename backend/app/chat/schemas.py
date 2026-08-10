@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.chat.constants import MAX_QUESTION_LENGTH
+from app.intelligence.schemas import GenerationMetadataOut
 
 
 class ChatRequest(BaseModel):
@@ -34,6 +35,7 @@ class ChatAnswer(BaseModel):
     confidence: int = Field(ge=0, le=100)
     sources: list[ChatSource]
     risks: list[str]
+    generation: GenerationMetadataOut | None = None
 
 
 class ChatMessageOut(ChatAnswer):
@@ -63,6 +65,7 @@ class ChatHistoryMessageOut(BaseModel):
     confidence: int | None = None
     sources: list[ChatSource] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    generation: GenerationMetadataOut | None = None
 
 
 class ChatHistoryDeleteOut(BaseModel):

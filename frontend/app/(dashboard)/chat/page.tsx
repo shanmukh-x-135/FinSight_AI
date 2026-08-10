@@ -45,12 +45,22 @@ function UserMessage({ message }: { message: ChatMessage }) {
 }
 
 function AssistantMessage({ message }: { message: ChatMessage }) {
+  const generationLabel = message.generation
+    ? message.generation.backend === "gemini"
+      ? message.generation.model_version ?? message.generation.requested_model ?? "Gemini"
+      : message.generation.fallback_used
+        ? "Deterministic fallback"
+        : "Deterministic"
+    : null;
   return (
     <article className="max-w-3xl" aria-label="FinSight AI response">
       <Card className="gap-0 border-blue-100 py-0 shadow-sm">
         <div className="flex items-center gap-2 border-b bg-blue-50/50 px-4 py-3">
           <Sparkles className="h-4 w-4 text-blue-600" aria-hidden />
           <span className="text-sm font-semibold">FinSight AI</span>
+          {generationLabel && (
+            <span className="text-xs text-muted-foreground">· {generationLabel}</span>
+          )}
           {message.confidence != null && (
             <span className="ml-auto text-xs text-muted-foreground">
               {message.confidence}% confidence

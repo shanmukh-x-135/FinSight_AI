@@ -13,7 +13,9 @@
  * is httpOnly cookies (documented in docs/auth.md).
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { resolveApiOrigin } from "@/lib/api-origin";
+
+const API_URL = resolveApiOrigin();
 
 const ACCESS_KEY = "finsight_access";
 const REFRESH_KEY = "finsight_refresh";
@@ -441,6 +443,43 @@ export const historyApi = {
 };
 
 // ----- Intelligence types (Phase 6 output) ----------------------------------
+export interface GenerationUsage {
+  prompt_tokens: number | null;
+  candidate_tokens: number | null;
+  total_tokens: number | null;
+  cached_tokens: number | null;
+  thoughts_tokens: number | null;
+}
+
+export interface GenerationMetadata {
+  configured_backend: string;
+  backend: string;
+  requested_model: string | null;
+  model_version: string | null;
+  response_id: string | null;
+  finish_reason: string | null;
+  provider_created_at: string | null;
+  attempt_count: number;
+  provider_response_count: number;
+  fallback_used: boolean;
+  latency_ms: number;
+  usage: GenerationUsage;
+}
+
+export interface GenerationSummary {
+  schema_version: number;
+  configured_backend: string;
+  actual_backends: string[];
+  requested_models: string[];
+  model_versions: string[];
+  generation_count: number;
+  provider_attempt_count: number;
+  provider_response_count: number;
+  fallback_count: number;
+  usage: GenerationUsage;
+  items: (GenerationMetadata & { purpose: string })[];
+}
+
 export interface Recommendation {
   symbol: string;
   name: string | null;
@@ -460,6 +499,7 @@ export interface Recommendation {
 export interface Recommendations {
   watchlist: Recommendation[];
   risk_alerts: Recommendation[];
+  generation: GenerationSummary;
 }
 
 export const intelligenceApi = {
@@ -476,6 +516,7 @@ export interface DashboardSummary {
   opportunities: Recommendation[];
   risk_alerts: Recommendation[];
   history: SimilarityResult | null;
+  generation: GenerationSummary;
 }
 
 export const dashboardApi = {
@@ -516,7 +557,12 @@ export interface ReportSections {
   recommendations?: Recommendation[];
   risk_alerts?: Recommendation[];
   news?: { notable?: { title: string; sentiment_label?: string; tags?: string[] }[] };
-  meta?: { prompt_version?: string; llm_backend?: string; generated_at?: string };
+  meta?: {
+    prompt_version?: string;
+    llm_backend?: string;
+    generated_at?: string;
+    generation?: GenerationSummary;
+  };
 }
 
 export interface Report {
@@ -571,6 +617,7 @@ export interface ChatMessage {
   confidence: number | null;
   sources: ChatSource[];
   risks: string[];
+  generation?: GenerationMetadata | null;
 }
 
 export interface ChatStreamHandlers {

@@ -33,6 +33,8 @@ Every assistant message contains:
 - `confidence` — deterministic 0–100 context-coverage score;
 - `sources[]` — typed labels and routes back to the supporting screen;
 - `risks[]` — uncertainty and data-timing limitations.
+- `generation` — actual backend/model, response/finish identity when supplied,
+  retry/fallback outcome, latency, and optional token usage.
 
 The frontend renders these through the same `EvidencePanel` used elsewhere,
 plus direct source links. Suggested questions are conveniences only; they do not
@@ -64,6 +66,10 @@ as JSON in the existing text column, avoiding a schema migration while retaining
 evidence/source metadata after reload. Legacy plain assistant rows remain
 readable.
 
+P10.7 adds generation provenance to that same structured payload, so a Gemini
+failure cannot be reloaded or displayed later as if Gemini supplied the answer.
+Legacy structured answers without provenance remain valid and return `null`.
+
 Every repository read and delete includes `user_id`. There is no endpoint that
 accepts another user's ID, and two-account API tests prove isolation.
 
@@ -83,7 +89,8 @@ envelope; SSE uses its documented event contract.
 
 - Backend API tests cover authentication, input validation, portfolio/watchlist
   grounding, unsupported advice rejection, SSE reconstruction, persistence,
-  empty portfolios, two-user ownership, and isolated deletion.
+  generation provenance, empty portfolios, two-user ownership, and isolated
+  deletion.
 - Frontend tests cover arbitrary network chunk boundaries, truncated streams,
   suggested prompts, history, clearing, evidence, confidence, sources, and
   risks.

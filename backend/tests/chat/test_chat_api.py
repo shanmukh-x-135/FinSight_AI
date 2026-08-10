@@ -64,6 +64,8 @@ async def test_chat_answers_from_personal_portfolio_and_watchlist(
     assert assistant["evidence"]
     assert assistant["risks"]
     assert assistant["confidence"] >= 60
+    assert assistant["generation"]["backend"] == "deterministic"
+    assert assistant["generation"]["fallback_used"] is False
     assert {source["kind"] for source in assistant["sources"]} == {
         "portfolio",
         "watchlist",
@@ -75,6 +77,7 @@ async def test_chat_answers_from_personal_portfolio_and_watchlist(
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[1]["evidence"] == assistant["evidence"]
     assert messages[1]["sources"] == assistant["sources"]
+    assert messages[1]["generation"] == assistant["generation"]
 
 
 @pytest.mark.asyncio
@@ -99,6 +102,7 @@ async def test_chat_stream_reconstructs_validated_persisted_answer(
     assert "".join(deltas) == completed["content"]
     assert completed["evidence"]
     assert completed["sources"][0]["kind"] == "market"
+    assert completed["generation"]["backend"] == "deterministic"
 
     history = (await client.get("/api/v1/chat/history", headers=headers)).json()["data"]
     assert history[-1]["content"] == completed["content"]
@@ -118,6 +122,7 @@ async def test_chat_rejects_unsupported_model_advice_and_uses_grounded_fallback(
     )
 
     assert response.status_code == 200
+    assert response.json()["data"]["assistant"]["generation"]["fallback_used"] is True
     content = response.json()["data"]["assistant"]["content"]
     assert "Buy now" not in content
     assert "999" not in content

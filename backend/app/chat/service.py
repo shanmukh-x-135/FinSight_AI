@@ -19,7 +19,13 @@ from app.chat.schemas import (
 )
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder, RagContext
-from app.intelligence.llm_client import LLMClient, generate_grounded, get_llm_client
+from app.intelligence.generation import GenerationBudget
+from app.intelligence.llm_client import (
+    LLMClient,
+    generate_grounded_result,
+    get_llm_client,
+)
+from config.settings import settings
 
 
 @dataclass(frozen=True)
@@ -255,15 +261,23 @@ class ChatService:
             facts=draft.facts,
             fallback=draft.fallback,
         )
-        content = await generate_grounded(
-            self.llm, pb.system_instruction(), prompt, fallback
+        generation = await generate_grounded_result(
+            self.llm,
+            pb.system_instruction(),
+            prompt,
+            fallback,
+            budget=GenerationBudget(
+                settings.llm_request_budget_seconds,
+                settings.llm_max_provider_calls,
+            ),
         )
         answer = ChatAnswer(
-            content=content,
+            content=generation.text,
             evidence=draft.evidence,
             confidence=draft.confidence,
             sources=draft.sources,
             risks=draft.risks,
+            generation=generation.metadata.to_dict(),
         )
 
         user_row = await self.repo.add_message(user_id, "user", question)

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from app.intelligence.schemas import GenerationSummaryOut
+
 
 class DashboardSummaryOut(BaseModel):
     market: dict
@@ -22,3 +24,4 @@ class DashboardSummaryOut(BaseModel):
     opportunities: list[dict]
     risk_alerts: list[dict]
     history: dict | None
+    generation: GenerationSummaryOut

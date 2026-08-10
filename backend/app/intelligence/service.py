@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder
-from app.intelligence.llm_client import LLMClient, generate_grounded, get_llm_client
+from app.intelligence.generation import (
+    GenerationBudget,
+    generation_record,
+    summarize_generations,
+)
+from app.intelligence.llm_client import (
+    LLMClient,
+    generate_grounded_result,
+    get_llm_client,
+)
 from app.intelligence.models import Report
 from app.intelligence.recommendation_engine import (
     rank_candidates,
@@ -61,12 +72,31 @@ class IntelligenceService:
         watchlist = select_watchlist(ranked, settings.top_n_recommendations)
         risk_alerts = select_risk_alerts(ranked)
         system = pb.system_instruction()
-        for rec in watchlist + risk_alerts:
+        recommendations = watchlist + risk_alerts
+        budget = GenerationBudget(
+            settings.llm_request_budget_seconds,
+            settings.llm_max_provider_calls,
+        )
+
+        async def narrate(rec):
             prompt, fallback = pb.recommendation_explanation(rec)
-            rec.explanation = await generate_grounded(
-                self.llm, system, prompt, fallback
+            result = await generate_grounded_result(
+                self.llm, system, prompt, fallback, budget=budget
+            )
+            return rec, result
+
+        generated = await asyncio.gather(*(narrate(rec) for rec in recommendations))
+        generation_records: list[dict] = []
+        for rec, result in generated:
+            rec.explanation = result.text
+            generation_records.append(
+                generation_record(f"recommendation:{rec.symbol}", result.metadata)
             )
         return {
             "watchlist": [_rec_to_dict(r) for r in watchlist],
             "risk_alerts": [_rec_to_dict(r) for r in risk_alerts],
+            "generation": summarize_generations(
+                generation_records,
+                configured_backend=type(self.llm).__name__,
+            ),
         }

@@ -94,6 +94,30 @@ const report: Report = {
         tags: [],
       })),
     },
+    meta: {
+      prompt_version: "1.1",
+      llm_backend: "Gemini + deterministic fallback",
+      generated_at: "2024-01-02T10:00:00+00:00",
+      generation: {
+        schema_version: 1,
+        configured_backend: "GeminiClient",
+        actual_backends: ["deterministic", "gemini"],
+        requested_models: ["gemini-3.6-flash"],
+        model_versions: ["gemini-3.6-flash-001"],
+        generation_count: 2,
+        provider_attempt_count: 3,
+        provider_response_count: 2,
+        fallback_count: 1,
+        usage: {
+          prompt_tokens: 20,
+          candidate_tokens: 8,
+          total_tokens: 28,
+          cached_tokens: null,
+          thoughts_tokens: null,
+        },
+        items: [],
+      },
+    },
   },
 };
 
@@ -118,6 +142,8 @@ describe("ReportDetailPage historical units", () => {
       await screen.findByRole("heading", { name: "FinSight AI — Daily Report" }),
     ).toBeVisible();
     expect(screen.getByText(/Report #1 · Generated/)).toBeVisible();
+    expect(screen.getByText(/gemini-3.6-flash-001/)).toBeVisible();
+    expect(screen.getByText(/1 fallback/)).toBeVisible();
     expect(screen.getByText("Unchanged", { exact: true })).toBeVisible();
     expect(screen.getByText("Tracked", { exact: true })).toBeVisible();
     expect(screen.getByText("Diversification", { exact: true })).toBeVisible();

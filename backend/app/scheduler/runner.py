@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
+from app.intelligence.llm_client import close_llm_client
 from app.scheduler.constants import PipelineRunStatus
 from app.scheduler.jobs import get_eod_run_status, run_eod_pipeline
 from app.scheduler.readiness import ReadinessStatus, check_eod_readiness
@@ -137,7 +138,10 @@ async def execute_once(target_trading_date: date) -> int:
         )
         return EXIT_PIPELINE_INCOMPLETE
     finally:
-        await dispose_engine()
+        try:
+            await close_llm_client()
+        finally:
+            await dispose_engine()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
