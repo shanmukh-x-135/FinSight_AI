@@ -93,7 +93,7 @@ curl http://localhost:8000/health/db       # {"status":"ok","database":"reachabl
 
 ```bash
 cd backend
-./.venv/bin/python -m pytest               # 240 tests; SQLite in-memory
+./.venv/bin/python -m pytest               # 289 fast tests + 3 PostgreSQL integration tests
 ./.venv/bin/ruff check .                   # Python lint gate
 
 cd ../frontend

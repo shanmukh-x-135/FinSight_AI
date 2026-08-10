@@ -14,6 +14,10 @@ class IngestionResult(BaseModel):
     requested: int
     succeeded: list[str]
     failed: list[str]
+    price_bars_fetched: int = 0
+    bootstrap_symbols: int = 0
+    reconciliation_symbols: int = 0
+    incremental_symbols: int = 0
 
 
 class FundamentalsOut(BaseModel):

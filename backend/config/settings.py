@@ -70,7 +70,14 @@ class Settings(BaseSettings):
     # ----- Market data & EOD control plane ---------------------------------
     market_fetch_max_attempts: int = 3
     market_fetch_timeout_seconds: float = 30.0
+    market_bootstrap_lookback_days: int = Field(default=370, ge=90)
+    market_incremental_overlap_days: int = Field(default=7, ge=1)
+    market_full_reconciliation_days: int = Field(default=30, ge=1)
+    market_provider_repair_enabled: bool = False
     market_timezone: str = "Asia/Kolkata"  # NSE/BSE trading timezone (IST)
+    market_calendar: str = "NSE"
+    market_readiness_symbol: str = "^NSEI"
+    market_close_grace_minutes: int = Field(default=60, ge=0)
     pipeline_heartbeat_interval_seconds: float = Field(default=30.0, gt=0)
     pipeline_stale_after_seconds: int = Field(default=900, gt=0)
 

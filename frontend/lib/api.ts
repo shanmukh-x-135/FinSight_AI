@@ -89,13 +89,17 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   auth?: boolean; // attach access token
+  headers?: Record<string, string>;
   _retried?: boolean; // internal: prevents infinite refresh loops
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, auth = false, _retried = false } = opts;
+  const { method = "GET", body, auth = false, headers: extraHeaders, _retried = false } = opts;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...extraHeaders,
+  };
   if (auth) {
     const token = tokenStore.getAccess();
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -544,7 +548,11 @@ export const reportsApi = {
   },
   get: (id: number) => request<Report>(`/api/v1/reports/${id}`, { auth: true }),
   generate: () =>
-    request<Report>("/api/v1/reports/generate", { method: "POST", auth: true }),
+    request<Report>("/api/v1/reports/generate", {
+      method: "POST",
+      auth: true,
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    }),
 };
 
 // ----- AI Chat (Phase 9) ---------------------------------------------------

@@ -10,8 +10,8 @@ one-shot process instead of an in-process web scheduler.
 Every invocation identifies a `pipeline_name` and an explicit
 `target_trading_date`. The database enforces one logical `pipeline_runs` row for
 that pair. The external runner accepts an explicit ISO date or supplies the
-market-local calendar date; exchange-holiday and provider-readiness checks are
-intentionally deferred to P10.3.
+market-local calendar date, then performs the P10.3 exchange-session and
+provider-readiness preflight before entering this control plane.
 
 The logical run has a stable UUID correlation ID and an attempt counter. Retrying
 a failed or partial execution resumes that row and increments the attempt counter;
@@ -65,14 +65,15 @@ lists, credentials, and secrets are not written to control-plane error fields.
 - `PIPELINE_HEARTBEAT_INTERVAL_SECONDS` (default `30`)
 - `PIPELINE_STALE_AFTER_SECONDS` (default `900`)
 
-## Deliberate later-phase boundaries
-
-P10.3 adds the real Indian-market trading calendar and provider-readiness checks.
-Later phases also cover incremental ingestion, stronger write idempotency/news
-fingerprints, report dedupe, PostgreSQL-backed FAISS reconstruction, Gemini
-generation metadata, deployment resources, and provider accounts.
+## Domain-write recovery
 
 There is necessarily a small crash window between a domain service committing
 its data and the control plane committing the step checkpoint. A retry in that
-window may call the domain service again; closing all write-level duplicate gaps
-is P10.4.
+window may call the domain service again. P10.4 closes the resulting duplicate
+gaps with atomic domain upserts, persistent news fingerprints, and report
+idempotency keys. See [Write Idempotency](write-idempotency.md).
+
+P10.5 also forwards the logical target into bounded per-symbol provider windows;
+see [Incremental Market Ingestion](incremental-market-ingestion.md). Later phases
+cover PostgreSQL-backed FAISS reconstruction, Gemini generation metadata,
+deployment resources, and provider accounts.

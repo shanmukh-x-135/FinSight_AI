@@ -43,6 +43,10 @@ class Stock(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
     )
+    # Watermark for periodic full-window reconciliation of adjusted provider data.
+    last_full_price_sync_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     daily_prices: Mapped[list["DailyPrice"]] = relationship(
         back_populates="stock", cascade="all, delete-orphan"

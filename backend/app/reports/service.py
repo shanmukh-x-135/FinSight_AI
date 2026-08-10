@@ -23,9 +23,17 @@ class ReportService:
         self.db = db
         self.repo = ReportRepository(db)
 
-    async def generate(self, user_id: int | None, report_type: str = "daily") -> Report:
+    async def generate(
+        self,
+        user_id: int | None,
+        report_type: str = "daily",
+        *,
+        idempotency_key: str | None = None,
+    ) -> Report:
         # Generation is the intelligence pipeline's responsibility.
-        return await IntelligenceService(self.db).generate_report(user_id, report_type)
+        return await IntelligenceService(self.db).generate_report(
+            user_id, report_type, idempotency_key=idempotency_key
+        )
 
     async def list_reports(
         self,

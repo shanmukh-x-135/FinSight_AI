@@ -14,6 +14,7 @@ from app.intelligence.recommendation_engine import (
     select_watchlist,
 )
 from app.intelligence.report_generator import ReportGenerator, _rec_to_dict
+from app.reports.idempotency import scope_idempotency_key
 from app.reports.repository import ReportRepository
 from config.settings import settings
 
@@ -25,10 +26,29 @@ class IntelligenceService:
         self.report_repo = ReportRepository(db)
 
     async def generate_report(
-        self, user_id: int | None, report_type: str = "daily"
+        self,
+        user_id: int | None,
+        report_type: str = "daily",
+        *,
+        idempotency_key: str | None = None,
     ) -> Report:
+        key_hash = (
+            scope_idempotency_key(user_id, report_type, idempotency_key)
+            if idempotency_key is not None
+            else None
+        )
+        if key_hash is not None:
+            existing = await self.report_repo.get_by_idempotency_hash(key_hash)
+            if existing is not None:
+                return existing
+
         sections = await ReportGenerator(self.db, self.llm).generate(user_id)
-        report = await self.report_repo.create_report(user_id, report_type, sections)
+        report = await self.report_repo.create_report(
+            user_id,
+            report_type,
+            sections,
+            idempotency_key_hash=key_hash,
+        )
         await self.db.commit()
         return report
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.market.models import Stock
 from app.news.models import NewsArticle, NewsArticleStock, SentimentDaily
+from app.shared.upsert import conflict_insert
 
 
 class NewsRepository:
@@ -17,21 +18,37 @@ class NewsRepository:
         self.db = db
 
     # ----- Articles -------------------------------------------------------
-    async def existing_urls(self, urls: list[str]) -> set[str]:
-        if not urls:
-            return set()
+    async def existing_article_keys(
+        self, urls: list[str], fingerprints: list[str]
+    ) -> tuple[set[str], set[str]]:
+        if not urls and not fingerprints:
+            return set(), set()
         result = await self.db.execute(
-            select(NewsArticle.url).where(NewsArticle.url.in_(urls))
+            select(NewsArticle.url, NewsArticle.fingerprint).where(
+                NewsArticle.url.in_(urls) | NewsArticle.fingerprint.in_(fingerprints)
+            )
         )
-        return set(result.scalars().all())
+        rows = result.all()
+        return {row.url for row in rows}, {row.fingerprint for row in rows}
 
-    async def add_article(self, article: NewsArticle) -> NewsArticle:
-        self.db.add(article)
-        await self.db.flush()
-        return article
+    async def add_article(self, article: NewsArticle) -> int | None:
+        """Insert once by either URL or fingerprint; return the new id if won."""
+        values = {
+            column.name: getattr(article, column.name)
+            for column in NewsArticle.__table__.columns
+            if column.name not in {"id", "fetched_at"}
+        }
+        stmt = conflict_insert(self.db, NewsArticle).values(**values)
+        result = await self.db.execute(
+            stmt.on_conflict_do_nothing().returning(NewsArticle.id)
+        )
+        return result.scalar_one_or_none()
 
     async def add_tag(self, article_id: int, stock_id: int) -> None:
-        self.db.add(NewsArticleStock(article_id=article_id, stock_id=stock_id))
+        stmt = conflict_insert(self.db, NewsArticleStock).values(
+            article_id=article_id, stock_id=stock_id
+        )
+        await self.db.execute(stmt.on_conflict_do_nothing())
 
     async def list_recent_articles(self, limit: int = 50) -> list[NewsArticle]:
         result = await self.db.execute(
@@ -59,21 +76,31 @@ class NewsRepository:
     async def upsert_sentiment_daily(
         self, stock_id: int, day: date, *, avg: float, pos: int, neg: int, neu: int
     ) -> None:
-        result = await self.db.execute(
-            select(SentimentDaily).where(
-                SentimentDaily.stock_id == stock_id, SentimentDaily.date == day
-            )
+        stmt = conflict_insert(self.db, SentimentDaily).values(
+            stock_id=stock_id,
+            date=day,
+            avg_sentiment=avg,
+            article_count=pos + neg + neu,
+            positive_count=pos,
+            negative_count=neg,
+            neutral_count=neu,
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = SentimentDaily(stock_id=stock_id, date=day)
-            self.db.add(row)
-        row.avg_sentiment = avg
-        row.article_count = pos + neg + neu
-        row.positive_count = pos
-        row.negative_count = neg
-        row.neutral_count = neu
-        await self.db.flush()
+        result = await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[SentimentDaily.stock_id, SentimentDaily.date],
+                set_={
+                    "avg_sentiment": stmt.excluded.avg_sentiment,
+                    "article_count": stmt.excluded.article_count,
+                    "positive_count": stmt.excluded.positive_count,
+                    "negative_count": stmt.excluded.negative_count,
+                    "neutral_count": stmt.excluded.neutral_count,
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(SentimentDaily)
+            .execution_options(populate_existing=True)
+        )
+        result.scalars().all()
 
     async def get_latest_sentiment_map(self) -> dict[int, float]:
         """Most-recent avg_sentiment per stock (for context building)."""

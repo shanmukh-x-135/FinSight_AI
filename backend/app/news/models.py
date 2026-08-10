@@ -1,6 +1,7 @@
 """ORM models for the news domain.
 
-* **NewsArticle**      — a deduped article (by URL) with its FinBERT/lexicon
+* **NewsArticle**      — a deduped article (by URL and story fingerprint) with its
+  FinBERT/lexicon
   sentiment scores.
 * **NewsArticleStock** — company tags: which tracked stocks an article mentions.
 * **SentimentDaily**   — per-stock, per-day aggregated sentiment. This is the
@@ -37,6 +38,9 @@ class NewsArticle(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(String(200), nullable=False)
     url: Mapped[str] = mapped_column(String(1000), unique=True, index=True, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
     title: Mapped[str] = mapped_column(String(600), nullable=False)
     summary: Mapped[str] = mapped_column(String(4000), default="", nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
