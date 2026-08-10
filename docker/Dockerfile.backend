@@ -1,26 +1,46 @@
-# FinSight AI backend image.
-# Build context is ./backend (see docker-compose.yml).
-# Phase 0 keeps this a straightforward single-stage image; Phase 10 hardens it
-# into a multi-stage production build.
+# syntax=docker/dockerfile:1
 
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm AS wheels
 
-# Faster, quieter, unbuffered Python in containers.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /build
+COPY requirements.txt requirements-ai.txt ./
+RUN python -m pip wheel --wheel-dir=/wheels \
+    -r requirements.txt -r requirements-ai.txt
+
+
+FROM python:3.12-slim-bookworm AS runtime
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8000
 
 WORKDIR /app
 
-# Install dependencies first for better layer caching.
-COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN groupadd --gid 10001 finsight \
+    && useradd --uid 10001 --gid finsight --create-home --shell /usr/sbin/nologin finsight
 
-# Copy the application source.
-COPY . .
+COPY --from=wheels /wheels /wheels
+RUN python -m pip install --no-index /wheels/* \
+    && rm -rf /wheels
 
+COPY --chown=finsight:finsight alembic.ini ./
+COPY --chown=finsight:finsight alembic ./alembic
+COPY --chown=finsight:finsight app ./app
+COPY --chown=finsight:finsight config ./config
+COPY --chown=finsight:finsight scripts/start_web.sh ./scripts/start_web.sh
+RUN chmod 755 /app/scripts/start_web.sh \
+    && mkdir -p /app/data \
+    && chown finsight:finsight /app/data
+
+USER finsight
 EXPOSE 8000
 
-# Default command is overridden by docker-compose (migrate + serve), but a
-# sensible default is provided for `docker run` usage too.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8000') + '/health', timeout=3).read()"
+
+CMD ["/app/scripts/start_web.sh"]

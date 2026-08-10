@@ -21,7 +21,7 @@ redundantly. Section keys (optional ones appear only when relevant):
 | `recommendations` | Watch-rated picks — each with `evidence`, `risks`, `confidence`, `historical_context`, `explanation`. |
 | `risk_alerts` | Avoid-rated, same shape. |
 | `news` | `notable[]` (title, sentiment, tags). |
-| `meta` | `prompt_version`, `llm_backend`, `generated_at`. |
+| `meta` | `prompt_version`, actual `llm_backend`, `generated_at`, and P10.7 `generation` aggregate/per-purpose provenance. |
 
 Rankings, evidence, confidence, and risks are all deterministic (Phase 6); the
 LLM only writes the prose. Exports are therefore reproducible.
@@ -82,6 +82,9 @@ recommendation confidence/evidence/risks/historical context; and the first five
 notable news items. Raw sector-allocation arrays and individual similarity rows
 remain internal in both renderers. Tests lock this parity and deduplicate
 historical evidence already present in the recommendation evidence list.
+P10.7 provenance adds actual model version, deterministic fallback count, and
+total tokens when the provider supplies them; backend/model/fallback are also
+shown in the detail subtitle.
 
 ### Robustness (the roadmap's PDF edge cases)
 

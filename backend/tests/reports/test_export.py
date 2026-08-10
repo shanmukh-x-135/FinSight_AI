@@ -45,6 +45,26 @@ def test_markdown_contains_all_sections(make_sections) -> None:
     assert "not a forecast" in md
 
 
+def test_markdown_includes_actual_model_fallback_and_token_provenance(
+    make_sections,
+) -> None:
+    sections = make_sections()
+    sections["meta"]["llm_backend"] = "Gemini + deterministic fallback"
+    sections["meta"]["generation"] = {
+        "model_versions": ["gemini-3.6-flash-001"],
+        "requested_models": ["gemini-3.6-flash"],
+        "fallback_count": 1,
+        "usage": {"total_tokens": 42},
+    }
+
+    markdown = render_markdown(_report(sections))
+
+    assert "backend Gemini + deterministic fallback" in markdown
+    assert "model gemini-3.6-flash-001" in markdown
+    assert "1 deterministic fallback(s)" in markdown
+    assert "42 tokens" in markdown
+
+
 def test_markdown_scales_historical_return_ratio(make_sections) -> None:
     md = render_markdown(_report(make_sections()))
     # Historical returns use decimal ratios, unlike already-scaled market and
@@ -58,8 +78,7 @@ def test_markdown_contains_all_screen_summary_facts(make_sections) -> None:
     md = render_markdown(_report(make_sections()))
 
     assert (
-        "**Breadth:** 3 advancers / 1 decliners / 0 unchanged "
-        "(4 tracked; A/D ratio 3.00)"
+        "**Breadth:** 3 advancers / 1 decliners / 0 unchanged (4 tracked; A/D ratio 3.00)"
     ) in md
     assert "BBB.NS — Beta (₹96.00; -4.00%)" in md
     assert "**Diversification:** 50/100" in md
@@ -119,9 +138,7 @@ def test_pdf_text_contains_every_markdown_line(make_sections) -> None:
     markdown = render_markdown(_report(make_sections()))
     pdf = render_pdf(markdown)
     reader = PdfReader(BytesIO(pdf))
-    extracted = " ".join(
-        (page.extract_text() or "") for page in reader.pages
-    )
+    extracted = " ".join((page.extract_text() or "") for page in reader.pages)
     extracted = " ".join(extracted.split())
 
     for line in markdown.splitlines():
@@ -170,7 +187,9 @@ async def test_export_markdown_endpoint(client: AsyncClient, seed_reports) -> No
     token, uid = await _token(client, "exp-md@example.com")
     h = {"Authorization": f"Bearer {token}"}
     report = await seed_reports(uid, "daily")
-    resp = await client.get(f"/api/v1/reports/{report.id}/export?format=markdown", headers=h)
+    resp = await client.get(
+        f"/api/v1/reports/{report.id}/export?format=markdown", headers=h
+    )
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/markdown")
     assert "attachment" in resp.headers["content-disposition"]

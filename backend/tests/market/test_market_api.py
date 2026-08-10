@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -212,10 +212,17 @@ async def test_stock_indicators_history(client: AsyncClient, seed_market: None) 
 
 # ----- Admin ingestion trigger ---------------------------------------------
 class _FakeIngestClient:
-    def fetch_daily_prices(self, symbol: str) -> list[PriceBar]:
+    def fetch_daily_prices(
+        self,
+        symbol: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[PriceBar]:
+        current = date.today()
         return [
-            PriceBar(D1, 10, 11, 9, 10, 100),
-            PriceBar(D2, 10, 12, 10, 11, 120),
+            PriceBar(current - timedelta(days=1), 10, 11, 9, 10, 100),
+            PriceBar(current, 10, 12, 10, 11, 120),
         ]
 
     def fetch_fundamentals(self, symbol: str) -> FundamentalsData:

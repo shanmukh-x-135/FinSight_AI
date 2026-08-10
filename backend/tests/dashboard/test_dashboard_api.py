@@ -20,7 +20,9 @@ async def test_dashboard_requires_auth(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_summary_batches_everything(client: AsyncClient, seed_market) -> None:
+async def test_dashboard_summary_batches_everything(
+    client: AsyncClient, seed_market
+) -> None:
     headers = {"Authorization": f"Bearer {await _token(client, 'd7@example.com')}"}
     added = await client.post(
         "/api/v1/watchlist",
@@ -48,6 +50,8 @@ async def test_dashboard_summary_batches_everything(client: AsyncClient, seed_ma
 
     # Deterministic AI market summary is present (narrator fallback, never empty).
     assert isinstance(data["ai_market_summary"], str) and data["ai_market_summary"]
+    assert data["generation"]["actual_backends"] == ["deterministic"]
+    assert data["generation"]["fallback_count"] == 0
 
     # No portfolio for a fresh account.
     assert data["portfolio"] is None
@@ -66,10 +70,16 @@ async def test_dashboard_summary_batches_everything(client: AsyncClient, seed_ma
 
 
 @pytest.mark.asyncio
-async def test_dashboard_summary_is_deterministic(client: AsyncClient, seed_market) -> None:
+async def test_dashboard_summary_is_deterministic(
+    client: AsyncClient, seed_market
+) -> None:
     headers = {"Authorization": f"Bearer {await _token(client, 'd7b@example.com')}"}
-    first = (await client.get("/api/v1/dashboard/summary", headers=headers)).json()["data"]
-    second = (await client.get("/api/v1/dashboard/summary", headers=headers)).json()["data"]
+    first = (await client.get("/api/v1/dashboard/summary", headers=headers)).json()[
+        "data"
+    ]
+    second = (await client.get("/api/v1/dashboard/summary", headers=headers)).json()[
+        "data"
+    ]
     assert [o["symbol"] for o in first["opportunities"]] == [
         o["symbol"] for o in second["opportunities"]
     ]

@@ -31,7 +31,7 @@ FEATURE_NAMES: tuple[str, ...] = (
     "avg_bollinger_position",
     "avg_atr_pct",
     "avg_macd_hist_pct",
-    "avg_sentiment",   # real news sentiment (Phase 5); neutral 0.0 when no news
+    "avg_sentiment",  # real news sentiment (Phase 5); neutral 0.0 when no news
     "usd_inr_return",
     "crude_oil_return",
     "gold_return",
@@ -96,12 +96,8 @@ def compute_session_feature(
     decliners = sum(1 for r in returns if r < 0)
 
     avg_rsi = _mean([sd.rsi for sd in stock_days if sd.rsi is not None])
-    ema20 = _mean(
-        [(sd.close - sd.ema20) / sd.ema20 for sd in stock_days if sd.ema20]
-    )
-    ema50 = _mean(
-        [(sd.close - sd.ema50) / sd.ema50 for sd in stock_days if sd.ema50]
-    )
+    ema20 = _mean([(sd.close - sd.ema20) / sd.ema20 for sd in stock_days if sd.ema20])
+    ema50 = _mean([(sd.close - sd.ema50) / sd.ema50 for sd in stock_days if sd.ema50])
     bb = _mean(
         [
             (sd.close - sd.bb_lower) / (sd.bb_upper - sd.bb_lower)
@@ -111,9 +107,15 @@ def compute_session_feature(
             and sd.bb_upper > sd.bb_lower
         ]
     )
-    atr = _mean([sd.atr / sd.close for sd in stock_days if sd.atr is not None and sd.close])
+    atr = _mean(
+        [sd.atr / sd.close for sd in stock_days if sd.atr is not None and sd.close]
+    )
     macd = _mean(
-        [sd.macd_hist / sd.close for sd in stock_days if sd.macd_hist is not None and sd.close]
+        [
+            sd.macd_hist / sd.close
+            for sd in stock_days
+            if sd.macd_hist is not None and sd.close
+        ]
     )
 
     # Require every technical aggregate — a complete vector or nothing.
@@ -156,6 +158,12 @@ class Normalizer:
     """
 
     def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
+        if mean.ndim != 1 or mean.shape != std.shape or mean.size == 0:
+            raise ValueError("Normalizer parameters have incompatible dimensions.")
+        if not (np.isfinite(mean).all() and np.isfinite(std).all()):
+            raise ValueError("Normalizer contains non-finite values.")
+        if (std < 0).any():
+            raise ValueError("Normalizer standard deviation cannot be negative.")
         self.mean = mean
         self.std = std
 

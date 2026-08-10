@@ -24,7 +24,7 @@ by default.
 User → Next.js (frontend) → REST API → FastAPI (backend)
                                           │
               ┌───────────────────┬────────┼────────────────────┐
-          PostgreSQL            FAISS    External EOD Runner    Providers
+          PostgreSQL       FAISS cache   External EOD Runner    Providers
                                           │                    (market/RSS,
                                  market → news → history       Gemini optional)
 ```
@@ -47,10 +47,10 @@ store directly.
 | `chat`          | Conversational assistant reusing the RAG pipeline                    | Phase 9     |
 | `scheduler`     | Durable control plane and one-shot external EOD runner                 | Phase 2+    |
 
-## Implemented through Phase 9
+## Implemented through P10.8
 
 - FastAPI app factory with request IDs, structured JSON logging, global envelope
-  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0011`).
+  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0012`).
 - JWT/Argon2 auth with refresh rotation, preferences, rate limiting, persisted
   administrator capability, and ownership-scoped resources.
 - Deterministic market indicators, batched market snapshots, portfolio/risk
@@ -64,6 +64,8 @@ store directly.
   scoped report idempotency keys make process and HTTP retries duplicate-safe.
 - Target-bounded, per-symbol market windows use persisted watermarks for daily
   overlap repair and periodic adjusted-history reconciliation.
+- PostgreSQL-owned historical vectors and corpus identity reconstruct missing or
+  corrupt generation-addressed FAISS caches after restarts or interrupted writes.
 - Next.js App Router screens for auth, dashboard, market, history, portfolio,
   watchlist, settings, and reports; shared evidence disclosures and Plotly
   allocation visualization.
@@ -72,13 +74,19 @@ store directly.
 - A grounded conversational assistant that reuses the Phase 6 context, prompt,
   validation, and narration pipeline; responses stream over SSE only after
   validation and persist in user-scoped history.
+- Provider-neutral generation provenance records the actual backend, model
+  version, finish reason, attempts, latency, token usage, and fallback state for
+  reports, chat, dashboard summaries, and recommendations without logging prompts
+  or generated financial content.
 - Next.js Assistant UI with incremental rendering, recent-question history,
   confidence, sources, risks, and the shared evidence disclosure.
-- Docker Compose for the real stack, 292 backend tests, 42 frontend tests, and
+- Versioned Render/Vercel topology, non-root health-checked production images,
+  CI-gated deploys, fail-closed production settings, and a non-mutating smoke
+  verifier.
+- Docker Compose for the real stack, 340 backend tests, 42 frontend tests, and
   three Playwright Chromium journeys.
 
-`infrastructure` is deliberate Phase 10 scaffolding, not a partially implemented
-current feature.
+See [Production Deployment](deployment.md) for the P10.8 operator contract.
 
 ## Configuration
 

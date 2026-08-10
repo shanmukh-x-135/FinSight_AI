@@ -38,6 +38,26 @@ const assistantMessage: ChatMessage = {
   confidence: 65,
   sources: [{ kind: "market", label: "Market breadth", reference: "/market" }],
   risks: ["End-of-day data may not reflect intraday moves."],
+  generation: {
+    configured_backend: "GeminiClient",
+    backend: "gemini",
+    requested_model: "gemini-3.6-flash",
+    model_version: "gemini-3.6-flash-001",
+    response_id: "response-1",
+    finish_reason: "STOP",
+    provider_created_at: "2026-08-04T10:00:01Z",
+    attempt_count: 1,
+    provider_response_count: 1,
+    fallback_used: false,
+    latency_ms: 20,
+    usage: {
+      prompt_tokens: 10,
+      candidate_tokens: 4,
+      total_tokens: 14,
+      cached_tokens: null,
+      thoughts_tokens: null,
+    },
+  },
 };
 
 describe("ChatPage", () => {
@@ -65,6 +85,7 @@ describe("ChatPage", () => {
     );
 
     expect(await screen.findByText(assistantMessage.content)).toBeInTheDocument();
+    expect(screen.getByText(/gemini-3.6-flash-001/)).toBeInTheDocument();
     expect(screen.getByText("65% confidence")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Market breadth" })).toHaveAttribute(
       "href",

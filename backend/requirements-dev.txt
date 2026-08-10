@@ -1,0 +1,11 @@
+# FinSight AI — local development and test dependencies.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+httpx==0.28.1
+aiosqlite==0.20.0
+pypdf>=6,<7
+ruff>=0.12,<1
+PyYAML>=6,<7

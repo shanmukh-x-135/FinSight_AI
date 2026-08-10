@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -62,8 +63,8 @@ class Settings(BaseSettings):
     login_rate_limit_window_seconds: int = 60
 
     # ----- Historical intelligence (FAISS) ---------------------------------
-    # Directory for the persisted FAISS index + normalizer (mount a volume in
-    # production so it survives container restarts). Relative to the backend CWD.
+    # Reconstructable FAISS generation cache. A volume improves warm-start time,
+    # but PostgreSQL remains authoritative if ephemeral storage is cleared.
     data_dir: str = "./data"
     history_top_k: int = 10  # neighbours returned by similarity search
 
@@ -97,15 +98,37 @@ class Settings(BaseSettings):
     # LLM produces prose only; evidence/confidence/risks/rankings are deterministic.
     # Uses Gemini when GEMINI_API_KEY is set (needs requirements-ai.txt); otherwise
     # a deterministic narrator (reproducible, cost-free) renders the prose.
-    llm_model: str = "gemini-2.0-flash"
-    llm_max_retries: int = 2
-    llm_timeout_seconds: int = 30
+    llm_model: str = Field(default="gemini-3.6-flash", min_length=1)
+    llm_max_retries: int = Field(default=2, ge=1, le=5)
+    llm_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    llm_max_output_tokens: int = Field(default=1024, ge=64, le=8192)
+    llm_request_budget_seconds: float = Field(default=45, gt=0, le=180)
+    llm_max_provider_calls: int = Field(default=20, ge=1, le=100)
     top_n_recommendations: int = 5
 
     # ----- CORS ------------------------------------------------------------
     # ``NoDecode`` stops pydantic-settings from JSON-parsing the env value, so a
     # plain comma-separated string reaches our validator below.
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value: object) -> object:
+        """Accept managed-Postgres URLs while always selecting asyncpg."""
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+asyncpg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
+
+    @field_validator("database_url")
+    @classmethod
+    def _require_asyncpg(cls, value: PostgresDsn) -> PostgresDsn:
+        if not str(value).startswith("postgresql+asyncpg://"):
+            raise ValueError("DATABASE_URL must use the asyncpg driver")
+        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -118,6 +141,24 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
         return value
 
+    @model_validator(mode="after")
+    def _validate_production_safety(self) -> "Settings":
+        if not self.is_production:
+            return self
+        if self.debug or self.db_echo:
+            raise ValueError("DEBUG and DB_ECHO must be false in production")
+        if self.jwt_secret == "change-me-in-production" or len(self.jwt_secret) < 32:
+            raise ValueError(
+                "JWT_SECRET must contain at least 32 characters in production"
+            )
+        if not self.cors_origins:
+            raise ValueError("CORS_ORIGINS must contain the production frontend origin")
+        if any(not _is_https_origin(origin) for origin in self.cors_origins):
+            raise ValueError(
+                "Production CORS_ORIGINS must be explicit HTTPS origins without trailing slashes"
+            )
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
@@ -126,6 +167,23 @@ class Settings(BaseSettings):
     def database_url_str(self) -> str:
         """The database URL as a plain string for SQLAlchemy/Alembic."""
         return str(self.database_url)
+
+
+def _is_https_origin(value: str) -> bool:
+    try:
+        parsed = urlsplit(value)
+        _ = parsed.port  # force validation of malformed/out-of-range ports
+    except ValueError:
+        return False
+    return bool(
+        parsed.scheme == "https"
+        and parsed.hostname
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.path
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 @lru_cache

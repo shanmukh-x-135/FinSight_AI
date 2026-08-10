@@ -23,7 +23,7 @@ Provider-agnostic (`app/intelligence/llm_client.py`):
 
 | Backend | When | Notes |
 |---------|------|-------|
-| **Gemini Flash** (`google-genai`) | `GEMINI_API_KEY` set | Design doc's model. Native async calls, retry + per-attempt timeout; **degrades to the fallback on any failure — never raises**. Needs the AI extra (`requirements-ai.txt`). |
+| **Gemini 3.6 Flash** (`google-genai`) | `GEMINI_API_KEY` set | Current stable production model. Native async calls, retry + per-attempt timeout; **degrades to the fallback on any failure — never raises**. Needs the AI extra (`requirements-ai.txt`). |
 | **DeterministicNarrator** | default | Renders the prose directly from the structured facts. No API key, no cost, reproducible, offline-testable. The prompt builder always supplies a grounded fallback narrative, so output is always valid. |
 
 Same trade-off as FinBERT/Plotly in earlier phases: the design-doc model is
@@ -31,15 +31,28 @@ integrated and selectable, but the default keeps the system reproducible and
 cost-free. The evidence/rankings are identical either way.
 
 Gemini generation uses `client.aio.models.generate_content`, so provider I/O
-does not block FastAPI's event loop. `LLM_TIMEOUT_SECONDS` is applied both to
-the SDK transport (milliseconds) and as an `asyncio` deadline around each
-attempt. Timeouts, quota errors, empty responses, and exhausted retries all
-return the deterministic grounded fallback.
+does not block FastAPI's event loop. The system instruction is supplied through
+the SDK's typed `GenerateContentConfig`, separately from prompt contents;
+candidate count is fixed at one and `LLM_MAX_OUTPUT_TOKENS` bounds output.
+`LLM_TIMEOUT_SECONDS` is applied both to the SDK transport (milliseconds) and as
+an `asyncio` deadline around each attempt. Timeouts, quota errors, empty
+responses, and exhausted retries all return the deterministic grounded fallback.
+
+Each HTTP operation also shares one aggregate `LLM_REQUEST_BUDGET_SECONDS`
+deadline and `LLM_MAX_PROVIDER_CALLS` cap across all of its prose requests.
+Independent report sections and recommendation explanations run concurrently;
+the executive summary waits for those grounded sections. Once either aggregate
+limit is exhausted, remaining prose uses the deterministic fallback without
+calling Gemini. This bounds request latency and cost even when individual calls
+retry.
+
+The former `gemini-2.0-flash` default was shut down by Google on June 1, 2026.
+P10.7 moves the configurable production default to stable `gemini-3.6-flash`.
 
 ## Pipeline
 
 ```
-context builder (RAG) → prompt builder → LLM (prose) → explainability validation → report
+context builder (RAG) → prompt builder → LLM (prose + provenance) → validation → report
 recommendation engine (deterministic filter → rank → evidence/risks/confidence)
 ```
 
@@ -94,6 +107,26 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
 `portfolio_summary` (if the user has a portfolio), `recommendations`,
 `risk_alerts`, `news`, `meta`. Markdown/PDF are rendered on demand in Phase 8.
 
+### Generation provenance (P10.7)
+
+Every generation produces text plus provider-neutral metadata. For Gemini this
+captures the requested model, provider-reported model version, response ID,
+finish reason, provider creation time, attempts, response count, latency, and
+optional prompt/candidate/total/cached/thought token counts. Token usage is
+aggregated across rejected retries, not just the accepted response.
+
+Reports persist an aggregate and per-purpose record under `meta.generation`;
+chat persists one record with each structured assistant answer. Dashboard and
+recommendation responses expose request-level aggregates. `llm_backend` now
+describes the backend that actually supplied stored prose, including mixed
+Gemini/deterministic-fallback reports, rather than merely the configured client.
+
+Structured `llm_generation_completed` logs contain only bounded model, count,
+latency, fallback, and usage fields. API keys, prompts, system instructions,
+provider response text, exception messages, and grounding claim values are never
+stored in metadata or logs. All provider fields are nullable because availability
+varies by API/backend and response outcome.
+
 ## Data model (migration `0007_reports`)
 
 - **reports** — `user_id` (nullable → global market report), `report_type`,
@@ -129,7 +162,10 @@ Structured **JSONB sections** (design doc §6.2): `executive_summary`,
   section is explicitly framed as context, "not a forecast".
 - **Provider reliability** — tests cover native async generation, event-loop
   progress during an in-flight request, configured transport timeout, retries,
-  timeout fallback, empty output, and provider exceptions.
+  timeout fallback, empty output, provider exceptions, typed request config,
+  response metadata, retry usage aggregation, aggregate call/deadline budgets,
+  concurrent independent narration, actual-backend attribution, and sanitized
+  logging.
 
 ~97% coverage across the intelligence modules. Live: a real report cited RELIANCE
 with RSI/EMA/MACD/sector/historical evidence and real risks, confidence 54%, and

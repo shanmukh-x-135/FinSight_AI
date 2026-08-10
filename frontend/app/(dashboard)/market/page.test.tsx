@@ -52,6 +52,25 @@ describe("MarketPage AI analysis states", () => {
     vi.mocked(intelligenceApi.recommendations).mockResolvedValue({
       watchlist: [],
       risk_alerts: [],
+      generation: {
+        schema_version: 1,
+        configured_backend: "DeterministicNarrator",
+        actual_backends: ["deterministic"],
+        requested_models: [],
+        model_versions: [],
+        generation_count: 0,
+        provider_attempt_count: 0,
+        provider_response_count: 0,
+        fallback_count: 0,
+        usage: {
+          prompt_tokens: null,
+          candidate_tokens: null,
+          total_tokens: null,
+          cached_tokens: null,
+          thoughts_tokens: null,
+        },
+        items: [],
+      },
     });
     render(<MarketPage />);
 

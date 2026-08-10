@@ -1,23 +1,41 @@
-# FinSight AI frontend image (development-oriented).
-# Build context is ./frontend (see docker-compose.yml).
-# Runs the Next.js dev server so the placeholder landing page is reachable in
-# the local stack. Phase 10 replaces this with a production `next build` image
-# (Vercel handles the real production deploy).
-#
-# Uses a Debian (glibc) base rather than Alpine (musl): Next.js 16 / Turbopack
-# ships prebuilt native binaries that are most reliable on glibc.
+# syntax=docker/dockerfile:1
 
-FROM node:20-slim
-
+FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Install dependencies first for better layer caching.
-COPY package.json package-lock.json* ./
-RUN npm install
 
-# Copy the rest of the frontend source.
+FROM node:22-bookworm-slim AS builder
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_API_URL
+ARG FRONTEND_BUILD_ENV=production
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
+    FRONTEND_BUILD_ENV=${FRONTEND_BUILD_ENV} \
+    NEXT_OUTPUT_MODE=standalone
+COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
+RUN npm run build
 
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+
+RUN groupadd --gid 10001 finsight \
+    && useradd --uid 10001 --gid finsight --create-home --shell /usr/sbin/nologin finsight
+
+COPY --from=builder --chown=finsight:finsight /app/.next/standalone ./
+COPY --from=builder --chown=finsight:finsight /app/.next/static ./.next/static
+
+USER finsight
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:3000/').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+
+CMD ["node", "server.js"]

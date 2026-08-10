@@ -105,9 +105,13 @@ export default function ReportDetailPage() {
   const news = s.news?.notable ?? [];
 
   const generated = s.meta?.generated_at ?? report.created_at;
+  const generation = s.meta?.generation;
+  const model = generation?.model_versions[0] ?? generation?.requested_models[0];
   const subtitle =
     `Report #${report.id} · Generated ${new Date(generated).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` +
     (s.meta?.llm_backend ? ` · ${s.meta.llm_backend}` : "") +
+    (model ? ` · ${model}` : "") +
+    (generation?.fallback_count ? ` · ${generation.fallback_count} fallback` : "") +
     (s.meta?.prompt_version ? ` · prompt v${s.meta.prompt_version}` : "");
 
   const actions = (

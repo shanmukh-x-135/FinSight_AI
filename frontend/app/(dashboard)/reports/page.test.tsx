@@ -47,7 +47,7 @@ describe("ReportsPage loading", () => {
     await screen.findByRole("link", { name: "Open →" });
 
     await user.click(screen.getByRole("combobox", { name: "Type" }));
-    await user.click(screen.getByRole("option", { name: "Weekly" }));
+    await user.click(await screen.findByRole("option", { name: "Weekly" }));
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
     expect(reportsApi.list).toHaveBeenLastCalledWith({

@@ -9,11 +9,22 @@ used by report generation, and the rankings/evidence remain deterministic.
 
 from __future__ import annotations
 
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder
-from app.intelligence.llm_client import LLMClient, generate_grounded, get_llm_client
+from app.intelligence.generation import (
+    GenerationBudget,
+    generation_record,
+    summarize_generations,
+)
+from app.intelligence.llm_client import (
+    LLMClient,
+    generate_grounded_result,
+    get_llm_client,
+)
 from app.intelligence.recommendation_engine import (
     rank_candidates,
     select_risk_alerts,
@@ -47,23 +58,52 @@ class DashboardService:
         risk_alerts = select_risk_alerts(ranked)
 
         system = pb.system_instruction()
-        for rec in opportunities + risk_alerts:
+        recommendations = opportunities + risk_alerts
+        budget = GenerationBudget(
+            settings.llm_request_budget_seconds,
+            settings.llm_max_provider_calls,
+        )
+
+        async def narrate_recommendation(rec):
             prompt, fallback = pb.recommendation_explanation(rec)
-            rec.explanation = await generate_grounded(
-                self.llm, system, prompt, fallback
+            return await generate_grounded_result(
+                self.llm, system, prompt, fallback, budget=budget
             )
 
         market_prompt, market_fallback = pb.market_section(market)
-        ai_market_summary = await generate_grounded(
-            self.llm, system, market_prompt, market_fallback
+        generated = await asyncio.gather(
+            *(narrate_recommendation(rec) for rec in recommendations),
+            generate_grounded_result(
+                self.llm,
+                system,
+                market_prompt,
+                market_fallback,
+                budget=budget,
+            ),
+        )
+
+        generation_records: list[dict] = []
+        for rec, result in zip(recommendations, generated[:-1], strict=True):
+            rec.explanation = result.text
+            generation_records.append(
+                generation_record(f"recommendation:{rec.symbol}", result.metadata)
+            )
+
+        market_result = generated[-1]
+        generation_records.append(
+            generation_record("market_summary", market_result.metadata)
         )
 
         return {
             "market": market,
-            "ai_market_summary": ai_market_summary,
+            "ai_market_summary": market_result.text,
             "portfolio": portfolio,
             "watchlist": [item.model_dump(mode="json") for item in user_watchlist],
             "opportunities": [_rec_to_dict(r) for r in opportunities],
             "risk_alerts": [_rec_to_dict(r) for r in risk_alerts],
             "history": history,
+            "generation": summarize_generations(
+                generation_records,
+                configured_backend=type(self.llm).__name__,
+            ),
         }

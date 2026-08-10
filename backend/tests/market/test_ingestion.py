@@ -40,6 +40,9 @@ def _make_bars(n: int = 60, start: float = 100.0, step: float = 1.0) -> list[Pri
     return bars
 
 
+TARGET = _make_bars()[-1].date
+
+
 class FakeClient:
     """Configurable in-memory MarketDataClient."""
 
@@ -50,7 +53,13 @@ class FakeClient:
             name="Test Corp", sector="Technology", industry="Software", market_cap=1_000
         )
 
-    def fetch_daily_prices(self, symbol: str) -> list[PriceBar]:
+    def fetch_daily_prices(
+        self,
+        symbol: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[PriceBar]:
         if symbol in self.fail_symbols:
             raise MarketDataError(f"boom for {symbol}")
         return self.bars_by_symbol.get(symbol, _make_bars())
@@ -63,7 +72,7 @@ class FakeClient:
 @pytest.mark.asyncio
 async def test_ingest_stores_all_layers(db_session: AsyncSession) -> None:
     service = MarketIngestionService(db_session, FakeClient())
-    result = await service.ingest(["GOOD.NS"])
+    result = await service.ingest(["GOOD.NS"], target_trading_date=TARGET)
 
     assert result.succeeded == ["GOOD.NS"]
     assert result.failed == []
@@ -98,7 +107,9 @@ async def test_default_ingest_persists_macro_as_inactive(
         {"INR=X": ("USD/INR", "Currency")},
     )
 
-    result = await MarketIngestionService(db_session, FakeClient()).ingest()
+    result = await MarketIngestionService(db_session, FakeClient()).ingest(
+        target_trading_date=TARGET
+    )
 
     assert result.succeeded == ["INR=X"]
     macro = await db_session.scalar(select(Stock).where(Stock.symbol == "INR=X"))
@@ -118,7 +129,9 @@ async def test_ingest_isolates_failures(db_session: AsyncSession) -> None:
     service = MarketIngestionService(
         db_session, FakeClient(fail_symbols=["BAD.NS"])
     )
-    result = await service.ingest(["GOOD.NS", "BAD.NS", "ALSOGOOD.NS"])
+    result = await service.ingest(
+        ["GOOD.NS", "BAD.NS", "ALSOGOOD.NS"], target_trading_date=TARGET
+    )
 
     assert set(result.succeeded) == {"GOOD.NS", "ALSOGOOD.NS"}
     assert result.failed == ["BAD.NS"]
@@ -134,12 +147,20 @@ async def test_ingest_enforces_provider_deadline(
     from config.settings import settings
 
     class SlowClient(FakeClient):
-        def fetch_daily_prices(self, symbol: str) -> list[PriceBar]:
+        def fetch_daily_prices(
+            self,
+            symbol: str,
+            *,
+            start_date: date | None = None,
+            end_date: date | None = None,
+        ) -> list[PriceBar]:
             time.sleep(0.05)
             return _make_bars()
 
     monkeypatch.setattr(settings, "market_fetch_timeout_seconds", 0.001)
-    result = await MarketIngestionService(db_session, SlowClient()).ingest(["SLOW.NS"])
+    result = await MarketIngestionService(db_session, SlowClient()).ingest(
+        ["SLOW.NS"], target_trading_date=TARGET
+    )
 
     assert result.succeeded == []
     assert result.failed == ["SLOW.NS"]
@@ -148,8 +169,10 @@ async def test_ingest_enforces_provider_deadline(
 @pytest.mark.asyncio
 async def test_ingest_is_idempotent(db_session: AsyncSession) -> None:
     service = MarketIngestionService(db_session, FakeClient())
-    await service.ingest(["GOOD.NS"])
-    await service.ingest(["GOOD.NS"])  # second run must not duplicate rows
+    await service.ingest(["GOOD.NS"], target_trading_date=TARGET)
+    await service.ingest(
+        ["GOOD.NS"], target_trading_date=TARGET
+    )  # second run must not duplicate rows
 
     stock = await MarketRepository(db_session).get_stock_by_symbol("GOOD.NS")
     count = await db_session.scalar(
@@ -230,3 +253,96 @@ def test_yfinance_drops_nan_and_invalid_bars(monkeypatch) -> None:
     bars = client.fetch_daily_prices("SYM")
     # Only the first two rows are valid.
     assert [b.date.isoformat() for b in bars] == ["2024-01-01", "2024-01-02"]
+
+
+def test_yfinance_uses_explicit_exclusive_window_and_repair_options(monkeypatch) -> None:
+    import pandas as pd
+
+    from app.shared.clients import yfinance_client as mod
+
+    idx = pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"])
+    frame = pd.DataFrame(
+        {
+            "Open": [10.0] * 4,
+            "High": [11.0] * 4,
+            "Low": [9.0] * 4,
+            "Close": [10.0, 11.0, 12.0, 13.0],
+            "Volume": [100] * 4,
+        },
+        index=idx,
+    )
+    options: dict[str, object] = {}
+
+    class FakeTicker:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def history(self, **kwargs):
+            options.update(kwargs)
+            return frame
+
+    monkeypatch.setattr(mod.yf, "Ticker", FakeTicker)
+    client = mod.YFinanceClient(timeout_seconds=9)
+    bars = client.fetch_daily_prices(
+        "SYM", start_date=date(2024, 1, 2), end_date=date(2024, 1, 4)
+    )
+
+    assert [bar.date for bar in bars] == [date(2024, 1, 2), date(2024, 1, 3)]
+    assert options == {
+        "interval": "1d",
+        "auto_adjust": True,
+        "actions": False,
+        "repair": False,
+        "raise_errors": True,
+        "timeout": 9,
+        "start": "2024-01-02",
+        "end": "2024-01-04",
+    }
+
+
+def test_yfinance_rejects_an_empty_or_reversed_window() -> None:
+    from app.shared.clients.yfinance_client import YFinanceClient
+
+    with pytest.raises(ValueError, match="exclusive end_date"):
+        YFinanceClient().fetch_daily_prices(
+            "SYM", start_date=date(2024, 1, 2), end_date=date(2024, 1, 2)
+        )
+
+
+def test_yfinance_falls_back_when_provider_repair_is_incompatible(
+    monkeypatch, caplog
+) -> None:
+    import pandas as pd
+
+    from app.shared.clients import yfinance_client as mod
+
+    frame = pd.DataFrame(
+        {
+            "Open": [10.0],
+            "High": [11.0],
+            "Low": [9.0],
+            "Close": [10.5],
+            "Volume": [100],
+        },
+        index=pd.to_datetime(["2024-01-02"]),
+    )
+    repair_values: list[bool] = []
+
+    class FakeTicker:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def history(self, **kwargs):
+            repair_values.append(kwargs["repair"])
+            if kwargs["repair"]:
+                raise ValueError("provider internal secret detail")
+            return frame
+
+    monkeypatch.setattr(mod.yf, "Ticker", FakeTicker)
+    bars = mod.YFinanceClient(max_attempts=1, provider_repair=True).fetch_daily_prices(
+        "SYM", start_date=date(2024, 1, 2), end_date=date(2024, 1, 3)
+    )
+
+    assert [bar.date for bar in bars] == [date(2024, 1, 2)]
+    assert repair_values == [True, False]
+    assert "secret detail" not in caplog.text

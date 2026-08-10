@@ -44,7 +44,9 @@ def _lines(*parts: str) -> str:
 def _quote_md(quote: dict) -> str:
     symbol = quote.get("symbol", "?")
     identity = f"{symbol} — {quote['name']}" if quote.get("name") else symbol
-    return f"{identity} ({_money(quote.get('close'))}; {_pct(quote.get('change_percent'))})"
+    return (
+        f"{identity} ({_money(quote.get('close'))}; {_pct(quote.get('change_percent'))})"
+    )
 
 
 def _recommendation_md(rec: dict) -> list[str]:
@@ -93,14 +95,28 @@ def render_markdown(report: Report) -> str:
     # Title + provenance
     title = f"FinSight AI — {report.report_type.capitalize()} Report"
     out.append(f"# {title}")
-    generated = meta.get("generated_at", report.created_at.isoformat() if report.created_at else "")
+    generated = meta.get(
+        "generated_at", report.created_at.isoformat() if report.created_at else ""
+    )
+    generation = meta.get("generation") or {}
+    models = generation.get("model_versions") or generation.get("requested_models") or []
+    total_tokens = (generation.get("usage") or {}).get("total_tokens")
     provenance = " · ".join(
-        p for p in [
+        p
+        for p in [
             f"Report #{report.id}",
             f"generated {generated}" if generated else "",
             f"prompt v{meta['prompt_version']}" if meta.get("prompt_version") else "",
             f"backend {meta['llm_backend']}" if meta.get("llm_backend") else "",
-        ] if p
+            f"model {models[0]}" if models else "",
+            (
+                f"{generation['fallback_count']} deterministic fallback(s)"
+                if generation.get("fallback_count")
+                else ""
+            ),
+            f"{total_tokens} tokens" if total_tokens is not None else "",
+        ]
+        if p
     )
     if provenance:
         out.append(f"_{provenance}_")
@@ -151,9 +167,13 @@ def render_markdown(report: Report) -> str:
             out.append(f"- **Known cost basis:** {_money(portfolio.get('total_cost'))}")
         out.append(f"- **Total value:** {_money(portfolio.get('total_value'))}")
         out.append(f"- **Total return:** {_pct(portfolio.get('total_return_percent'))}")
-        out.append(f"- **Health score:** {_num(portfolio.get('health_score'), 0)} "
-                   f"(risk: {portfolio.get('risk_level', '—')})")
-        out.append(f"- **Diversification:** {_num(portfolio.get('diversification_score'), 0)}/100")
+        out.append(
+            f"- **Health score:** {_num(portfolio.get('health_score'), 0)} "
+            f"(risk: {portfolio.get('risk_level', '—')})"
+        )
+        out.append(
+            f"- **Diversification:** {_num(portfolio.get('diversification_score'), 0)}/100"
+        )
         out.append(f"- **Holdings:** {portfolio.get('number_of_holdings', '—')}")
         out.append("")
 
@@ -166,11 +186,17 @@ def render_markdown(report: Report) -> str:
             out.append("")
         st = hist.get("statistics") or {}
         prob = st.get("bullish_probability")
-        out.append(f"- **Similar sessions:** {st.get('sample_size', '—')} "
-                   f"(top-{st.get('k', '—')} nearest)")
+        out.append(
+            f"- **Similar sessions:** {st.get('sample_size', '—')} "
+            f"(top-{st.get('k', '—')} nearest)"
+        )
         if prob is not None:
-            out.append(f"- **Closed higher next day:** {round(prob * 100)}% of them, historically")
-        out.append(f"- **Avg next-day return:** {_ratio_pct(st.get('avg_next_day_return'))}")
+            out.append(
+                f"- **Closed higher next day:** {round(prob * 100)}% of them, historically"
+            )
+        out.append(
+            f"- **Avg next-day return:** {_ratio_pct(st.get('avg_next_day_return'))}"
+        )
         out.append("- _Historical context, not a forecast._")
         out.append("")
 

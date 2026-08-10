@@ -19,11 +19,13 @@ from app.chat.routes import chat_router
 from app.dashboard.routes import dashboard_router
 from app.health import router as health_router
 from app.history.routes import history_admin_router, history_router
+from app.intelligence.llm_client import close_llm_client
 from app.intelligence.routes import intelligence_router
 from app.market.routes import admin_router, market_router
 from app.news.routes import news_admin_router, news_router
 from app.portfolio.routes import portfolio_router, watchlist_router
 from app.reports.routes import reports_router
+from app.scheduler.routes import scheduler_admin_router
 from app.shared.database import dispose_engine
 from app.shared.exceptions import register_exception_handlers
 from app.shared.middleware import RequestIDMiddleware
@@ -38,7 +40,10 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown hooks."""
     logger.info("app_startup", extra={"env": settings.app_env})
     yield
-    await dispose_engine()
+    try:
+        await close_llm_client()
+    finally:
+        await dispose_engine()
     logger.info("app_shutdown")
 
 
@@ -86,6 +91,7 @@ def create_app() -> FastAPI:
     app.include_router(intelligence_router, prefix=settings.api_v1_prefix)
     app.include_router(dashboard_router, prefix=settings.api_v1_prefix)
     app.include_router(chat_router, prefix=settings.api_v1_prefix)
+    app.include_router(scheduler_admin_router, prefix=settings.api_v1_prefix)
 
     return app
 

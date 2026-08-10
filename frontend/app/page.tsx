@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { resolveApiOrigin } from "@/lib/api-origin";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = resolveApiOrigin();
 
 type ConnState = "checking" | "connected" | "unreachable";
 

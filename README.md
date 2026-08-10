@@ -7,11 +7,14 @@ technical indicators, news sentiment, and Retrieval-Augmented Generation (RAG)
 to produce market and portfolio reports. It is a research assistant, not a
 price-prediction engine — every insight carries evidence, confidence, and risk.
 
-> **Status:** Phases 0–9 are implemented: authentication, market ingestion,
+> **Status:** Phases 0–9 and local Phase 10 implementation are complete:
+> authentication, market ingestion,
 > portfolio analytics, historical similarity, news/sentiment, evidence-grounded
 > intelligence, the dashboard, report browse/detail/Markdown/PDF export, and a
-> grounded streaming AI assistant with user-scoped history. Phase 10
-> (Deployment) is the next product phase.
+> grounded streaming AI assistant with user-scoped history, durable/retryable
+> EOD operations, reconstructable FAISS, production deployment definitions, and
+> recovery/staging procedures. External staging verification is still required; see
+> [`docs/deployment.md`](docs/deployment.md).
 
 ## Architecture
 
@@ -30,7 +33,8 @@ finsight-ai/
 ├── docker/             Dockerfiles for backend and frontend
 ├── docs/               Architecture and completed-feature documentation
 ├── scripts/            Dev/ops helper scripts
-├── infrastructure/     Reserved for Phase 10 deployment assets
+├── infrastructure/     Deployment/provider support assets
+├── render.yaml         Render API, EOD cron, and PostgreSQL Blueprint
 └── docker-compose.yml  Local full-stack dev
 ```
 
@@ -38,7 +42,7 @@ finsight-ai/
 
 - **Docker + Docker Compose** (recommended path), **or** for running natively:
   - Python **3.12+**
-  - Node **20+**
+  - Node **22+**
   - PostgreSQL **16**
 
 ## Quick start (Docker — recommended)
@@ -67,7 +71,7 @@ registration/login links.
 ```bash
 cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env                       # set DATABASE_URL to your Postgres
 alembic upgrade head                       # apply migrations
 uvicorn app.main:app --reload              # http://localhost:8000
@@ -93,7 +97,7 @@ curl http://localhost:8000/health/db       # {"status":"ok","database":"reachabl
 
 ```bash
 cd backend
-./.venv/bin/python -m pytest               # 289 fast tests + 3 PostgreSQL integration tests
+./.venv/bin/python -m pytest               # 336 fast tests + 4 PostgreSQL integration tests
 ./.venv/bin/ruff check .                   # Python lint gate
 
 cd ../frontend
@@ -108,6 +112,8 @@ npm run test:e2e                          # real Docker stack + Chromium flows
 All backend variables are documented in [`backend/.env.example`](backend/.env.example)
 and validated at startup by `config/settings.py` (the two are kept in sync).
 `DATABASE_URL` is required; secrets are never committed.
+Production topology, secrets, migration order, and smoke verification are
+documented in [`docs/deployment.md`](docs/deployment.md).
 
 ## Contributing
 
