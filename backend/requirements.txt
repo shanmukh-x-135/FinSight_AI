@@ -1,4 +1,4 @@
-# FinSight AI — backend runtime + dev dependencies
+# FinSight AI — backend runtime dependencies
 # Pinned to compatible minimum versions; Python 3.12+ required.
 
 # --- Web framework / ASGI ---
@@ -38,12 +38,3 @@ feedparser==6.0.14           # RSS news ingestion
 # FinBERT (design doc's sentiment model) is an OPTIONAL extra — see
 # requirements-ml.txt. The default sentiment backend is a dependency-free
 # lexicon, so the base image stays light. Set SENTIMENT_BACKEND=finbert to use it.
-
-# --- Testing ---
-pytest==8.3.4
-pytest-asyncio==0.25.2
-pytest-cov==6.0.0            # coverage measurement (auth target 80%+)
-httpx==0.28.1
-aiosqlite==0.20.0            # ephemeral DB for fast unit/smoke tests
-pypdf>=6,<7                  # extract generated PDF text for export parity tests
-ruff>=0.12,<1                # Python linting (configured in pyproject.toml)
