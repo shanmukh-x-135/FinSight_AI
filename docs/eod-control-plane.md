@@ -2,16 +2,16 @@
 
 P10.1 adds durable orchestration around the existing market → news → history
 pipeline. It does not redesign the domain jobs themselves. PostgreSQL remains the
-source of truth for execution state, while APScheduler temporarily remains a thin
-caller until P10.2.
+source of truth for execution state. P10.2 now invokes it through a standalone
+one-shot process instead of an in-process web scheduler.
 
 ## Execution contract
 
 Every invocation identifies a `pipeline_name` and an explicit
 `target_trading_date`. The database enforces one logical `pipeline_runs` row for
-that pair. The current APScheduler caller supplies the market-local calendar date
-when it invokes the control plane; exchange-holiday and provider-readiness checks
-are intentionally deferred to P10.3.
+that pair. The external runner accepts an explicit ISO date or supplies the
+market-local calendar date; exchange-holiday and provider-readiness checks are
+intentionally deferred to P10.3.
 
 The logical run has a stable UUID correlation ID and an attempt counter. Retrying
 a failed or partial execution resumes that row and increments the attempt counter;
@@ -67,11 +67,10 @@ lists, credentials, and secrets are not written to control-plane error fields.
 
 ## Deliberate later-phase boundaries
 
-P10.2 replaces in-process APScheduler startup with an external EOD runner. P10.3
-adds the real Indian-market trading calendar and provider-readiness checks. This
-phase also does not add incremental ingestion, stronger write idempotency/news
+P10.3 adds the real Indian-market trading calendar and provider-readiness checks.
+Later phases also cover incremental ingestion, stronger write idempotency/news
 fingerprints, report dedupe, PostgreSQL-backed FAISS reconstruction, Gemini
-generation metadata, deployment resources, or provider accounts.
+generation metadata, deployment resources, and provider accounts.
 
 There is necessarily a small crash window between a domain service committing
 its data and the control plane committing the step checkpoint. A retry in that

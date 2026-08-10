@@ -3,8 +3,9 @@
 #   docker compose up --build
 #
 # Values here are non-secret DEV defaults. Production secrets are supplied via
-# the platform's environment (Render/Vercel), never committed. See docs/deployment.md
-# (added in Phase 10).
+# the platform's environment (Render/Vercel), never committed. The one-shot EOD
+# runner is documented in docs/eod-runner.md; managed scheduling is not part of
+# this local web stack.
 
 services:
   db:
