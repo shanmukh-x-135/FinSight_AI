@@ -10,6 +10,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.models import DailyPrice, Indicator, Stock
 from app.market.repository import MarketRepository
+from app.shared.clients.market_data import PriceBar
+
+
+@pytest.mark.asyncio
+async def test_atomic_price_upsert_updates_loaded_identity_without_duplicates(
+    db_session: AsyncSession,
+) -> None:
+    repo = MarketRepository(db_session)
+    stock = await repo.upsert_stock(
+        "ATOMIC.NS",
+        name="Atomic",
+        sector=None,
+        industry=None,
+        exchange="NSE",
+    )
+    first = PriceBar(
+        date=date(2026, 8, 10), open=100, high=102, low=99, close=101, volume=10
+    )
+    await repo.upsert_daily_prices(stock.id, [first])
+    loaded = (await repo.get_price_history(stock.id))[0]
+
+    corrected = PriceBar(
+        date=first.date, open=100, high=103, low=98, close=102, volume=20
+    )
+    await repo.upsert_daily_prices(stock.id, [corrected, corrected])
+    refreshed = (await repo.get_price_history(stock.id))[0]
+
+    assert refreshed is loaded
+    assert refreshed.close == 102
+    assert refreshed.volume == 20
+    assert len(await repo.get_price_history(stock.id)) == 1
 
 
 @pytest.mark.asyncio

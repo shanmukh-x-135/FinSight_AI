@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from sqlalchemy import func, select
@@ -80,6 +80,37 @@ async def test_ingest_dedupes_same_title_across_feeds(
     ]
     result = await _service(db_session, items).ingest()
     assert result.new_articles == 1
+
+
+@pytest.mark.asyncio
+async def test_reingest_dedupes_same_story_at_a_different_url(
+    db_session: AsyncSession, seed_stocks: None
+) -> None:
+    title = "Reliance surges on strong profit"
+    await _service(db_session, [make_item("http://feedA/1", title)]).ingest()
+    second = await _service(db_session, [make_item("http://feedB/9", title)]).ingest()
+
+    assert second.new_articles == 0
+    count = await db_session.scalar(select(func.count()).select_from(NewsArticle))
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_same_headline_on_a_later_day_is_a_distinct_story(
+    db_session: AsyncSession, seed_stocks: None
+) -> None:
+    title = "Reliance announces quarterly results"
+    first_day = datetime(2024, 3, 1, 10, tzinfo=timezone.utc)
+    second_day = datetime(2024, 3, 2, 10, tzinfo=timezone.utc)
+    result = await _service(
+        db_session,
+        [
+            make_item("http://feed/1", title, published_at=first_day),
+            make_item("http://feed/2", title, published_at=second_day),
+        ],
+    ).ingest()
+
+    assert result.new_articles == 2
 
 
 @pytest.mark.asyncio
