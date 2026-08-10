@@ -3,22 +3,22 @@
 Pipeline (all deterministic — no AI):
   market data → daily feature vectors → fit normalizer → FAISS index → statistics.
 
-The normalizer is fitted once and persisted; both the build path and the query
-path load and apply the *same* normalizer, so there is no drift between the
-vectors put into the index and the vector used to query it.
+The normalizer is fitted once per content-addressed corpus generation. Both the
+build and query paths use that generation, preventing normalization drift.
 """
 
 from __future__ import annotations
 
-import os
-from datetime import date
+import asyncio
+import json
+from datetime import date, datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.history.artifacts import CorpusRow, HistoryArtifactCache, IndexCorpus
 from app.history.constants import (
+    ARTIFACT_SCHEMA_VERSION,
     MIN_SESSIONS_TO_BUILD,
-    index_path,
-    normalizer_path,
 )
 from app.history.embeddings import FaissIndexStore
 from app.history.exceptions import (
@@ -75,24 +75,41 @@ class HistoryService:
             )
             upserted.append(
                 await self.repo.upsert_session(
-                    session_date, features=feat, next_day_return=ndr,
+                    session_date,
+                    features=feat,
+                    next_day_return=ndr,
                     outcome=outcome_label(ndr),
                 )
             )
 
-        # Fit normalizer + build FAISS index (persisted to disk).
-        vectors = [vector_from_features(feat) for _d, feat in session_features]
-        normalizer = Normalizer.fit(vectors)
-        normalizer.save(normalizer_path())
-        normalized = normalizer.transform_many(vectors)
-        ids = [s.id for s in upserted]
-        store = FaissIndexStore.build(ids, normalized)
-        store.save(index_path())
+        # Fit the deterministic in-memory index. PostgreSQL is committed before
+        # any cache generation is published, so a process crash cannot make an
+        # uncommitted index visible.
+        corpus = IndexCorpus.from_rows(
+            CorpusRow(
+                session_id=session.id,
+                faiss_id=session.id,
+                dimension=len(vector_from_features(session.feature_vector)),
+                feature_vector=session.feature_vector,
+            )
+            for session in upserted
+        )
+        normalizer, store = corpus.reconstruct()
+        ids = corpus.ids
 
         # Refresh embedding references.
         await self.repo.clear_embeddings()
         for s in upserted:
             await self.repo.add_embedding(s.id, faiss_id=s.id, dim=store.dim)
+
+        built_at = datetime.now(tz=timezone.utc)
+        await self.repo.upsert_index_state(
+            corpus_hash=corpus.corpus_hash,
+            session_count=len(corpus.ids),
+            dimension=corpus.dimension,
+            artifact_schema_version=ARTIFACT_SCHEMA_VERSION,
+            built_at=built_at,
+        )
 
         # Cache the latest session's outlook statistics.
         latest = upserted[-1]
@@ -105,11 +122,22 @@ class HistoryService:
         await self.repo.upsert_statistics(latest.id, stats)
 
         await self.db.commit()
+        try:
+            await asyncio.to_thread(HistoryArtifactCache(corpus).publish)
+        except (OSError, RuntimeError, ValueError) as exc:
+            # Cache loss is non-fatal: every query can reconstruct from the
+            # committed PostgreSQL raw vectors.
+            logger.warning(
+                "history_artifact_publish_failed",
+                extra={"error": type(exc).__name__, "generation": corpus.corpus_hash},
+            )
         logger.info(
             "history_index_built",
             extra={"sessions": len(ids), "dim": store.dim},
         )
-        return RebuildResult(sessions_indexed=len(ids), dim=store.dim, latest_date=latest.date)
+        return RebuildResult(
+            sessions_indexed=len(ids), dim=store.dim, latest_date=latest.date
+        )
 
     async def _engineer_features(self) -> list[tuple[date, dict[str, float]]]:
         """Assemble each date's complete market feature vector from Phase 2 data."""
@@ -191,24 +219,46 @@ class HistoryService:
         self, query_date: date | None = None, k: int | None = None
     ) -> SimilarityResponse:
         k = k or settings.history_top_k
-        if not (os.path.exists(index_path()) and os.path.exists(normalizer_path())):
+        state, snapshot = await self.repo.get_index_snapshot()
+        if state is None:
             raise IndexNotBuiltError()
 
         try:
-            normalizer = Normalizer.load(normalizer_path())
-            store = FaissIndexStore.load(index_path())
-        except (OSError, RuntimeError, ValueError) as exc:
+            corpus = IndexCorpus.from_rows(
+                CorpusRow(
+                    session_id=session.id,
+                    faiss_id=embedding.faiss_id,
+                    dimension=embedding.dim,
+                    feature_vector=session.feature_vector,
+                )
+                for embedding, session in snapshot
+            )
+            if (
+                state.artifact_schema_version != ARTIFACT_SCHEMA_VERSION
+                or state.corpus_hash != corpus.corpus_hash
+                or state.session_count != len(corpus.ids)
+                or state.dimension != corpus.dimension
+            ):
+                raise ValueError("Committed history index state is inconsistent")
+        except (KeyError, TypeError, ValueError) as exc:
             logger.warning(
                 "history_index_incompatible",
-                extra={"error": type(exc).__name__, "detail": str(exc)},
+                extra={"error": type(exc).__name__},
             )
             raise IndexNotBuiltError() from exc
 
-        session = (
-            await self.repo.get_session_by_date(query_date)
-            if query_date is not None
-            else await self.repo.get_latest_session()
-        )
+        normalizer, store = await self._load_artifacts(corpus)
+
+        indexed_sessions = [session for _embedding, session in snapshot]
+        if query_date is None:
+            session = max(indexed_sessions, key=lambda item: item.date, default=None)
+        else:
+            session = next(
+                (item for item in indexed_sessions if item.date == query_date),
+                None,
+            )
+            if session is None:
+                session = await self.repo.get_session_by_date(query_date)
         if session is None:
             raise SessionNotFoundError()
 
@@ -249,6 +299,29 @@ class HistoryService:
             similar_sessions=similar,
             statistics=StatisticsOut(**stats),
         )
+
+    @staticmethod
+    async def _load_artifacts(
+        corpus: IndexCorpus,
+    ) -> tuple[Normalizer, FaissIndexStore]:
+        cache = HistoryArtifactCache(corpus)
+        try:
+            return await asyncio.to_thread(cache.load)
+        except (OSError, RuntimeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            logger.info(
+                "history_artifact_reconstructing",
+                extra={"reason": type(exc).__name__, "generation": corpus.corpus_hash},
+            )
+
+        normalizer, store = await asyncio.to_thread(corpus.reconstruct)
+        try:
+            await asyncio.to_thread(cache.publish)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.warning(
+                "history_artifact_repair_failed",
+                extra={"error": type(exc).__name__, "generation": corpus.corpus_hash},
+            )
+        return normalizer, store
 
     # ----- Shared search (identical for build-stats and query) ------------
     @staticmethod

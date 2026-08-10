@@ -6,8 +6,8 @@ each vector is addressed by its ``session_id``. Exact search + fixed inputs make
 the index fully deterministic: rebuilding from the same data yields identical
 rankings.
 
-The index is persisted to disk (a mounted volume in production) so it survives
-restarts, alongside the fitted normalizer.
+The index may be cached on disk alongside the fitted normalizer. PostgreSQL raw
+vectors remain authoritative, so cache loss or corruption is recoverable.
 """
 
 from __future__ import annotations
@@ -41,8 +41,17 @@ class FaissIndexStore:
     def size(self) -> int:
         return int(self.index.ntotal)
 
+    @property
+    def ids(self) -> list[int]:
+        """Return persisted external IDs for cache integrity validation."""
+        if not isinstance(self.index, faiss.IndexIDMap):
+            raise ValueError("FAISS index is not ID-mapped")
+        return [int(value) for value in faiss.vector_to_array(self.index.id_map)]
+
     def search(self, vector: np.ndarray, k: int) -> list[tuple[int, float]]:
         """Return up to ``k`` ``(session_id, l2_distance)`` pairs, nearest first."""
+        if vector.size != self.dim:
+            raise ValueError("query vector dimension does not match index")
         query = np.ascontiguousarray(vector.reshape(1, -1), dtype="float32")
         k = min(k, self.size) if self.size else 0
         if k == 0:
@@ -61,4 +70,6 @@ class FaissIndexStore:
     @classmethod
     def load(cls, path: str) -> "FaissIndexStore":
         index = faiss.read_index(path)
+        if not isinstance(index, faiss.IndexIDMap):
+            raise ValueError("Persisted FAISS index is not ID-mapped")
         return cls(index=index, dim=index.d)

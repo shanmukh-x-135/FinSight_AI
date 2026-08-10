@@ -1,19 +1,19 @@
 """Data-access for the historical-intelligence domain.
 
-Reads Phase 2 market data (prices + indicators) to build feature vectors, and
-persists the three historical tables. Embedding vectors themselves live in the
-on-disk FAISS index — this layer only stores the reference rows.
+Reads Phase 2 market data and persists historical sessions, index membership,
+committed corpus identity, and statistics. Local FAISS files are derived cache.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.history.models import (
     HistoricalEmbedding,
+    HistoricalIndexState,
     HistoricalSession,
     HistoricalStatistics,
 )
@@ -100,9 +100,7 @@ class HistoryRepository:
             stmt.on_conflict_do_update(
                 index_elements=[HistoricalSession.date],
                 set_={
-                    key: getattr(stmt.excluded, key)
-                    for key in values
-                    if key != "date"
+                    key: getattr(stmt.excluded, key) for key in values if key != "date"
                 },
             )
             .returning(HistoricalSession)
@@ -128,9 +126,7 @@ class HistoryRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_sessions_by_ids(
-        self, ids: list[int]
-    ) -> dict[int, HistoricalSession]:
+    async def get_sessions_by_ids(self, ids: list[int]) -> dict[int, HistoricalSession]:
         if not ids:
             return {}
         result = await self.db.execute(
@@ -157,6 +153,53 @@ class HistoryRepository:
             )
         )
 
+    async def upsert_index_state(
+        self,
+        *,
+        corpus_hash: str,
+        session_count: int,
+        dimension: int,
+        artifact_schema_version: int,
+        built_at: datetime,
+    ) -> None:
+        values = {
+            "id": 1,
+            "corpus_hash": corpus_hash,
+            "session_count": session_count,
+            "dimension": dimension,
+            "artifact_schema_version": artifact_schema_version,
+            "built_at": built_at,
+            "updated_at": built_at,
+        }
+        stmt = conflict_insert(self.db, HistoricalIndexState).values(**values)
+        await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[HistoricalIndexState.id],
+                set_={key: getattr(stmt.excluded, key) for key in values if key != "id"},
+            )
+        )
+
+    async def get_index_snapshot(
+        self,
+    ) -> tuple[
+        HistoricalIndexState | None, list[tuple[HistoricalEmbedding, HistoricalSession]]
+    ]:
+        """Read state, membership, and raw vectors in one database statement."""
+        result = await self.db.execute(
+            select(HistoricalIndexState, HistoricalEmbedding, HistoricalSession)
+            .select_from(HistoricalIndexState)
+            .join(HistoricalEmbedding, true())
+            .join(
+                HistoricalSession, HistoricalSession.id == HistoricalEmbedding.session_id
+            )
+            .where(HistoricalIndexState.id == 1)
+            .order_by(HistoricalSession.id)
+        )
+        rows = result.all()
+        if not rows:
+            return None, []
+        return rows[0][0], [(row[1], row[2]) for row in rows]
+
     # ----- Statistics -----------------------------------------------------
     async def upsert_statistics(self, session_id: int, stats: dict) -> None:
         values = {"session_id": session_id, **stats}
@@ -164,9 +207,6 @@ class HistoryRepository:
         await self.db.execute(
             stmt.on_conflict_do_update(
                 index_elements=[HistoricalStatistics.session_id],
-                set_={
-                    key: getattr(stmt.excluded, key)
-                    for key in stats
-                },
+                set_={key: getattr(stmt.excluded, key) for key in stats},
             )
         )
