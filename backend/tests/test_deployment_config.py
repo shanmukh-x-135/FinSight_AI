@@ -90,3 +90,19 @@ def test_compose_faiss_tmpfs_is_writable_by_non_root_backend() -> None:
     assert compose["services"]["backend"]["tmpfs"] == [
         "/app/data:mode=0770,uid=10001,gid=10001"
     ]
+
+
+def test_ci_scopes_production_frontend_origin_to_build_only() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    frontend = workflow["jobs"]["frontend"]
+    steps = {step.get("name"): step for step in frontend["steps"]}
+
+    assert "env" not in frontend
+    assert "env" not in steps["Test frontend defaults"]
+    assert steps["Build production frontend"]["env"] == {
+        "FRONTEND_BUILD_ENV": "production",
+        "NEXT_PUBLIC_API_URL": "https://api.finsight.example",
+    }
+
+    containers = workflow["jobs"]["containers"]
+    assert set(containers["needs"]) == {"backend", "frontend"}
