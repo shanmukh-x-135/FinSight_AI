@@ -8,8 +8,9 @@ return a downloadable file (not the JSON envelope) since the body is a document.
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -29,9 +30,21 @@ reports_router = APIRouter(prefix="/reports", tags=["reports"])
     summary="Generate an evidence-backed report for the current user",
 )
 async def generate_report(
-    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=200,
+            description="Opaque retry key; reuse it to receive the original report.",
+        ),
+    ] = None,
 ) -> dict:
-    report = await ReportService(db).generate(user.id)
+    report = await ReportService(db).generate(
+        user.id, idempotency_key=idempotency_key
+    )
     return envelope(data=ReportOut.model_validate(report), message="Report generated.")
 
 

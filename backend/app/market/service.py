@@ -8,7 +8,10 @@ one bad symbol logs and is skipped, never aborting the batch.
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+from enum import StrEnum
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +19,7 @@ from app.market import constants as C
 from app.market import indicators as ind
 from app.market.exceptions import SectorNotFoundError, StockNotFoundError
 from app.market.models import DailyPrice, Stock
-from app.market.repository import MarketRepository
+from app.market.repository import MarketRepository, PriceIngestionState
 from app.market.schemas import (
     BreadthOut,
     EconomicCalendarOut,
@@ -31,12 +34,98 @@ from app.market.schemas import (
     TechnicalSummaryOut,
 )
 from app.shared.clients.economic_calendar import EconomicCalendarClient
-from app.shared.clients.market_data import MarketDataClient, PriceBar
+from app.shared.clients.market_data import (
+    FundamentalsData,
+    MarketDataClient,
+    MarketDataError,
+    PriceBar,
+)
 from app.shared.clients.yfinance_client import build_default_client
 from config.logging import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+
+
+class IngestionMode(StrEnum):
+    BOOTSTRAP = "bootstrap"
+    RECONCILIATION = "reconciliation"
+    INCREMENTAL = "incremental"
+
+
+@dataclass(frozen=True)
+class PriceFetchWindow:
+    start_date: date
+    end_date: date
+    target_trading_date: date
+    mode: IngestionMode
+
+    @property
+    def is_full(self) -> bool:
+        return self.mode in {IngestionMode.BOOTSTRAP, IngestionMode.RECONCILIATION}
+
+
+@dataclass(frozen=True)
+class SymbolIngestionOutcome:
+    bars_fetched: int
+    mode: IngestionMode
+
+
+def _as_utc(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(tz=timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def plan_price_fetch(
+    state: PriceIngestionState | None,
+    target_trading_date: date,
+    *,
+    now: datetime | None = None,
+) -> PriceFetchWindow:
+    """Choose a bounded bootstrap, reconciliation, or incremental window."""
+    synchronized_at = _as_utc(now)
+    if state is None or state.latest_price_date is None:
+        mode = IngestionMode.BOOTSTRAP
+    elif state.last_full_price_sync_at is None:
+        mode = IngestionMode.RECONCILIATION
+    else:
+        last_full = _as_utc(state.last_full_price_sync_at)
+        due_at = last_full + timedelta(days=settings.market_full_reconciliation_days)
+        mode = (
+            IngestionMode.RECONCILIATION
+            if synchronized_at >= due_at
+            else IngestionMode.INCREMENTAL
+        )
+
+    if mode in {IngestionMode.BOOTSTRAP, IngestionMode.RECONCILIATION}:
+        start_date = target_trading_date - timedelta(
+            days=settings.market_bootstrap_lookback_days
+        )
+    else:
+        assert state is not None and state.latest_price_date is not None
+        anchor = min(state.latest_price_date, target_trading_date)
+        start_date = anchor - timedelta(
+            days=settings.market_incremental_overlap_days
+        )
+    return PriceFetchWindow(
+        start_date=start_date,
+        end_date=target_trading_date + timedelta(days=1),
+        target_trading_date=target_trading_date,
+        mode=mode,
+    )
+
+
+def _can_advance_full_watermark(
+    state: PriceIngestionState | None, target_trading_date: date
+) -> bool:
+    return (
+        state is None
+        or state.latest_price_date is None
+        or target_trading_date >= state.latest_price_date
+    )
 
 
 def compute_indicator_points(bars: list[PriceBar]) -> list[dict]:
@@ -83,7 +172,17 @@ class MarketIngestionService:
         self.repo = MarketRepository(db)
         self.client = client or build_default_client()
 
-    async def ingest(self, symbols: list[str] | None = None) -> IngestionResult:
+    async def ingest(
+        self,
+        symbols: list[str] | None = None,
+        *,
+        target_trading_date: date | None = None,
+        now: datetime | None = None,
+    ) -> IngestionResult:
+        synchronized_at = _as_utc(now)
+        target = target_trading_date or synchronized_at.astimezone(
+            ZoneInfo(settings.market_timezone)
+        ).date()
         universe = (
             list(symbols)
             if symbols is not None
@@ -91,61 +190,133 @@ class MarketIngestionService:
         )
         succeeded: list[str] = []
         failed: list[str] = []
+        bars_fetched = 0
+        mode_counts = {mode: 0 for mode in IngestionMode}
 
         for symbol in universe:
             try:
                 if symbol in C.MACRO_PROXIES:
-                    await self._ingest_macro_one(symbol)
+                    outcome = await self._ingest_macro_one(
+                        symbol, target, synchronized_at
+                    )
                 else:
-                    await self._ingest_one(symbol)
+                    outcome = await self._ingest_one(symbol, target, synchronized_at)
                 await self.db.commit()
                 succeeded.append(symbol)
-                logger.info("ingest_symbol_ok", extra={"symbol": symbol})
+                bars_fetched += outcome.bars_fetched
+                mode_counts[outcome.mode] += 1
+                logger.info(
+                    "ingest_symbol_ok",
+                    extra={
+                        "symbol": symbol,
+                        "target_trading_date": target.isoformat(),
+                        "ingestion_mode": outcome.mode.value,
+                        "price_bars_fetched": outcome.bars_fetched,
+                    },
+                )
             except Exception as exc:  # noqa: BLE001 — isolate one symbol's failure
                 await self.db.rollback()
                 failed.append(symbol)
                 logger.error(
                     "ingest_symbol_failed",
-                    extra={"symbol": symbol, "error": type(exc).__name__, "detail": str(exc)},
+                    extra={"symbol": symbol, "error": type(exc).__name__},
                 )
 
         logger.info(
             "ingest_complete",
-            extra={"requested": len(universe), "ok": len(succeeded), "failed": len(failed)},
+            extra={
+                "requested": len(universe),
+                "ok": len(succeeded),
+                "failed": len(failed),
+                "target_trading_date": target.isoformat(),
+                "price_bars_fetched": bars_fetched,
+                "bootstrap_symbols": mode_counts[IngestionMode.BOOTSTRAP],
+                "reconciliation_symbols": mode_counts[IngestionMode.RECONCILIATION],
+                "incremental_symbols": mode_counts[IngestionMode.INCREMENTAL],
+            },
         )
         return IngestionResult(
-            requested=len(universe), succeeded=succeeded, failed=failed
+            requested=len(universe),
+            succeeded=succeeded,
+            failed=failed,
+            price_bars_fetched=bars_fetched,
+            bootstrap_symbols=mode_counts[IngestionMode.BOOTSTRAP],
+            reconciliation_symbols=mode_counts[IngestionMode.RECONCILIATION],
+            incremental_symbols=mode_counts[IngestionMode.INCREMENTAL],
         )
 
-    async def _ingest_one(self, symbol: str) -> None:
+    async def _fetch_prices(
+        self, symbol: str, window: PriceFetchWindow
+    ) -> list[PriceBar]:
         # Providers are blocking, so run them off-loop and enforce an external
         # deadline even when their own SDK does not expose one consistently.
         bars = await asyncio.wait_for(
-            asyncio.to_thread(self.client.fetch_daily_prices, symbol),
+            asyncio.to_thread(
+                self.client.fetch_daily_prices,
+                symbol,
+                start_date=window.start_date,
+                end_date=window.end_date,
+            ),
             timeout=settings.market_fetch_timeout_seconds,
         )
-        fundamentals = await asyncio.wait_for(
+        bounded = {
+            bar.date: bar
+            for bar in bars
+            if window.start_date <= bar.date < window.end_date
+        }
+        if not bounded:
+            raise MarketDataError(f"No valid price bars returned for {symbol}")
+        return [bounded[day] for day in sorted(bounded)]
+
+    async def _fetch_fundamentals(self, symbol: str) -> FundamentalsData:
+        return await asyncio.wait_for(
             asyncio.to_thread(self.client.fetch_fundamentals, symbol),
             timeout=settings.market_fetch_timeout_seconds,
         )
 
+    async def _ingest_one(
+        self, symbol: str, target: date, synchronized_at: datetime
+    ) -> SymbolIngestionOutcome:
+        state = await self.repo.get_price_ingestion_state(symbol)
+        window = plan_price_fetch(state, target, now=synchronized_at)
+        bars = await self._fetch_prices(symbol, window)
+        fundamentals = (
+            await self._fetch_fundamentals(symbol)
+            if window.is_full
+            else None
+        )
+
         stock = await self.repo.upsert_stock(
             symbol,
-            name=fundamentals.name,
-            sector=fundamentals.sector,
-            industry=fundamentals.industry,
+            name=fundamentals.name if fundamentals is not None else None,
+            sector=fundamentals.sector if fundamentals is not None else None,
+            industry=fundamentals.industry if fundamentals is not None else None,
             exchange=C.DEFAULT_EXCHANGE,
         )
         await self.repo.upsert_daily_prices(stock.id, bars)
-        await self.repo.upsert_fundamentals(stock.id, fundamentals)
-        await self.repo.upsert_indicators(stock.id, compute_indicator_points(bars))
+        if fundamentals is not None:
+            await self.repo.upsert_fundamentals(stock.id, fundamentals)
+        canonical_bars = [
+            PriceBar(row.date, row.open, row.high, row.low, row.close, row.volume)
+            for row in await self.repo.get_price_history(stock.id)
+        ]
+        affected_points = [
+            point
+            for point in compute_indicator_points(canonical_bars)
+            if point["date"] >= window.start_date
+        ]
+        await self.repo.upsert_indicators(stock.id, affected_points)
+        if window.is_full and _can_advance_full_watermark(state, target):
+            await self.repo.mark_full_price_sync(stock.id, synchronized_at)
+        return SymbolIngestionOutcome(len(bars), window.mode)
 
-    async def _ingest_macro_one(self, symbol: str) -> None:
+    async def _ingest_macro_one(
+        self, symbol: str, target: date, synchronized_at: datetime
+    ) -> SymbolIngestionOutcome:
         """Persist one cross-asset proxy without exposing it as an equity."""
-        bars = await asyncio.wait_for(
-            asyncio.to_thread(self.client.fetch_daily_prices, symbol),
-            timeout=settings.market_fetch_timeout_seconds,
-        )
+        state = await self.repo.get_price_ingestion_state(symbol)
+        window = plan_price_fetch(state, target, now=synchronized_at)
+        bars = await self._fetch_prices(symbol, window)
         name, asset_class = C.MACRO_PROXIES[symbol]
         stock = await self.repo.upsert_stock(
             symbol,
@@ -156,6 +327,9 @@ class MarketIngestionService:
             is_active=False,
         )
         await self.repo.upsert_daily_prices(stock.id, bars)
+        if window.is_full and _can_advance_full_watermark(state, target):
+            await self.repo.mark_full_price_sync(stock.id, synchronized_at)
+        return SymbolIngestionOutcome(len(bars), window.mode)
 
 
 def _quote_from_prices(stock: Stock, last_two: list[DailyPrice]) -> QuoteOut:

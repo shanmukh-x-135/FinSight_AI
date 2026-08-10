@@ -21,9 +21,11 @@ Standard, LiveMint — configurable), parsed with `feedparser` behind a
 provider-agnostic `NewsClient` interface (tests inject a fake, no network). A bad
 feed is skipped, never fatal.
 
-**Dedupe** is two-layer: by URL (unique constraint) and by normalized title
-within a batch (the same story from two feeds → stored once, so aggregation isn't
-double-counted).
+**Dedupe** is database-backed: URL remains unique, and migration
+`0010_write_idempotency` adds a unique SHA-256 story fingerprint derived from a
+normalized title and publication date. It works across batches, process retries,
+different feed URLs, and concurrent workers; the database atomically chooses the
+winner. See [Write Idempotency](write-idempotency.md).
 
 ### 2. Sentiment scoring (`shared/ml/sentiment.py`)
 
@@ -69,9 +71,9 @@ varying values that contribute to similarity. **Verified end-to-end**: a session
 `avg_sentiment` moved from `0.0` to the injected value after a sentiment row was
 added for that date and the index rebuilt.
 
-## Data model (migration `0006_news`)
+## Data model (migrations `0006_news`, `0010_write_idempotency`)
 
-- **news_articles** — deduped article (unique `url`) + sentiment scores.
+- **news_articles** — deduped article (unique `url` and `fingerprint`) + sentiment scores.
 - **news_article_stocks** — company tags (unique `(article_id, stock_id)`).
 - **sentiment_daily** — per-stock, per-day aggregate (unique `(stock_id, date)`).
   Sector/day sentiment is derived on read as an article-count-weighted aggregate
@@ -104,5 +106,5 @@ not loaded in unit tests).
 
 - Company-specific news for a small universe is sparse in general market feeds;
   tagging yields few hits per fetch (expected).
-- Cross-run near-duplicate stories (same story, new URL next day) may recur;
-  within-batch title dedupe handles the common case.
+- Fingerprinting intentionally uses exact normalized headlines rather than fuzzy
+  semantic matching; materially rewritten headlines can remain distinct.

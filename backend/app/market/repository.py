@@ -1,21 +1,18 @@
-"""Data-access layer for the market domain.
-
-Upserts are done by loading existing rows for a stock once and updating/inserting
-in memory (portable across Postgres and SQLite, no dialect-specific ON CONFLICT).
-Fine for the modest tracked universe run once per day.
-"""
+"""Data-access layer for the market domain."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Iterable
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
 from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
 from app.shared.clients.market_data import FundamentalsData, PriceBar
+from app.shared.upsert import conflict_insert
 
 
 @dataclass(frozen=True)
@@ -23,6 +20,13 @@ class MarketSnapshot:
     stock: Stock
     prices: tuple[DailyPrice, ...]
     indicator: Indicator | None
+
+
+@dataclass(frozen=True)
+class PriceIngestionState:
+    stock_id: int
+    latest_price_date: date | None
+    last_full_price_sync_at: datetime | None
 
 
 class MarketRepository:
@@ -40,25 +44,32 @@ class MarketRepository:
         exchange: str | None,
         is_active: bool | None = None,
     ) -> Stock:
-        result = await self.db.execute(select(Stock).where(Stock.symbol == symbol))
-        stock = result.scalar_one_or_none()
-        if stock is None:
-            stock = Stock(symbol=symbol)
-            self.db.add(stock)
         # Only overwrite with non-None values so a failed fundamentals fetch
         # doesn't wipe previously-known metadata.
+        values: dict[str, object] = {"symbol": symbol}
         if name is not None:
-            stock.name = name
+            values["name"] = name
         if sector is not None:
-            stock.sector = sector
+            values["sector"] = sector
         if industry is not None:
-            stock.industry = industry
+            values["industry"] = industry
         if exchange is not None:
-            stock.exchange = exchange
+            values["exchange"] = exchange
         if is_active is not None:
-            stock.is_active = is_active
-        await self.db.flush()
-        return stock
+            values["is_active"] = is_active
+        stmt = conflict_insert(self.db, Stock).values(**values)
+        updates = {key: getattr(stmt.excluded, key) for key in values if key != "symbol"}
+        # A symbol-only call remains a harmless atomic no-op on conflict.
+        if not updates:
+            updates = {"symbol": stmt.excluded.symbol}
+        result = await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Stock.symbol], set_=updates
+            )
+            .returning(Stock)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one()
 
     async def get_stock_by_symbol(self, symbol: str) -> Stock | None:
         result = await self.db.execute(
@@ -159,36 +170,72 @@ class MarketRepository:
         )
         return list(result.scalars().all())
 
+    async def get_price_ingestion_state(
+        self, symbol: str
+    ) -> PriceIngestionState | None:
+        """Return the per-symbol watermark without loading its price history."""
+        result = await self.db.execute(
+            select(
+                Stock.id,
+                func.max(DailyPrice.date),
+                Stock.last_full_price_sync_at,
+            )
+            .outerjoin(DailyPrice, DailyPrice.stock_id == Stock.id)
+            .where(Stock.symbol == symbol)
+            .group_by(Stock.id, Stock.last_full_price_sync_at)
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        return PriceIngestionState(
+            stock_id=row[0],
+            latest_price_date=row[1],
+            last_full_price_sync_at=row[2],
+        )
+
+    async def mark_full_price_sync(
+        self, stock_id: int, synchronized_at: datetime
+    ) -> None:
+        await self.db.execute(
+            update(Stock)
+            .where(Stock.id == stock_id)
+            .values(last_full_price_sync_at=synchronized_at)
+        )
+
     # ----- Prices ----------------------------------------------------------
     async def upsert_daily_prices(self, stock_id: int, bars: list[PriceBar]) -> int:
+        unique_bars = {bar.date: bar for bar in bars}
+        if not unique_bars:
+            return 0
+        values = [
+            {
+                "stock_id": stock_id,
+                "date": bar.date,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+            }
+            for bar in unique_bars.values()
+        ]
+        stmt = conflict_insert(self.db, DailyPrice).values(values)
         result = await self.db.execute(
-            select(DailyPrice).where(DailyPrice.stock_id == stock_id)
+            stmt.on_conflict_do_update(
+                index_elements=[DailyPrice.stock_id, DailyPrice.date],
+                set_={
+                    "open": stmt.excluded.open,
+                    "high": stmt.excluded.high,
+                    "low": stmt.excluded.low,
+                    "close": stmt.excluded.close,
+                    "volume": stmt.excluded.volume,
+                },
+            )
+            .returning(DailyPrice)
+            .execution_options(populate_existing=True)
         )
-        existing = {p.date: p for p in result.scalars().all()}
-        for bar in bars:
-            row = existing.get(bar.date)
-            if row is None:
-                self.db.add(
-                    DailyPrice(
-                        stock_id=stock_id,
-                        date=bar.date,
-                        open=bar.open,
-                        high=bar.high,
-                        low=bar.low,
-                        close=bar.close,
-                        volume=bar.volume,
-                    )
-                )
-            else:
-                row.open, row.high, row.low, row.close, row.volume = (
-                    bar.open,
-                    bar.high,
-                    bar.low,
-                    bar.close,
-                    bar.volume,
-                )
-        await self.db.flush()
-        return len(bars)
+        result.scalars().all()
+        return len(unique_bars)
 
     async def get_last_two_prices(self, stock_id: int) -> list[DailyPrice]:
         result = await self.db.execute(
@@ -209,40 +256,67 @@ class MarketRepository:
 
     # ----- Fundamentals ----------------------------------------------------
     async def upsert_fundamentals(self, stock_id: int, data: FundamentalsData) -> None:
-        result = await self.db.execute(
-            select(Fundamentals).where(Fundamentals.stock_id == stock_id)
+        values = {
+            name: value
+            for name, value in {
+                "market_cap": data.market_cap,
+                "pe_ratio": data.pe_ratio,
+                "eps": data.eps,
+                "dividend_yield": data.dividend_yield,
+                "week52_high": data.week52_high,
+                "week52_low": data.week52_low,
+            }.items()
+            if value is not None
+        }
+        if not values:
+            return
+        stmt = conflict_insert(self.db, Fundamentals).values(
+            stock_id=stock_id, **values
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = Fundamentals(stock_id=stock_id)
-            self.db.add(row)
-        row.market_cap = data.market_cap
-        row.pe_ratio = data.pe_ratio
-        row.eps = data.eps
-        row.dividend_yield = data.dividend_yield
-        row.week52_high = data.week52_high
-        row.week52_low = data.week52_low
-        await self.db.flush()
+        result = await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Fundamentals.stock_id],
+                set_={
+                    **{name: getattr(stmt.excluded, name) for name in values},
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(Fundamentals)
+            .execution_options(populate_existing=True)
+        )
+        result.scalars().all()
 
     # ----- Indicators ------------------------------------------------------
     async def upsert_indicators(
         self, stock_id: int, points: list[dict[str, object]]
     ) -> int:
-        result = await self.db.execute(
-            select(Indicator).where(Indicator.stock_id == stock_id)
+        unique_points = {point["date"]: point for point in points}
+        if not unique_points:
+            return 0
+        values = [{"stock_id": stock_id, **point} for point in unique_points.values()]
+        stmt = conflict_insert(self.db, Indicator).values(values)
+        update_columns = (
+            "rsi_14",
+            "ema_20",
+            "ema_50",
+            "macd",
+            "macd_signal",
+            "macd_histogram",
+            "bb_upper",
+            "bb_middle",
+            "bb_lower",
+            "atr_14",
         )
-        existing = {i.date: i for i in result.scalars().all()}
-        for point in points:
-            point_date = point["date"]
-            row = existing.get(point_date)  # type: ignore[arg-type]
-            if row is None:
-                self.db.add(Indicator(stock_id=stock_id, **point))  # type: ignore[arg-type]
-            else:
-                for key, value in point.items():
-                    if key != "date":
-                        setattr(row, key, value)
-        await self.db.flush()
-        return len(points)
+        result = await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Indicator.stock_id, Indicator.date],
+                set_={name: getattr(stmt.excluded, name) for name in update_columns},
+            )
+            .returning(Indicator)
+            .execution_options(populate_existing=True)
+        )
+        result.scalars().all()
+        return len(unique_points)
 
     async def get_latest_indicator(self, stock_id: int) -> Indicator | None:
         result = await self.db.execute(

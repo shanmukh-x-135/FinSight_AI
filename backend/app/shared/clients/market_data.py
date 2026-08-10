@@ -54,8 +54,14 @@ class MarketDataError(Exception):
 class MarketDataClient(Protocol):
     """Synchronous provider interface (callers run it off the event loop)."""
 
-    def fetch_daily_prices(self, symbol: str) -> list[PriceBar]:
-        """Return validated daily bars (oldest→newest); may raise MarketDataError."""
+    def fetch_daily_prices(
+        self,
+        symbol: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[PriceBar]:
+        """Return bars in ``[start_date, end_date)``; bounds are optional."""
         ...
 
     def fetch_fundamentals(self, symbol: str) -> FundamentalsData:

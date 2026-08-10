@@ -24,6 +24,7 @@ email-validator==2.2.0       # pydantic EmailStr validation
 
 # --- Market data ---
 yfinance==0.2.66             # daily OHLCV + fundamentals provider
+pandas-market-calendars==5.3.2  # maintained NSE sessions/holidays (offline rules)
 
 # --- Historical intelligence (vector similarity) ---
 faiss-cpu==1.15.0            # FAISS index for historical-session similarity search

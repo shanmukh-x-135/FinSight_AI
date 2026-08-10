@@ -19,6 +19,7 @@ from app.history.models import (
 )
 from app.market.models import DailyPrice, Indicator, Stock
 from app.news.models import SentimentDaily
+from app.shared.upsert import conflict_insert
 
 
 class HistoryRepository:
@@ -83,23 +84,31 @@ class HistoryRepository:
         next_day_return: float | None,
         outcome: str | None,
     ) -> HistoricalSession:
+        values = {
+            "date": session_date,
+            "avg_return": features["avg_return"],
+            "median_return": features["median_return"],
+            "pct_advancers": features["pct_advancers"],
+            "advance_decline_ratio": features["advance_decline_ratio"],
+            "avg_rsi": features["avg_rsi"],
+            "feature_vector": features,
+            "next_day_return": next_day_return,
+            "outcome": outcome,
+        }
+        stmt = conflict_insert(self.db, HistoricalSession).values(**values)
         result = await self.db.execute(
-            select(HistoricalSession).where(HistoricalSession.date == session_date)
+            stmt.on_conflict_do_update(
+                index_elements=[HistoricalSession.date],
+                set_={
+                    key: getattr(stmt.excluded, key)
+                    for key in values
+                    if key != "date"
+                },
+            )
+            .returning(HistoricalSession)
+            .execution_options(populate_existing=True)
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = HistoricalSession(date=session_date)
-            self.db.add(row)
-        row.avg_return = features["avg_return"]
-        row.median_return = features["median_return"]
-        row.pct_advancers = features["pct_advancers"]
-        row.advance_decline_ratio = features["advance_decline_ratio"]
-        row.avg_rsi = features["avg_rsi"]
-        row.feature_vector = features
-        row.next_day_return = next_day_return
-        row.outcome = outcome
-        await self.db.flush()
-        return row
+        return result.scalar_one()
 
     async def list_sessions(self) -> list[HistoricalSession]:
         result = await self.db.execute(
@@ -138,22 +147,26 @@ class HistoryRepository:
         await self.db.flush()
 
     async def add_embedding(self, session_id: int, faiss_id: int, dim: int) -> None:
-        self.db.add(
-            HistoricalEmbedding(session_id=session_id, faiss_id=faiss_id, dim=dim)
+        stmt = conflict_insert(self.db, HistoricalEmbedding).values(
+            session_id=session_id, faiss_id=faiss_id, dim=dim
         )
-        await self.db.flush()
+        await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[HistoricalEmbedding.session_id],
+                set_={"faiss_id": stmt.excluded.faiss_id, "dim": stmt.excluded.dim},
+            )
+        )
 
     # ----- Statistics -----------------------------------------------------
     async def upsert_statistics(self, session_id: int, stats: dict) -> None:
-        result = await self.db.execute(
-            select(HistoricalStatistics).where(
-                HistoricalStatistics.session_id == session_id
+        values = {"session_id": session_id, **stats}
+        stmt = conflict_insert(self.db, HistoricalStatistics).values(**values)
+        await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[HistoricalStatistics.session_id],
+                set_={
+                    key: getattr(stmt.excluded, key)
+                    for key in stats
+                },
             )
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = HistoricalStatistics(session_id=session_id)
-            self.db.add(row)
-        for key, value in stats.items():
-            setattr(row, key, value)
-        await self.db.flush()

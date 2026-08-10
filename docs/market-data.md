@@ -18,9 +18,18 @@ without appearing in equity APIs, breadth, sectors, watchlists, or portfolios.
 
 The client (`app/shared/clients/yfinance_client.py`):
 - **retries** transient failures (`market_fetch_max_attempts`, linear backoff);
+- uses explicit inclusive `start` / exclusive `end` dates plus SDK and outer
+  timeouts; yfinance's currently incompatible repair path is opt-in;
 - **validates** — drops bars with NaN / non-finite / non-positive OHLC, or
   `high < low`. Yahoo returns a NaN close for the in-progress session, so the
 incomplete latest bar is discarded rather than stored as corrupt data.
+
+Before the external EOD runner enters the durable pipeline, the P10.3 preflight
+uses maintained offline NSE session/holiday rules, waits for the configured
+post-close buffer, and requires a validated `^NSEI` bar for the exact target
+session. Non-trading dates are safe no-ops; premature, stale, timeout, and
+provider-unavailable outcomes exit retryably without creating pipeline state.
+See [Trading Calendar and Provider Readiness](trading-calendar-readiness.md).
 
 Upcoming India macro events come from the optional **Trading Economics**
 country/date calendar API through an async HTTPX adapter. Set
@@ -30,13 +39,17 @@ returns `not_configured`. Neither path substitutes static or mocked events.
 
 ## Ingestion pipeline
 
-`fetch → validate → store prices → compute indicators → store` per equity
+`plan window → fetch → validate → atomic price upsert → canonical indicator
+recompute → affected indicator upsert` per equity
 (`app/market/service.py::MarketIngestionService`). Each symbol is **isolated**:
 one bad symbol logs and is skipped (its transaction rolled back), never aborting
 the batch. yfinance is blocking, so calls run off the event loop via
 `asyncio.to_thread`; every price/fundamentals call is bounded by
 `MARKET_FETCH_TIMEOUT_SECONDS` even where the provider SDK has no consistent
-timeout parameter.
+timeout parameter. The P10.5 planner bootstraps 370 calendar days, normally
+fetches only a seven-day overlap from the latest stored bar, and performs a
+full configured-window reconciliation every 30 days. See
+[Incremental Market Ingestion](incremental-market-ingestion.md).
 Macro proxies follow the same fetch/validation/deadline path but store only
 prices because equity indicators and fundamentals do not apply to them.
 
@@ -55,7 +68,8 @@ sector, and intelligence candidate paths share this batch primitive.
   [EOD Control Plane](eod-control-plane.md).
 - **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
-  synchronously and returns `{requested, succeeded, failed}`.
+  synchronously and returns symbol results plus fetched-bar and window-mode
+  counters.
 
 ## Indicators
 
@@ -71,21 +85,25 @@ match standard charting tools:
 | Bollinger | 20, 2σ           | SMA ± n × **population** std dev |
 | ATR       | 14               | Wilder's smoothing of True Range |
 
-Computed for the full stored history (`compute_indicator_points`), warm-up rows
-skipped. Verified end-to-end: an independent RSI-14 recomputation on 248 real
-RELIANCE bars matched the stored value to 10 decimals.
+Computed from full canonical stored history (`compute_indicator_points`), with
+warm-up rows skipped and only the requested-window suffix rewritten. This keeps
+incremental EMA/MACD mathematically identical to a full recomputation. Verified
+end-to-end: an independent RSI-14 recomputation on 248 real RELIANCE bars matched
+the stored value to 10 decimals.
 
-## Data model (migration `0003_market`)
+## Data model (migrations `0003_market`, `0011_incremental_ingestion`)
 
-- **stocks** — `symbol (unique), name, sector (indexed), industry, exchange, is_active`;
+- **stocks** — `symbol (unique), name, sector (indexed), industry, exchange,
+  is_active, last_full_price_sync_at`;
   inactive rows identify cross-asset macro proxies.
 - **daily_prices** — `stock_id, date, open/high/low/close, volume`; unique + index on `(stock_id, date)` (queried by date range constantly).
 - **indicators** — `stock_id, date`, one column per indicator; unique on `(stock_id, date)`.
 - **fundamentals** — 1:1 with stock: `market_cap, pe_ratio, eps, dividend_yield, week52_high/low`.
 
-Upserts load a stock's existing rows once and update/insert in memory (portable
-across Postgres/SQLite, no dialect-specific `ON CONFLICT`) — fine for a modest
-universe run once per day.
+All logical keys use atomic PostgreSQL/SQLite `INSERT ... ON CONFLICT` upserts.
+Retries and concurrent manual/EOD writers update the canonical row rather than
+raising a uniqueness race or creating a duplicate. See
+[Write Idempotency](write-idempotency.md).
 
 ## Read endpoints (`/api/v1/market`)
 
@@ -108,8 +126,10 @@ Daily % change is computed from the two most recent `daily_prices` rows.
 `backend/tests/market/`:
 - **Indicators** — reference-value goldens (hand-derived) + property checks.
 - **Ingestion** — fake client: full-pipeline storage, inactive macro-proxy
-  persistence, partial-failure isolation, idempotency; yfinance retry
-  (success-after-transient, exhaustion) and NaN/invalid bar dropping.
+  persistence, partial-failure isolation, idempotency, exact incremental/full
+  windows, overlap correction, future-row rejection, rollback-safe watermarks,
+  periodic reconciliation, and canonical indicators; yfinance retry
+  (success-after-transient, exhaustion), window options, and invalid-bar dropping.
 - **API** — seeded reads (gainers/losers/breadth/technical summary/sector/detail/
   indicators/economic events, 404s) and the administrator-gated trigger.
 - **Economic calendar** — HTTPX mock transport verifies authenticated date-range

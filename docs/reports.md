@@ -3,8 +3,8 @@
 Turns Phase 6's structured report data into a browsable, filterable, exportable
 Reports experience. Nothing new is *generated* here — generation stays in the
 intelligence pipeline (`app/intelligence/`); this module (`app/reports/`) owns
-the browse → open → export workflow and reuses Phase 6's `reports` table
-unchanged (no migration).
+the browse → open → export workflow. P10.4 migration
+`0010_write_idempotency` adds retry-safe report generation metadata.
 
 ## Report structure
 
@@ -30,12 +30,18 @@ LLM only writes the prose. Exports are therefore reproducible.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /reports/generate` | Generate + store a report (delegates to the intelligence pipeline). |
+| `POST /reports/generate` | Generate + store a report; optional `Idempotency-Key` safely replays the original result. |
 | `GET /reports` | List your reports — filterable + paginated (see params). |
 | `GET /reports/{id}` | Report detail. Ownership-scoped: a user-scoped report is 404 to others. |
 | `GET /reports/{id}/export?format=markdown\|pdf` | Export on demand — returns a downloadable file (not the JSON envelope). |
 
 A user sees their own reports plus global (user-less) market reports.
+
+The frontend supplies a new UUID `Idempotency-Key` per Generate action and
+retains it if authentication refresh causes an HTTP retry. The backend stores
+only a user/report-type-scoped SHA-256 hash. Reusing the key returns the original
+report; another user may reuse the same opaque value without collision. See
+[Write Idempotency](write-idempotency.md).
 
 ### Filter & pagination parameters (`GET /reports`)
 

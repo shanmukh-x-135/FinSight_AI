@@ -7,25 +7,47 @@ from datetime import date
 from app.history.service import HistoryService
 from app.market.service import MarketIngestionService
 from app.news.service import NewsService
-from app.scheduler.constants import EOD_PIPELINE_NAME, PipelineStepName
+from app.scheduler.constants import (
+    EOD_PIPELINE_NAME,
+    PipelineRunStatus,
+    PipelineStepName,
+)
 from app.scheduler.control_plane import (
     EODControlPlane,
     PipelineExecutionResult,
     StepExecutionError,
 )
+from app.scheduler.repository import PipelineRunRepository
 from app.shared.database import SessionFactory
 from config.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-async def _run_market_step(_target_trading_date: date) -> dict[str, int]:
+async def get_eod_run_status(
+    target_trading_date: date,
+) -> PipelineRunStatus | None:
+    """Read existing durable state without creating a logical run."""
     async with SessionFactory() as db:
-        result = await MarketIngestionService(db).ingest()
+        run = await PipelineRunRepository(db).get_run(
+            EOD_PIPELINE_NAME, target_trading_date
+        )
+    return run.status if run is not None else None
+
+
+async def _run_market_step(target_trading_date: date) -> dict[str, int]:
+    async with SessionFactory() as db:
+        result = await MarketIngestionService(db).ingest(
+            target_trading_date=target_trading_date
+        )
     counters = {
         "requested": result.requested,
         "succeeded": len(result.succeeded),
         "failed": len(result.failed),
+        "price_bars_fetched": result.price_bars_fetched,
+        "bootstrap_symbols": result.bootstrap_symbols,
+        "reconciliation_symbols": result.reconciliation_symbols,
+        "incremental_symbols": result.incremental_symbols,
     }
     if result.failed:
         raise StepExecutionError(

@@ -50,7 +50,7 @@ store directly.
 ## Implemented through Phase 9
 
 - FastAPI app factory with request IDs, structured JSON logging, global envelope
-  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0009`).
+  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0011`).
 - JWT/Argon2 auth with refresh rotation, preferences, rate limiting, persisted
   administrator capability, and ownership-scoped resources.
 - Deterministic market indicators, batched market snapshots, portfolio/risk
@@ -58,6 +58,12 @@ store directly.
 - A date-scoped, cross-worker-locked, durable and resumable
   market→news→history EOD control plane invoked by a one-shot external process;
   FastAPI web workers run no background scheduler.
+- Maintained offline NSE session/holiday rules plus a post-close yfinance
+  target-bar preflight gate execution before durable pipeline state is created.
+- Database-enforced atomic domain upserts, cross-feed news fingerprints, and
+  scoped report idempotency keys make process and HTTP retries duplicate-safe.
+- Target-bounded, per-symbol market windows use persisted watermarks for daily
+  overlap repair and periodic adjusted-history reconciliation.
 - Next.js App Router screens for auth, dashboard, market, history, portfolio,
   watchlist, settings, and reports; shared evidence disclosures and Plotly
   allocation visualization.
@@ -68,7 +74,7 @@ store directly.
   validation and persist in user-scoped history.
 - Next.js Assistant UI with incremental rendering, recent-question history,
   confidence, sources, risks, and the shared evidence disclosure.
-- Docker Compose for the real stack, 260 backend tests, 41 frontend tests, and
+- Docker Compose for the real stack, 292 backend tests, 42 frontend tests, and
   three Playwright Chromium journeys.
 
 `infrastructure` is deliberate Phase 10 scaffolding, not a partially implemented

@@ -36,6 +36,10 @@ class Report(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     report_type: Mapped[str] = mapped_column(String(20), default="daily", nullable=False)
+    # SHA-256 of the caller's key scoped to the owner. Raw keys are never stored.
+    idempotency_key_hash: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True
+    )
     sections: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now(),

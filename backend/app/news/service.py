@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.market.exceptions import SectorNotFoundError, StockNotFoundError
 from app.market.repository import MarketRepository
 from app.news.constants import DEFAULT_FEEDS
+from app.news.fingerprints import article_fingerprint
 from app.news.models import NewsArticle
 from app.news.repository import NewsRepository
 from app.news.schemas import (
@@ -55,22 +56,29 @@ class NewsService:
     async def ingest(self) -> IngestNewsResult:
         items = await asyncio.to_thread(self.client.fetch)
 
-        # Dedupe against the DB (URL is the unique key)…
-        existing = await self.repo.existing_urls([i.url for i in items])
-        candidates = [i for i in items if i.url not in existing]
-        # …and collapse the same story arriving from multiple feeds (same title,
-        # different URL) within this batch, so aggregation isn't double-counted.
-        seen_titles: set[str] = set()
+        item_keys = [(item, article_fingerprint(item.title, item.published_at)) for item in items]
+        existing_urls, existing_fingerprints = await self.repo.existing_article_keys(
+            [item.url for item, _ in item_keys], [key for _, key in item_keys]
+        )
+        candidates = [
+            (item, key)
+            for item, key in item_keys
+            if item.url not in existing_urls and key not in existing_fingerprints
+        ]
+        # Collapse duplicate URLs and cross-feed copies before scoring. The same
+        # database keys also arbitrate concurrent ingesters below.
+        seen_urls: set[str] = set()
+        seen_fingerprints: set[str] = set()
         new_items = []
-        for item in candidates:
-            key = " ".join(item.title.lower().split())
-            if key in seen_titles:
+        for item, key in candidates:
+            if item.url in seen_urls or key in seen_fingerprints:
                 continue
-            seen_titles.add(key)
-            new_items.append(item)
+            seen_urls.add(item.url)
+            seen_fingerprints.add(key)
+            new_items.append((item, key))
 
         scores = (
-            self.scorer.score([f"{i.title}. {i.summary}" for i in new_items])
+            self.scorer.score([f"{i.title}. {i.summary}" for i, _ in new_items])
             if new_items
             else []
         )
@@ -78,11 +86,13 @@ class NewsService:
         active = await self.market.list_active_stocks()
         aliases = {s.id: build_aliases(s.symbol, s.name) for s in active}
 
+        inserted = 0
         tagged = 0
-        for item, sc in zip(new_items, scores, strict=True):
+        for (item, fingerprint), sc in zip(new_items, scores, strict=True):
             article = NewsArticle(
                 source=item.source[:200],
                 url=item.url[:1000],
+                fingerprint=fingerprint,
                 title=item.title[:600],
                 summary=item.summary[:4000],
                 published_at=item.published_at,
@@ -92,10 +102,13 @@ class NewsService:
                 sentiment_negative=sc.negative,
                 sentiment_neutral=sc.neutral,
             )
-            await self.repo.add_article(article)
+            article_id = await self.repo.add_article(article)
+            if article_id is None:
+                continue
+            inserted += 1
             stock_ids = tag_article(item.title, item.summary, aliases)
             for sid in stock_ids:
-                await self.repo.add_tag(article.id, sid)
+                await self.repo.add_tag(article_id, sid)
             if stock_ids:
                 tagged += 1
         await self.db.commit()
@@ -103,11 +116,11 @@ class NewsService:
         days = await self.aggregate()
         logger.info(
             "news_ingest_done",
-            extra={"fetched": len(items), "new": len(new_items), "tagged": tagged},
+            extra={"fetched": len(items), "new": inserted, "tagged": tagged},
         )
         return IngestNewsResult(
             fetched=len(items),
-            new_articles=len(new_items),
+            new_articles=inserted,
             tagged_articles=tagged,
             sentiment_days_updated=days,
         )

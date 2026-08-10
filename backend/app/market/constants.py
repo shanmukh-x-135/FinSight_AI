@@ -43,7 +43,8 @@ MACRO_FEATURE_SYMBOLS: dict[str, str] = {
     "us_10y_yield_return": "^TNX",
 }
 
-# How much daily history to pull per ingestion (enough to warm up EMA-50 / BB-20).
+# Fallback only for direct, unbounded client calls. Production ingestion plans
+# explicit bootstrap/incremental windows from persisted per-symbol state.
 HISTORY_PERIOD = "1y"
 
 # Indicator periods (design doc §5.6 / §4.3).
