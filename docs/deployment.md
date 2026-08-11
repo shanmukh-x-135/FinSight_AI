@@ -86,7 +86,11 @@ timezone-aware schedules, Monday through Friday:
 Each schedule declares `timezone: Asia/Kolkata`. GitHub runs scheduled workflows
 from the latest commit on the repository's default branch, which must remain
 `QA`. `workflow_dispatch` also allows an operator to start the same workflow
-manually.
+manually. Leave `target_trading_date` blank to retain the automatic current
+market-date behavior, or enter a strict `YYYY-MM-DD` value to run an explicit
+NSE trading date. The workflow validates the format and calendar date before
+passing it to the runner; exchange-session and provider-readiness decisions
+remain authoritative in application code.
 
 The workflow installs only `backend/requirements.txt` and runs:
 
@@ -169,8 +173,10 @@ GET /api/v1/admin/jobs/eod/status
 GET /api/v1/admin/jobs/eod/status?target_trading_date=YYYY-MM-DD
 ```
 
-For a current-date retry, use **Run workflow** on the EOD Actions workflow. For
-a specific date, run the existing runner in an authorized one-off environment:
+Use **Run workflow** on the EOD Actions workflow. Leave
+`target_trading_date` blank for a current-date retry, or enter an explicit
+`YYYY-MM-DD` trading date for a backdated attempt. The equivalent command in an
+authorized one-off environment remains:
 
 ```bash
 python -m app.scheduler.runner --target-trading-date YYYY-MM-DD

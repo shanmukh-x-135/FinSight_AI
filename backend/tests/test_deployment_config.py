@@ -56,16 +56,50 @@ def test_eod_workflow_uses_ist_schedule_and_runtime_runner() -> None:
         {"cron": "45 18 * * 1-5", "timezone": "Asia/Kolkata"},
         {"cron": "45 20 * * 1-5", "timezone": "Asia/Kolkata"},
     ]
-    assert "workflow_dispatch" in workflow["on"]
+    dispatch = workflow["on"]["workflow_dispatch"]
+    assert dispatch == {
+        "inputs": {
+            "target_trading_date": {
+                "description": (
+                    "Optional NSE trading date (YYYY-MM-DD). "
+                    "Leave blank for automatic target."
+                ),
+                "required": False,
+                "type": "string",
+            }
+        }
+    }
 
     job = workflow["jobs"]["run-eod"]
     assert job["env"]["DATABASE_URL"] == "${{ secrets.DATABASE_URL }}"
     assert job["env"]["DATA_DIR"] == "/tmp/finsight-data"
     assert "GEMINI_API_KEY" not in job["env"]
     assert job["defaults"]["run"]["working-directory"] == "backend"
-    commands = [step.get("run") for step in job["steps"]]
-    assert "python -m pip install -r requirements.txt" in commands
-    assert "python -m app.scheduler.runner" in commands
+    steps = {step.get("name"): step for step in job["steps"]}
+    assert steps["Install EOD runtime dependencies"]["run"] == (
+        "python -m pip install -r requirements.txt"
+    )
+
+    automatic = steps["Run one durable EOD attempt with automatic target"]
+    assert automatic["if"] == (
+        "github.event_name == 'schedule' || inputs.target_trading_date == ''"
+    )
+    assert automatic["run"] == "python -m app.scheduler.runner"
+
+    explicit = steps["Run one durable EOD attempt with explicit target"]
+    assert explicit["if"] == (
+        "github.event_name == 'workflow_dispatch' "
+        "&& inputs.target_trading_date != ''"
+    )
+    assert explicit["env"] == {
+        "TARGET_TRADING_DATE": "${{ inputs.target_trading_date }}"
+    }
+    assert "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" in explicit["run"]
+    assert 'date --date="$TARGET_TRADING_DATE"' in explicit["run"]
+    assert (
+        'python -m app.scheduler.runner --target-trading-date "$TARGET_TRADING_DATE"'
+        in explicit["run"]
+    )
 
 
 def test_vercel_configuration_uses_reproducible_install() -> None:

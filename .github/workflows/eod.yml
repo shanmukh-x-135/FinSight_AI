@@ -9,6 +9,11 @@ on:
     - cron: "45 20 * * 1-5"
       timezone: Asia/Kolkata
   workflow_dispatch:
+    inputs:
+      target_trading_date:
+        description: "Optional NSE trading date (YYYY-MM-DD). Leave blank for automatic target."
+        required: false
+        type: string
 
 concurrency:
   group: eod-market-intelligence
@@ -37,5 +42,20 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install EOD runtime dependencies
         run: python -m pip install -r requirements.txt
-      - name: Run one durable EOD attempt
+      - name: Run one durable EOD attempt with automatic target
+        if: github.event_name == 'schedule' || inputs.target_trading_date == ''
         run: python -m app.scheduler.runner
+      - name: Run one durable EOD attempt with explicit target
+        if: github.event_name == 'workflow_dispatch' && inputs.target_trading_date != ''
+        env:
+          TARGET_TRADING_DATE: ${{ inputs.target_trading_date }}
+        run: |
+          if [[ ! "$TARGET_TRADING_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "target_trading_date must use YYYY-MM-DD format" >&2
+            exit 2
+          fi
+          if [[ "$(date --date="$TARGET_TRADING_DATE" '+%F' 2>/dev/null)" != "$TARGET_TRADING_DATE" ]]; then
+            echo "target_trading_date must be a valid calendar date" >&2
+            exit 2
+          fi
+          python -m app.scheduler.runner --target-trading-date "$TARGET_TRADING_DATE"
