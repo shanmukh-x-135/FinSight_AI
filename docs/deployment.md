@@ -1,98 +1,156 @@
-# Production Deployment (P10.8)
+# Zero-Cost Production Deployment
 
-P10.8 turns the deployment scaffolding into a reproducible, fail-closed
-production bundle. The target topology is Vercel for the Next.js frontend and a
-Render Blueprint for the FastAPI API, managed PostgreSQL, and the one-shot EOD
-cron job.
+FinSight's placement/demo deployment has a strict **zero ongoing hosting cost**
+constraint. The versioned topology uses free tiers and accepts their operational
+limitations instead of adding paid infrastructure.
 
-## Versioned topology
+## Topology
 
-| Resource | Configuration | Runtime contract |
+| Resource | Provider | Repository contract |
 |---|---|---|
-| Frontend | `frontend/vercel.json` | Vercel project with repository root directory set to `frontend/`. |
-| API | `render.yaml` → `finsight-api` | Non-root backend image, database readiness probe, migration pre-deploy, deploy only after CI passes. |
-| EOD | `render.yaml` → `finsight-eod` | Same immutable backend build; runs `python -m app.scheduler.runner` at 11:15, 13:15, and 15:15 UTC (16:45, 18:45, and 20:45 IST) on weekdays. The trading-calendar/provider preflight safely skips holidays and incomplete sessions. |
-| Database | `render.yaml` → `finsight-db` | Render PostgreSQL 16 with public inbound access blocked; its private connection is shared by API and EOD runner. |
+| Frontend | Vercel Hobby | `frontend/vercel.json`; production branch `QA` |
+| API | Render Free Web Service | `render.yaml`; Docker backend, Singapore, branch `QA` |
+| Database | Neon Free PostgreSQL | External direct PostgreSQL URL supplied as a secret |
+| EOD scheduler | GitHub Actions | `.github/workflows/eod.yml` on the default `QA` branch |
+| AI prose | Gemini API | Optional key on the Render API only |
+| Similarity cache | Ephemeral FAISS | Reconstructed from PostgreSQL after a cold start/restart |
 
-FAISS files remain a disposable cache. Render services use ephemeral
-`/tmp/finsight-data`; PostgreSQL-owned vectors and index state reconstruct the
-cache after a replacement or restart.
+There is no Render PostgreSQL, Render cron, persistent Render disk, Redis, or
+Neon-specific SDK. SQLAlchemy, asyncpg, and Alembic use standard PostgreSQL.
 
-The three cron times are deliberately versioned in `render.yaml`, where Render
-defines schedules in UTC. The first successful attempt completes the logical
-trading-date run; later invocations detect that checkpoint and exit without
-provider work. If data is late or a step fails, the later invocation reuses the
-same locked run and resumes its durable checkpoints. Change those UTC times in
-the Blueprint if provider availability changes; no application code assumes
-these hours.
+## Neon database
 
-## Production safety gates
+Create one Neon Free project manually in a region reasonably close to Render's
+Singapore service. Use the **direct** connection string (hostname without the
+`-pooler` suffix) for both Render and GitHub Actions. Direct connections are
+required because Alembic migrations and the EOD control plane's session advisory
+lock must retain PostgreSQL session semantics.
 
-`APP_ENV=production` now refuses to start when:
+Neon requires TLS. Its copied connection string commonly ends with:
 
-- `JWT_SECRET` is the default or shorter than 32 characters;
-- `DEBUG` or `DB_ECHO` is enabled;
-- `CORS_ORIGINS` is empty, wildcarded, non-HTTPS, or contains a trailing slash;
-- `DATABASE_URL` selects a synchronous PostgreSQL driver.
+```text
+?sslmode=require&channel_binding=require
+```
 
-Render supplies a standard `postgresql://` connection string. Settings normalize
-that provider form to SQLAlchemy's required `postgresql+asyncpg://` form before
-the web process or Alembic creates an engine.
+FinSight safely converts `postgres://`/`postgresql://` to
+`postgresql+asyncpg://`, maps libpq's `sslmode=require` to asyncpg's
+`ssl=require`, and removes the unsupported libpq-only `channel_binding` option.
+Do not edit or commit the credential. Copy the same direct URL into:
 
-## Create the Render resources
+- Render's secret `DATABASE_URL` environment variable;
+- the GitHub Actions repository secret named `DATABASE_URL`.
 
-1. Merge the verified deployment commit to the protected `main` branch. The
-   Blueprint intentionally pins both services to `main`; do not deploy the dirty
-   local working tree or a moving feature branch.
-2. Connect this repository as a Render Blueprint and select `render.yaml`.
-3. Supply the prompted `CORS_ORIGINS` value for both the API and cron services:
-   the exact stable Vercel production origin, for example
-   `https://app.example.com` (no trailing slash). Multiple stable origins use a
-   comma-separated value.
-4. Review the declared paid instance/database plans and region before applying
-   the Blueprint. Creating the Blueprint provisions billable resources.
-5. Wait for the `alembic upgrade head` pre-deploy command and `/health/db` check
-   to pass. Do not run migrations from the web startup command.
+Create no Neon SDK integration. Neon remains ordinary PostgreSQL and is the
+durable source of truth for users, market data, EOD state, reports, chat, and
+historical vectors.
 
-Render prompts for `sync: false` values only during initial Blueprint creation.
-For an existing Blueprint, set new prompted variables manually on both services.
-The shared JWT secret is generated once in the Blueprint environment group.
-`GEMINI_API_KEY` and `TRADING_ECONOMICS_API_KEY` remain optional: add them to the
-API service in Render only when those providers are enabled. Their absence keeps
-the deterministic narrator and explicit `not_configured` calendar state.
+## Render Free API
 
-## Create the Vercel project
+`render.yaml` defines exactly one resource: `finsight-api`, a free Docker web
+service on branch `QA`. During Blueprint creation, supply:
 
-1. Import this monorepo, set the project Root Directory to `frontend/`, and set
-   the production branch to `main`.
-2. Set `NEXT_PUBLIC_API_URL` to the API's stable HTTPS Render/custom-domain URL,
-   without a trailing slash. A Preview deployment can call that API only when
-   its stable preview/custom origin is also explicitly listed in backend
-   `CORS_ORIGINS`; arbitrary Vercel preview hosts are not wildcarded.
-3. Deploy. Vercel runs the committed `npm ci` and `npm run build` commands.
-4. If the final frontend origin differs from the value supplied to Render,
-   update `CORS_ORIGINS` on both Render services and redeploy the API.
+| Variable | Source | Required |
+|---|---|---|
+| `DATABASE_URL` | Direct Neon URL | Yes |
+| `CORS_ORIGINS` | Exact Vercel production HTTPS origin, no trailing slash | Yes |
+| `GEMINI_API_KEY` | Google AI Studio secret | Yes for Gemini; blank uses deterministic narration |
+| `JWT_SECRET` | Generated once by Render Blueprint | Yes |
 
-`NEXT_PUBLIC_API_URL` is compiled into browser code at build time. Changing it
-requires a new Vercel deployment; a runtime-only change cannot update an existing
-bundle.
+`APP_ENV=production`, safe logging/debug defaults, and ephemeral
+`DATA_DIR=/tmp/finsight-data` are versioned in the Blueprint. Never expose
+`GEMINI_API_KEY`, `DATABASE_URL`, or `JWT_SECRET` through frontend variables.
 
-## Verify before traffic
+Render Free does not provide a pre-deploy command, so the existing production
+startup wrapper runs `alembic upgrade head` before `exec uvicorn`. Migrations are
+transactional and the topology runs one API instance. Avoid deploying during an
+EOD attempt, confirm the startup logs reach migration head, then verify
+`/health/db`.
 
-CI must pass backend Ruff/tests (including PostgreSQL concurrency regressions),
-frontend lint/tests/build, and both production image builds. Then run the
-non-mutating deployed-stack smoke test:
+The free instance can sleep after inactivity. The first visitor may observe a
+cold-start delay while the container starts, migrations are checked, and a
+requested FAISS generation is reconstructed from Neon. This is acceptable for a
+placement demo; persistent disks or paid always-on compute are intentionally not
+used.
+
+## GitHub Actions EOD scheduling
+
+`.github/workflows/eod.yml` calls the existing one-shot runner at these
+timezone-aware schedules, Monday through Friday:
+
+| Attempt | IST cron |
+|---|---|
+| 1 | `45 16 * * 1-5` |
+| 2 | `45 18 * * 1-5` |
+| 3 | `45 20 * * 1-5` |
+
+Each schedule declares `timezone: Asia/Kolkata`. GitHub runs scheduled workflows
+from the latest commit on the repository's default branch, which must remain
+`QA`. `workflow_dispatch` also allows an operator to start the same workflow
+manually.
+
+The workflow installs only `backend/requirements.txt` and runs:
+
+```bash
+python -m app.scheduler.runner
+```
+
+It does not reproduce target-date, calendar, provider-readiness, locking,
+resume, or idempotency logic. Those remain authoritative in the application.
+The EOD pipeline contains only market ingestion, news ingestion, and historical
+index rebuilding; it does not generate reports or call Gemini. Therefore GitHub
+requires only the `DATABASE_URL` secret—never `GEMINI_API_KEY`, JWT, or frontend
+variables.
+
+GitHub Actions schedules are best-effort rather than hard real-time. Runs may be
+delayed during platform load. The three post-market attempts, provider readiness
+gate, database advisory lock, completed-run short circuit, and resumable
+checkpoints make that delay acceptable. For private repositories, monitor the
+account's included Actions minutes; a public placement repository does not need
+paid scheduling infrastructure.
+
+## Vercel Hobby frontend
+
+1. Import the repository and set the Root Directory to `frontend/`.
+2. Set the production branch to `QA`.
+3. Set `NEXT_PUBLIC_API_URL` to the final Render HTTPS origin without a trailing
+   slash.
+4. Deploy with the committed `npm ci` and `npm run build` commands.
+
+Production builds reject missing, local, non-HTTPS, credential-bearing, or
+path-bearing API origins. Changing `NEXT_PUBLIC_API_URL` requires a new build.
+Vercel Hobby is appropriate only while this remains a personal, non-commercial
+placement project.
+
+## First deployment order
+
+1. Ensure CI is green on `QA` and GitHub reports `QA` as the default branch.
+2. Create Neon Free, copy its direct TLS connection string, and retain it only
+   in provider secret stores.
+3. Add repository secret `DATABASE_URL` in GitHub Actions.
+4. Create the Render Blueprint, enter the Neon URL and the anticipated Vercel
+   origin, and optionally enter the Gemini key.
+5. Verify Render startup migrations and `/health/db`.
+6. Create Vercel, set `NEXT_PUBLIC_API_URL`, and deploy from `QA`.
+7. If the final Vercel origin differs, update Render `CORS_ORIGINS` and redeploy.
+8. Run the smoke verifier below.
+9. Manually dispatch EOD once after market data is available and inspect its
+   Actions log plus the protected EOD status endpoint.
+
+Do not paste secrets into issues, chat, workflow inputs, command-line arguments,
+documentation, or screenshots.
+
+## Verification
 
 ```bash
 python3 scripts/smoke_deployment.py \
-  --backend-url https://api.example.com \
-  --frontend-url https://app.example.com
+  --backend-url https://your-api.onrender.com \
+  --frontend-url https://your-app.vercel.app
 ```
 
-It verifies HTTPS, production mode, API liveness, database readiness, exact CORS,
-and the frontend landing page without creating users or financial data.
+The non-mutating script checks HTTPS, production mode, API liveness, Neon
+readiness, exact CORS, and the frontend landing page.
 
-For a local container rehearsal:
+Local rehearsal remains:
 
 ```bash
 docker compose up --build -d --wait
@@ -102,104 +160,61 @@ python3 scripts/smoke_deployment.py \
   --allow-non-production
 ```
 
-## Operations and rollback
+## EOD status and recovery
 
-### EOD status and manual recovery
-
-The API exposes a read-only administrator endpoint:
+Administrators can inspect, but not start, EOD work through:
 
 ```text
 GET /api/v1/admin/jobs/eod/status
 GET /api/v1/admin/jobs/eod/status?target_trading_date=YYYY-MM-DD
 ```
 
-It returns the logical run, ordered step checkpoints, attempts, bounded error
-summaries, counters, timestamps, and `rerun_recommended`. It never starts work.
-Use an administrator access token in the normal `Authorization: Bearer ...`
-header; do not place tokens in URLs, documentation, shell history, or chat.
-
-For the current market date, use Render's manual **Trigger Run** action on
-`finsight-eod`. A completed run is a no-op; failed/partial runs resume; a recent
-running heartbeat should be allowed to finish. For a specific recovery date,
-run the same image as a one-off job with:
+For a current-date retry, use **Run workflow** on the EOD Actions workflow. For
+a specific date, run the existing runner in an authorized one-off environment:
 
 ```bash
 python -m app.scheduler.runner --target-trading-date YYYY-MM-DD
 ```
 
-Do not add an HTTP endpoint that performs the full EOD pipeline: it is long
-running and belongs in the external worker topology. A non-zero cron exit,
-`eod_runner_incomplete`, `eod_runner_failed`, or a failed/partial status after
-the final same-day attempt requires operator review. Configure the hosting
-provider's job-failure email notification after creating the service; an
-external observability platform is not required for this project.
+Never pass the Neon URL as a workflow-dispatch input. A completed date is a
+no-op, a partial/failed run resumes, and a recent running heartbeat must be
+allowed to finish. Inspect correlated structured logs and the protected status
+before retrying.
 
-### Recovery checklist
+## Free-tier limitations
 
-1. Check `/health/db`, then inspect the protected EOD status and correlated
-   structured logs (`correlation_id`, `run_id`, and request ID where relevant).
-2. If the provider was merely late/unavailable, trigger the same runner again.
-   Idempotent writes and durable checkpoints make this safe.
-3. If the API image is faulty, roll back to the last known-good provider deploy.
-   Do not downgrade the database automatically.
-4. Before every schema-changing deploy, confirm the managed database has a
-   recent restorable backup. At least once in staging, restore a backup into a
-   temporary database, apply `alembic upgrade head`, and verify `/health/db`.
-5. If FAISS files disappear or are corrupt, restart the API and verify a history
-   request reconstructs the cache from PostgreSQL. Do not treat `/tmp` as a
-   backup.
+- Render Free may cold-start after inactivity and provides no persistent disk.
+- GitHub Actions schedules can be delayed and are not a hard real-time SLA.
+- Neon Free compute, storage, transfer, and inactivity limits apply; monitor the
+  Neon dashboard and keep a manual export appropriate to the demo's data value.
+- Free provider limits and policies can change; review them before the public
+  resume demo.
+- Gemini free quota/rate limits apply. Deterministic grounded narration remains
+  the safe fallback if quota or the provider is unavailable.
+- This architecture is deliberately for a low-traffic college placement/demo
+  project, not a commercial service.
 
-### Staging acceptance (P10.11)
+These limitations do not justify adding paid Render PostgreSQL, Render cron,
+persistent disks, Redis, or enterprise infrastructure.
 
-Record the date, commit SHA, URLs, and pass/fail evidence for each item. Staging
-may use the same architecture with the optional Gemini key omitted until the
-deterministic path is proven.
+## Staging/public-demo acceptance
 
-- CI passes on the exact commit; the fresh-database Alembic upgrade/check gate
-  and both production container builds are green.
-- Render pre-deploy migrations reach Alembic head and `/health` plus `/health/db`
-  pass after a clean restart.
-- The deployment smoke script passes HTTPS, production mode, database, exact
-  CORS, and frontend checks.
-- Register/login/refresh/logout work; a second user cannot read the first user's
-  portfolio, reports, or chat history.
-- Add a holding and watchlist entry; dashboard, market, portfolio, history, and
-  watchlist pages load real persisted data without browser console errors.
-- Run an explicit historical backfill/rebuild once, remove the ephemeral FAISS
-  cache by replacing/restarting the service, and verify history reconstruction.
-- Generate and reopen a report; export both Markdown and PDF and verify evidence,
-  Unicode sanitization, and download integrity.
-- Ask a grounded chat question, reload history, and verify evidence, confidence,
-  risks, sources, and generation provenance.
-- Run EOD for a known trading date, confirm all three checkpoints complete, then
-  rerun the same date and verify it is a no-op. Exercise a controlled failed step
-  in staging and confirm the next attempt resumes rather than duplicates data.
-- With a staging Gemini key and conservative quota, verify one successful Gemini
-  response and one forced fallback (for example, temporarily invalid key), then
-  confirm metadata identifies the actual backend in both cases.
-- Restart API and cron containers, repeat core reads, and inspect structured logs
-  for request IDs without prompts, tokens, credentials, or provider payloads.
-- Complete one temporary-database backup restore drill and record the recovery
-  time. Delete the temporary restored database after verification.
+- CI is green on the exact `QA` commit and both production images build.
+- Render startup reaches Alembic head; `/health` and `/health/db` pass after a
+  cold start.
+- The deployment smoke script passes with exact HTTPS origins.
+- Auth isolation, portfolio/watchlist, dashboard, reports/exports, and chat work
+  using Neon-persisted data.
+- EOD completes all checkpoints, later same-date attempts no-op, and a controlled
+  partial run resumes without duplicates.
+- Replacing/restarting Render clears local FAISS files and a history request
+  reconstructs them from Neon.
+- One Gemini response and one forced deterministic fallback expose the correct
+  provenance without leaking prompts or credentials.
+- GitHub contains only `DATABASE_URL`; Gemini remains only on Render.
+- Provider logs contain request/correlation IDs but no tokens, database URLs,
+  prompts, or provider payloads.
 
-Only the first three bullets and core auth/data/report/chat flows block an
-initial private staging deployment. EOD retry/resume, restart reconstruction,
-Gemini/fallback, and backup restore evidence block the public resume demo.
-
-- Render sends `SIGTERM`; the exec-form server command and 60-second shutdown
-  window allow FastAPI lifespan cleanup to finish.
-- The backend startup wrapper binds to Render's runtime `PORT` and uses `exec`,
-  so proxy routing and Unix signals reach Uvicorn correctly.
-- The web service never runs EOD work. Only the cron service invokes the durable,
-  locked, resumable pipeline.
-- Roll back application images through the provider. Do not automatically run
-  `alembic downgrade`; restore/repair the database only from an explicitly tested
-  backup procedure.
-- Rotating `JWT_SECRET` immediately invalidates every issued access and refresh
-  token. Schedule that user-visible effect.
-- Provider keys remain provider-managed secrets and must never be passed as
-  Docker build arguments or committed files.
-
-Cloud-account creation, billing approval, DNS ownership, provider credentials,
-and pressing the deploy controls remain external operator actions. The repository
-contains no credentials and does not claim that those external actions occurred.
+Cloud-account creation, secrets, default-branch configuration, usage monitoring,
+and pressing deploy/run controls remain manual operator actions. Repository
+configuration does not claim those external steps have occurred.

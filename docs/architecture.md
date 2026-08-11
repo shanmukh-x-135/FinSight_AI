@@ -80,9 +80,9 @@ store directly.
   or generated financial content.
 - Next.js Assistant UI with incremental rendering, recent-question history,
   confidence, sources, risks, and the shared evidence disclosure.
-- Versioned Render/Vercel topology, non-root health-checked production images,
-  CI-gated deploys, fail-closed production settings, and a non-mutating smoke
-  verifier.
+- Zero-cost Vercel Hobby + Render Free + Neon Free topology, timezone-aware
+  GitHub Actions EOD attempts, non-root health-checked production images,
+  CI-gated deploys, fail-closed settings, and a non-mutating smoke verifier.
 - Docker Compose for the real stack, 340 backend tests, 42 frontend tests, and
   three Playwright Chromium journeys.
 

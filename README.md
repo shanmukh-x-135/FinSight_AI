@@ -34,7 +34,7 @@ finsight-ai/
 ├── docs/               Architecture and completed-feature documentation
 ├── scripts/            Dev/ops helper scripts
 ├── infrastructure/     Deployment/provider support assets
-├── render.yaml         Render API, EOD cron, and PostgreSQL Blueprint
+├── render.yaml         Render Free API-only Blueprint
 └── docker-compose.yml  Local full-stack dev
 ```
 
