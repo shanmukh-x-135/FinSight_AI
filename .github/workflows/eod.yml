@@ -26,7 +26,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DATA_DIR: ${{ runner.temp }}/finsight-data
+      DATA_DIR: /tmp/finsight-data
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v6
