@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.dialects.postgresql.asyncpg import dialect
+from sqlalchemy.engine import make_url
 
 from config.settings import Settings
 
@@ -37,6 +39,25 @@ def test_explicit_asyncpg_url_is_preserved() -> None:
     )
 
     assert configured.database_url_str.startswith("postgresql+asyncpg://")
+
+
+def test_neon_url_uses_asyncpg_tls_and_drops_libpq_only_options() -> None:
+    configured = _settings(
+        database_url=(
+            "postgresql://neon_user:secret@ep-example.ap-southeast-1.aws.neon.tech/"
+            "finsight?sslmode=require&channel_binding=require"
+        )
+    )
+
+    url = configured.database_url_str
+    assert url.startswith("postgresql+asyncpg://")
+    assert "ssl=require" in url
+    assert "sslmode=" not in url
+    assert "channel_binding=" not in url
+    _, connect_args = dialect().create_connect_args(make_url(url))
+    assert connect_args["ssl"] == "require"
+    assert "sslmode" not in connect_args
+    assert "channel_binding" not in connect_args
 
 
 @pytest.mark.parametrize(

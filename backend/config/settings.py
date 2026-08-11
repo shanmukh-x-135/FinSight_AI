@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, PostgresDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -114,14 +114,31 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="before")
     @classmethod
     def _normalize_database_url(cls, value: object) -> object:
-        """Accept managed-Postgres URLs while always selecting asyncpg."""
+        """Accept provider URLs while selecting asyncpg-compatible TLS options."""
         if not isinstance(value, str):
             return value
         if value.startswith("postgres://"):
-            return value.replace("postgres://", "postgresql+asyncpg://", 1)
-        if value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return value
+            value = value.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif value.startswith("postgresql://"):
+            value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if not value.startswith("postgresql+asyncpg://"):
+            return value
+
+        parsed = urlsplit(value)
+        query = parse_qsl(parsed.query, keep_blank_values=True)
+        has_asyncpg_ssl = any(key == "ssl" for key, _ in query)
+        normalized_query: list[tuple[str, str]] = []
+        for key, item in query:
+            if key == "sslmode":
+                if not has_asyncpg_ssl:
+                    normalized_query.append(("ssl", item))
+                continue
+            # Neon's copied libpq URL currently includes channel_binding. asyncpg
+            # does not accept that keyword; TLS remains enforced by ssl=require.
+            if key == "channel_binding":
+                continue
+            normalized_query.append((key, item))
+        return urlunsplit(parsed._replace(query=urlencode(normalized_query)))
 
     @field_validator("database_url")
     @classmethod

@@ -1,0 +1,41 @@
+name: EOD Market Intelligence
+
+on:
+  schedule:
+    - cron: "45 16 * * 1-5"
+      timezone: Asia/Kolkata
+    - cron: "45 18 * * 1-5"
+      timezone: Asia/Kolkata
+    - cron: "45 20 * * 1-5"
+      timezone: Asia/Kolkata
+  workflow_dispatch:
+
+concurrency:
+  group: eod-market-intelligence
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-eod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATA_DIR: ${{ runner.temp }}/finsight-data
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install EOD runtime dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run one durable EOD attempt
+        run: python -m app.scheduler.runner
