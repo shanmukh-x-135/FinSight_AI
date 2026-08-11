@@ -60,6 +60,7 @@ def test_eod_workflow_uses_ist_schedule_and_runtime_runner() -> None:
 
     job = workflow["jobs"]["run-eod"]
     assert job["env"]["DATABASE_URL"] == "${{ secrets.DATABASE_URL }}"
+    assert job["env"]["DATA_DIR"] == "/tmp/finsight-data"
     assert "GEMINI_API_KEY" not in job["env"]
     assert job["defaults"]["run"]["working-directory"] == "backend"
     commands = [step.get("run") for step in job["steps"]]
