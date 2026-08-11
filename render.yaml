@@ -12,7 +12,6 @@ services:
     dockerContext: ./backend
     healthCheckPath: /health/db
     autoDeployTrigger: checksPass
-    maxShutdownDelaySeconds: 60
     buildFilter:
       paths:
         - backend/**
