@@ -132,7 +132,8 @@ class IngestionTriggerRequest(BaseModel):
     "/jobs/market-ingestion/run",
     summary="Manually trigger market data ingestion (dev/ops)",
     description="Runs the fetch→validate→store→indicators pipeline synchronously "
-    "for the given symbols (or the default universe). Auth-protected.",
+    "for the given symbols (or the DB-approved NIFTY50 universe plus macros). "
+    "Auth-protected.",
 )
 async def run_market_ingestion(
     payload: IngestionTriggerRequest | None = None,

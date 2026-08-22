@@ -17,7 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market import constants as C
 from app.market import indicators as ind
-from app.market.exceptions import SectorNotFoundError, StockNotFoundError
+from app.market.exceptions import (
+    SectorNotFoundError,
+    StockNotFoundError,
+    UniverseNotInitializedError,
+)
 from app.market.models import DailyPrice, Stock
 from app.market.repository import MarketRepository, PriceIngestionState
 from app.market.schemas import (
@@ -115,9 +119,7 @@ def plan_price_fetch(
     else:
         assert state is not None and state.latest_price_date is not None
         anchor = min(state.latest_price_date, target_trading_date)
-        start_date = anchor - timedelta(
-            days=settings.market_incremental_overlap_days
-        )
+        start_date = anchor - timedelta(days=settings.market_incremental_overlap_days)
     return PriceFetchWindow(
         start_date=start_date,
         end_date=target_trading_date + timedelta(days=1),
@@ -188,14 +190,20 @@ class MarketIngestionService:
         now: datetime | None = None,
     ) -> IngestionResult:
         synchronized_at = _as_utc(now)
-        target = target_trading_date or synchronized_at.astimezone(
-            ZoneInfo(settings.market_timezone)
-        ).date()
-        universe = (
-            list(symbols)
-            if symbols is not None
-            else [*C.DEFAULT_UNIVERSE, *C.MACRO_PROXIES]
+        target = (
+            target_trading_date
+            or synchronized_at.astimezone(ZoneInfo(settings.market_timezone)).date()
         )
+        if symbols is not None:
+            universe = list(dict.fromkeys(symbols))
+        else:
+            approved = await self.repo.list_approved_equities("NIFTY50")
+            if not approved:
+                raise UniverseNotInitializedError()
+            universe = [
+                *(stock.symbol for stock in approved),
+                *C.MACRO_PROXIES,
+            ]
         succeeded: list[str] = []
         failed: list[str] = []
         bars_fetched = 0
@@ -301,11 +309,7 @@ class MarketIngestionService:
         state = await self.repo.get_price_ingestion_state(symbol)
         window = plan_price_fetch(state, target, now=synchronized_at)
         bars = await self._fetch_prices(symbol, window)
-        fundamentals = (
-            await self._fetch_fundamentals(symbol)
-            if window.is_full
-            else None
-        )
+        fundamentals = await self._fetch_fundamentals(symbol) if window.is_full else None
 
         stock = await self.repo.upsert_stock(
             symbol,

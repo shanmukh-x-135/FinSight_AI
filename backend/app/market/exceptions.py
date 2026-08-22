@@ -21,3 +21,14 @@ class SectorNotFoundError(AppException):
 
     def __init__(self, sector: str) -> None:
         super().__init__(f"No stocks found for sector '{sector}'.")
+
+
+class UniverseNotInitializedError(AppException):
+    status_code = status.HTTP_409_CONFLICT
+    error_type = "market_universe_not_initialized"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The approved NIFTY50 universe is empty. Run "
+            "'python -m app.market.universe_sync' before EOD ingestion."
+        )

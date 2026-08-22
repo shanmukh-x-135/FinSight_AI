@@ -10,7 +10,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
-from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
+from app.market.models import DailyPrice, Fundamentals, IndexMembership, Indicator, Stock
 from app.shared.clients.market_data import FundamentalsData, PriceBar
 from app.shared.upsert import conflict_insert
 
@@ -38,6 +38,8 @@ class MarketRepository:
         self,
         symbol: str,
         *,
+        exchange_symbol: str | None = None,
+        data_provider: str | None = None,
         name: str | None,
         sector: str | None,
         industry: str | None,
@@ -47,6 +49,10 @@ class MarketRepository:
         # Only overwrite with non-None values so a failed fundamentals fetch
         # doesn't wipe previously-known metadata.
         values: dict[str, object] = {"symbol": symbol}
+        if exchange_symbol is not None:
+            values["exchange_symbol"] = exchange_symbol
+        if data_provider is not None:
+            values["data_provider"] = data_provider
         if name is not None:
             values["name"] = name
         if sector is not None:
@@ -63,9 +69,7 @@ class MarketRepository:
         if not updates:
             updates = {"symbol": stmt.excluded.symbol}
         result = await self.db.execute(
-            stmt.on_conflict_do_update(
-                index_elements=[Stock.symbol], set_=updates
-            )
+            stmt.on_conflict_do_update(index_elements=[Stock.symbol], set_=updates)
             .returning(Stock)
             .execution_options(populate_existing=True)
         )
@@ -100,8 +104,30 @@ class MarketRepository:
         return {stock.id: stock for stock in result.scalars()}
 
     async def list_active_stocks(self) -> list[Stock]:
-        result = await self.db.execute(select(Stock).where(Stock.is_active.is_(True)))
+        result = await self.db.execute(
+            select(Stock).where(Stock.is_active.is_(True)).order_by(Stock.symbol)
+        )
         return list(result.scalars().all())
+
+    async def list_approved_equities(self, index_code: str) -> list[Stock]:
+        """Return the deterministic provider-ticker universe approved in the DB."""
+        result = await self.db.execute(
+            select(Stock)
+            .join(IndexMembership, IndexMembership.stock_id == Stock.id)
+            .where(
+                IndexMembership.index_code == index_code,
+                IndexMembership.valid_to.is_(None),
+                Stock.is_active.is_(True),
+                Stock.symbol.is_not(None),
+            )
+            .order_by(Stock.exchange_symbol, Stock.symbol)
+        )
+        stocks = list(result.scalars().unique().all())
+        if len({stock.symbol for stock in stocks}) != len(stocks):
+            raise RuntimeError(
+                f"Duplicate provider symbols in active {index_code} universe"
+            )
+        return stocks
 
     async def get_market_snapshots(
         self,
@@ -179,9 +205,7 @@ class MarketRepository:
         )
         return list(result.scalars().all())
 
-    async def get_price_ingestion_state(
-        self, symbol: str
-    ) -> PriceIngestionState | None:
+    async def get_price_ingestion_state(self, symbol: str) -> PriceIngestionState | None:
         """Return the per-symbol watermark without loading its price history."""
         result = await self.db.execute(
             select(
@@ -285,9 +309,7 @@ class MarketRepository:
         }
         if not values:
             return
-        stmt = conflict_insert(self.db, Fundamentals).values(
-            stock_id=stock_id, **values
-        )
+        stmt = conflict_insert(self.db, Fundamentals).values(stock_id=stock_id, **values)
         result = await self.db.execute(
             stmt.on_conflict_do_update(
                 index_elements=[Fundamentals.stock_id],
