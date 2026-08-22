@@ -23,4 +23,4 @@ export const ratioPct = (
     : `${showPositiveSign && n >= 0 ? "+" : ""}${(n * 100).toFixed(digits)}%`;
 
 export const signClass = (n: number | null | undefined) =>
-  n == null ? "" : n > 0 ? "text-green-600" : n < 0 ? "text-red-600" : "";
+  n == null ? "" : n > 0 ? "text-positive" : n < 0 ? "text-negative" : "";

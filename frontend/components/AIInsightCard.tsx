@@ -33,7 +33,7 @@ export function AIInsightCard({ title, narrative, action, confidence, evidence }
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="h-4 w-4 text-blue-600" aria-hidden />
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden />
           <span className="flex-1">{title}</span>
           {action && (
             <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium capitalize", actionStyle[action] ?? "bg-muted")}>

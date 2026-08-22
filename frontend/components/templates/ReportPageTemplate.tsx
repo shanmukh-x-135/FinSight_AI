@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { PageHeader, Panel, SectionHeader } from "@/components/workspace";
+
 /**
  * Report page template (design doc §7.4) — the reading order for a single
  * report: Header → Executive Summary → Analysis → Recommendations (each
@@ -19,12 +21,7 @@ export interface ReportPageTemplateProps {
 
 function Section({ heading, children }: { heading: string; children: ReactNode }) {
   return (
-    <section className="mt-8">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        {heading}
-      </h3>
-      {children}
-    </section>
+    <Panel><SectionHeader title={heading} /><div className="mt-4">{children}</div></Panel>
   );
 }
 
@@ -38,14 +35,8 @@ export function ReportPageTemplate({
   appendix,
 }: ReportPageTemplateProps) {
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
-        </div>
-        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
-      </div>
+    <div className="mx-auto max-w-6xl space-y-5">
+      <PageHeader eyebrow="Research report" title={title} description={subtitle} actions={actions} />
 
       {executiveSummary && <Section heading="Executive Summary">{executiveSummary}</Section>}
       {analysis && <Section heading="Analysis">{analysis}</Section>}

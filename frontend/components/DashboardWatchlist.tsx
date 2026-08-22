@@ -33,7 +33,7 @@ export function DashboardWatchlist({
           </div>
           <Link
             href="/watchlist"
-            className="shrink-0 text-xs font-medium text-blue-600 hover:underline"
+            className="shrink-0 text-xs font-medium text-primary hover:underline"
           >
             Manage watchlist
           </Link>
@@ -58,7 +58,7 @@ export function DashboardWatchlist({
                     aria-hidden="true"
                     className={cn(
                       "h-5 w-0.5 shrink-0 rounded-full",
-                      item.pinned ? "bg-blue-600" : "bg-foreground/15",
+                      item.pinned ? "bg-primary" : "bg-foreground/15",
                     )}
                   />
                   <div className="min-w-0">

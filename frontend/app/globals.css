@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -27,6 +27,9 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -49,13 +52,13 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.985 0.004 250);
+  --foreground: oklch(0.19 0.025 255);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.19 0.025 255);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.56 0.19 255);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -64,15 +67,18 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --border: oklch(0.9 0.012 250);
+  --input: oklch(0.9 0.012 250);
+  --ring: oklch(0.62 0.16 255);
+  --positive: oklch(0.55 0.17 153);
+  --negative: oklch(0.58 0.21 25);
+  --warning: oklch(0.67 0.15 72);
+  --chart-1: oklch(0.59 0.2 255);
+  --chart-2: oklch(0.62 0.16 153);
+  --chart-3: oklch(0.7 0.15 72);
+  --chart-4: oklch(0.64 0.18 315);
+  --chart-5: oklch(0.6 0.14 205);
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -84,30 +90,33 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --background: oklch(0.15 0.018 255);
+  --foreground: oklch(0.93 0.01 250);
+  --card: oklch(0.19 0.022 255);
+  --card-foreground: oklch(0.93 0.01 250);
+  --popover: oklch(0.19 0.022 255);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.7 0.16 255);
+  --primary-foreground: oklch(0.15 0.018 255);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --muted: oklch(0.235 0.02 255);
+  --muted-foreground: oklch(0.68 0.018 250);
+  --accent: oklch(0.25 0.035 255);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
+  --border: oklch(0.34 0.025 255 / 65%);
+  --input: oklch(0.3 0.025 255);
+  --ring: oklch(0.68 0.15 255);
+  --positive: oklch(0.72 0.17 153);
+  --negative: oklch(0.7 0.2 25);
+  --warning: oklch(0.78 0.15 78);
+  --chart-1: oklch(0.69 0.18 255);
+  --chart-2: oklch(0.72 0.16 153);
+  --chart-3: oklch(0.78 0.15 78);
+  --chart-4: oklch(0.72 0.16 315);
+  --chart-5: oklch(0.72 0.13 205);
+  --sidebar: oklch(0.17 0.02 255);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -122,9 +131,19 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground selection:bg-primary/25;
+    font-variant-numeric: tabular-nums;
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer utilities {
+  .surface-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px);
+    background-size: 28px 28px;
   }
 }

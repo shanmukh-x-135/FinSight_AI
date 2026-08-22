@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
 export type Tone = "positive" | "negative" | "neutral" | "default";
 
 const toneClass: Record<Tone, string> = {
-  positive: "text-green-600",
-  negative: "text-red-600",
+  positive: "text-positive",
+  negative: "text-negative",
   neutral: "text-muted-foreground",
   default: "",
 };
@@ -37,13 +37,13 @@ export interface MetricCardProps {
 
 export function MetricCard({ label, value, sub, tone = "default", icon }: MetricCardProps) {
   return (
-    <Card>
-      <CardContent className="pt-5">
+    <Card size="sm" className="gap-0 border-border/70 bg-card/80 py-0 shadow-none ring-0">
+      <CardContent className="px-3 py-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">{label}</p>
           {icon && <span className="text-muted-foreground">{icon}</span>}
         </div>
-        <p className={cn("mt-1 text-xl font-bold", toneClass[tone])}>{value}</p>
+        <p className={cn("mt-1 text-lg font-semibold tracking-tight", toneClass[tone])}>{value}</p>
         {sub != null && (
           <p className={cn("text-xs", tone === "default" ? "text-muted-foreground" : toneClass[tone])}>
             {sub}

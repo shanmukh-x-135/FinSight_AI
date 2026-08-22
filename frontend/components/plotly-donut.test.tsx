@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PlotlyDonut } from "@/components/plotly-donut";
 
-vi.mock("plotly.js-basic-dist-min", () => ({
+vi.mock("plotly.js-finance-dist-min", () => ({
   default: { newPlot: vi.fn(), purge: vi.fn() },
 }));
 

@@ -38,7 +38,7 @@ describe("DashboardWatchlist", () => {
     expect(screen.getByText("RELIANCE.NS")).toBeInTheDocument();
     expect(screen.getByText("Reliance Industries")).toBeInTheDocument();
     expect(screen.getByText("₹2,910.5")).toBeInTheDocument();
-    expect(screen.getByText("+1.25%")).toHaveClass("text-green-600");
+    expect(screen.getByText("+1.25%")).toHaveClass("text-positive");
     expect(screen.getByText("Pinned")).toHaveClass("sr-only");
     expect(screen.getByRole("link", { name: "Manage watchlist" })).toHaveAttribute(
       "href",
