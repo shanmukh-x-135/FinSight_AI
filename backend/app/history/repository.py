@@ -31,7 +31,7 @@ class HistoryRepository:
         result = await self.db.execute(
             select(DailyPrice.stock_id, DailyPrice.date, DailyPrice.close)
             .join(Stock, Stock.id == DailyPrice.stock_id)
-            .where(Stock.is_active.is_(True))
+            .where(Stock.history_eligible.is_(True))
             .order_by(DailyPrice.stock_id, DailyPrice.date)
         )
         return [(r[0], r[1], r[2]) for r in result.all()]
@@ -59,7 +59,7 @@ class HistoryRepository:
                 Indicator.macd_histogram,
             )
             .join(Stock, Stock.id == Indicator.stock_id)
-            .where(Stock.is_active.is_(True))
+            .where(Stock.history_eligible.is_(True))
         )
         return list(result.all())
 

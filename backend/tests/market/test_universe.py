@@ -51,9 +51,7 @@ def test_validate_symbol_history_rejects_unhealthy_history(
     bars: list[PriceBar], status: SymbolHealthStatus
 ) -> None:
     with pytest.raises(SymbolHistoryError) as raised:
-        validate_symbol_history(
-            "BAD.NS", bars, target_date=TARGET, minimum_bars=50
-        )
+        validate_symbol_history("BAD.NS", bars, target_date=TARGET, minimum_bars=50)
     assert raised.value.status == status
 
 
@@ -62,10 +60,21 @@ def test_validate_symbol_history_rejects_corrupt_ohlcv() -> None:
     bars[-1] = PriceBar(TARGET, 100, 99, 98, 101, 1_000)
 
     with pytest.raises(SymbolHistoryError) as raised:
-        validate_symbol_history(
-            "BAD.NS", bars, target_date=TARGET, minimum_bars=50
-        )
+        validate_symbol_history("BAD.NS", bars, target_date=TARGET, minimum_bars=50)
     assert raised.value.status == SymbolHealthStatus.INVALID_OHLCV
+
+
+def test_validate_symbol_history_checks_indicator_compatibility(monkeypatch) -> None:
+    from app.market import indicators
+
+    monkeypatch.setattr(
+        indicators,
+        "atr",
+        lambda highs, lows, closes, period: [None] * len(closes),
+    )
+    with pytest.raises(SymbolHistoryError) as raised:
+        validate_symbol_history("BAD.NS", _bars(), target_date=TARGET, minimum_bars=50)
+    assert raised.value.status == SymbolHealthStatus.INDICATOR_INCOMPATIBLE
 
 
 class _HealthClient:

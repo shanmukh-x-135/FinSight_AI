@@ -8,16 +8,19 @@ here (design doc's "analytics before AI").
 
 **yfinance** (Yahoo Finance), wrapped behind a provider-agnostic interface
 (`app/shared/clients/market_data.py`) so it can be swapped. NSE listings use the
-`.NS` suffix (e.g. `RELIANCE.NS`). The default universe is a spread of large-cap
-NSE names across sectors (`app/market/constants.py`).
+`.NS` suffix (e.g. `RELIANCE.NS`). Equity membership is dynamically discovered
+from the official NSE Indices NIFTY 50 CSV and approved through effective-dated
+database membership. See [Dynamic NIFTY 50 Universe](dynamic-universe.md).
 
 The default ingestion also fetches four global macro proxies (USD/INR, crude
 oil, gold, and the US 10-year Treasury yield). They reuse `daily_prices` but are
 stored with `is_active=false`; consequently they feed historical similarity
 without appearing in equity APIs, breadth, sectors, watchlists, or portfolios.
 
-The curated equity universe currently contains 15 approved symbols. Following
-the Tata Motors commercial-vehicle demerger, NSE renamed the existing listed
+The legacy production dataset contains 15 equity histories, but that list is no
+longer the runtime membership source. Phase 10C intentionally does not perform
+the expanded production bootstrap. Following the Tata Motors commercial-vehicle
+demerger, NSE renamed the existing listed
 `TATAMOTORS` security to `TMPV` effective 24 October 2025; `TMPV.NS` is therefore
 the approved continuity symbol. `TMCV.NS` is the separately listed demerged
 commercial-vehicle company and is not treated as an alias. When `TMPV.NS`
@@ -37,16 +40,18 @@ The client (`app/shared/clients/yfinance_client.py`):
 The ingestion path additionally rejects malformed OHLCV relationships,
 duplicate dates, materially stale history, and full-window histories too short
 to compute the longest configured equity indicator. Operators can run the same
-configured-universe checks without touching PostgreSQL:
+approved-universe checks without modifying PostgreSQL:
 
 ```bash
 cd backend
 ./.venv/bin/python -m app.market.universe --target-date YYYY-MM-DD
 ```
 
-The command prints per-symbol bar counts and classified health status and exits
-nonzero if any of the 15 equities or four macro proxies is unhealthy. It is an
-explicit EOD/universe preflight tool; no network validation runs at API startup.
+The command loads approved equities from open `NIFTY50` memberships, appends the
+four macro proxies, prints per-symbol bar counts and classified health status,
+and exits nonzero for any unhealthy symbol. An empty universe exits explicitly
+and directs the operator to run `app.market.universe_sync`; no network
+validation runs at API startup.
 
 Before the external EOD runner enters the durable pipeline, the P10.3 preflight
 uses maintained offline NSE session/holiday rules, waits for the configured
@@ -93,7 +98,7 @@ sector, and intelligence candidate paths share this batch primitive.
 - **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
   synchronously and returns symbol results plus fetched-bar and window-mode
-  counters.
+  counters. Without `symbols`, it uses DB-approved NIFTY50 equities plus macros.
 
 ## Indicators
 
@@ -115,10 +120,11 @@ incremental EMA/MACD mathematically identical to a full recomputation. Verified
 end-to-end: an independent RSI-14 recomputation on 248 real RELIANCE bars matched
 the stored value to 10 decimals.
 
-## Data model (migrations `0003_market`, `0011_incremental_ingestion`)
+## Data model
 
-- **stocks** — `symbol (unique), name, sector (indexed), industry, exchange,
-  is_active, last_full_price_sync_at`;
+- **stocks** — `symbol (unique provider ticker), exchange_symbol,
+  data_provider, name, sector (indexed), industry, exchange, is_active,
+  history_eligible, last_full_price_sync_at`;
   inactive rows identify cross-asset macro proxies.
 - **daily_prices** — `stock_id, date, open/high/low/close, volume`; unique + index on `(stock_id, date)` (queried by date range constantly).
 - **indicators** — `stock_id, date`, one column per indicator; unique on `(stock_id, date)`.
@@ -128,6 +134,9 @@ All logical keys use atomic PostgreSQL/SQLite `INSERT ... ON CONFLICT` upserts.
 Retries and concurrent manual/EOD writers update the canonical row rather than
 raising a uniqueness race or creating a duplicate. See
 [Write Idempotency](write-idempotency.md).
+Effective-dated memberships, source snapshots, sync audit/quarantine rows, and
+symbol aliases are introduced by migrations `0013`–`0014`; see
+[Dynamic NIFTY 50 Universe](dynamic-universe.md).
 
 ## Read endpoints (`/api/v1/market`)
 
@@ -186,8 +195,8 @@ curl localhost:8000/api/v1/market/stocks/RELIANCE.NS
 - Yahoo backfills pre-rename history under `TMPV.NS` and retains the roughly 40%
   14 October 2025 demerger price step. That is a real corporate-action value
   transfer rather than an ordinary market loss. The old `TATAMOTORS.NS` rows are
-  preserved separately and inactive; richer corporate-action normalization and
-  effective-dated aliases remain Phase 10C/10D work.
+  preserved separately and inactive. Phase 10C records the explicit replacement
+  relationship; richer corporate-action normalization remains Phase 10D work.
 - Fundamentals are best-effort (fields may be missing); a fundamentals failure
   does not sink the symbol's price/indicator ingestion.
 - Economic events require a Trading Economics subscription/API key. The UI

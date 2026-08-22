@@ -27,7 +27,13 @@ def tmp_data_dir(tmp_path, monkeypatch) -> str:
 @pytest_asyncio.fixture
 async def seeded_market(db_session: AsyncSession) -> None:
     stocks = [
-        Stock(symbol=f"S{i}.NS", name=f"S{i}", sector="Technology", exchange="NSE")
+        Stock(
+            symbol=f"S{i}.NS",
+            name=f"S{i}",
+            sector="Technology",
+            exchange="NSE",
+            history_eligible=True,
+        )
         for i in range(4)
     ]
     db_session.add_all(stocks)

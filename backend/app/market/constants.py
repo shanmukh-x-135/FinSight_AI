@@ -1,27 +1,6 @@
-"""Market-domain constants: the default stock universe and indicator periods."""
+"""Market-domain constants for macro proxies and deterministic indicators."""
 
 from __future__ import annotations
-
-# Default universe: a spread of large-cap NSE names across sectors, so the
-# sector/breadth endpoints are meaningful. yfinance uses the ``.NS`` suffix for
-# NSE listings. Configurable — the ingestion job accepts an explicit list too.
-DEFAULT_UNIVERSE: tuple[str, ...] = (
-    "RELIANCE.NS",
-    "TCS.NS",
-    "INFY.NS",
-    "HDFCBANK.NS",
-    "ICICIBANK.NS",
-    "SBIN.NS",
-    "ITC.NS",
-    "LT.NS",
-    "HINDUNILVR.NS",
-    "BHARTIARTL.NS",
-    "KOTAKBANK.NS",
-    "AXISBANK.NS",
-    "MARUTI.NS",
-    "SUNPHARMA.NS",
-    "TMPV.NS",
-)
 
 # NSE renamed the existing listed Tata Motors entity from TATAMOTORS to TMPV
 # effective 2025-10-24 after its commercial-vehicle demerger. TMCV is the newly

@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market import constants as market_constants
-from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
+from app.market.exceptions import UniverseNotInitializedError
+from app.market.models import DailyPrice, Fundamentals, IndexMembership, Indicator, Stock
 from app.market.repository import MarketRepository
 from app.market.service import MarketIngestionService, compute_indicator_points
 from app.shared.clients.market_data import (
@@ -68,6 +69,34 @@ class FakeClient:
         return self.fundamentals
 
 
+async def _approve(
+    db_session: AsyncSession,
+    symbol: str,
+    *,
+    valid_to: date | None = None,
+) -> Stock:
+    stock = Stock(
+        symbol=f"{symbol}.NS",
+        exchange_symbol=symbol,
+        exchange="NSE",
+        is_active=valid_to is None,
+    )
+    db_session.add(stock)
+    await db_session.flush()
+    db_session.add(
+        IndexMembership(
+            stock_id=stock.id,
+            index_code="NIFTY50",
+            valid_from=TARGET - timedelta(days=30),
+            valid_to=valid_to,
+            source="test",
+            source_snapshot_date=TARGET,
+        )
+    )
+    await db_session.commit()
+    return stock
+
+
 # ----- Ingestion service ---------------------------------------------------
 @pytest.mark.asyncio
 async def test_ingest_stores_all_layers(db_session: AsyncSession) -> None:
@@ -83,7 +112,9 @@ async def test_ingest_stores_all_layers(db_session: AsyncSession) -> None:
     assert stock.sector == "Technology"
 
     price_count = await db_session.scalar(
-        select(func.count()).select_from(DailyPrice).where(DailyPrice.stock_id == stock.id)
+        select(func.count())
+        .select_from(DailyPrice)
+        .where(DailyPrice.stock_id == stock.id)
     )
     assert price_count == 60
     fundamentals = await db_session.scalar(
@@ -100,35 +131,90 @@ async def test_ingest_stores_all_layers(db_session: AsyncSession) -> None:
 async def test_default_ingest_persists_macro_as_inactive(
     db_session: AsyncSession, monkeypatch
 ) -> None:
-    monkeypatch.setattr(market_constants, "DEFAULT_UNIVERSE", ())
     monkeypatch.setattr(
         market_constants,
         "MACRO_PROXIES",
         {"INR=X": ("USD/INR", "Currency")},
     )
+    await _approve(db_session, "GOOD")
 
     result = await MarketIngestionService(db_session, FakeClient()).ingest(
         target_trading_date=TARGET
     )
 
-    assert result.succeeded == ["INR=X"]
+    assert result.succeeded == ["GOOD.NS", "INR=X"]
     macro = await db_session.scalar(select(Stock).where(Stock.symbol == "INR=X"))
     assert macro is not None
     assert macro.is_active is False
     assert macro.sector == "Macro"
-    assert await db_session.scalar(
-        select(func.count()).select_from(DailyPrice).where(DailyPrice.stock_id == macro.id)
-    ) == 60
-    assert await db_session.scalar(
-        select(func.count()).select_from(Indicator).where(Indicator.stock_id == macro.id)
-    ) == 0
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(DailyPrice)
+            .where(DailyPrice.stock_id == macro.id)
+        )
+        == 60
+    )
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(Indicator)
+            .where(Indicator.stock_id == macro.id)
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_ingest_requires_initialized_database_universe(
+    db_session: AsyncSession,
+) -> None:
+    with pytest.raises(UniverseNotInitializedError):
+        await MarketIngestionService(db_session, FakeClient()).ingest(
+            target_trading_date=TARGET
+        )
+
+
+@pytest.mark.asyncio
+async def test_default_ingest_excludes_removed_membership_and_keeps_macros(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        market_constants,
+        "MACRO_PROXIES",
+        {"INR=X": ("USD/INR", "Currency")},
+    )
+    await _approve(db_session, "GOOD")
+    await _approve(db_session, "REMOVED", valid_to=TARGET)
+
+    result = await MarketIngestionService(
+        db_session, FakeClient(fail_symbols=["REMOVED.NS"])
+    ).ingest(target_trading_date=TARGET)
+
+    assert result.requested == 2
+    assert result.succeeded == ["GOOD.NS", "INR=X"]
+    assert result.failed == []
+
+
+@pytest.mark.asyncio
+async def test_approved_equity_failure_remains_strictly_visible(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(market_constants, "MACRO_PROXIES", {})
+    await _approve(db_session, "BAD")
+
+    result = await MarketIngestionService(
+        db_session, FakeClient(fail_symbols=["BAD.NS"])
+    ).ingest(target_trading_date=TARGET)
+
+    assert result.requested == 1
+    assert result.succeeded == []
+    assert result.failed == ["BAD.NS"]
 
 
 @pytest.mark.asyncio
 async def test_ingest_isolates_failures(db_session: AsyncSession) -> None:
-    service = MarketIngestionService(
-        db_session, FakeClient(fail_symbols=["BAD.NS"])
-    )
+    service = MarketIngestionService(db_session, FakeClient(fail_symbols=["BAD.NS"]))
     result = await service.ingest(
         ["GOOD.NS", "BAD.NS", "ALSOGOOD.NS"], target_trading_date=TARGET
     )
@@ -159,11 +245,14 @@ async def test_replacement_ingestion_retires_old_symbol_without_rewriting_histor
     await db_session.refresh(old_stock)
     assert old_stock.is_active is False
     assert old_stock.symbol == "TATAMOTORS.NS"
-    assert await db_session.scalar(
-        select(func.count()).select_from(DailyPrice).where(
-            DailyPrice.stock_id == old_stock.id
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(DailyPrice)
+            .where(DailyPrice.stock_id == old_stock.id)
         )
-    ) == 1
+        == 1
+    )
     replacement = await MarketRepository(db_session).get_stock_by_symbol("TMPV.NS")
     assert replacement is not None and replacement.is_active is True
 
@@ -221,7 +310,9 @@ async def test_ingest_is_idempotent(db_session: AsyncSession) -> None:
 
     stock = await MarketRepository(db_session).get_stock_by_symbol("GOOD.NS")
     count = await db_session.scalar(
-        select(func.count()).select_from(DailyPrice).where(DailyPrice.stock_id == stock.id)
+        select(func.count())
+        .select_from(DailyPrice)
+        .where(DailyPrice.stock_id == stock.id)
     )
     assert count == 60
 
@@ -288,9 +379,7 @@ def test_yfinance_classifies_missing_symbol_without_retry(monkeypatch) -> None:
     monkeypatch.setattr(mod.yf, "Ticker", FakeTicker)
 
     with pytest.raises(MarketDataUnavailableError):
-        mod.YFinanceClient(max_attempts=3, base_delay=0).fetch_daily_prices(
-            "STALE.NS"
-        )
+        mod.YFinanceClient(max_attempts=3, base_delay=0).fetch_daily_prices("STALE.NS")
     assert calls == 1
 
 
@@ -303,7 +392,7 @@ def test_yfinance_drops_nan_and_invalid_bars(monkeypatch) -> None:
     frame = pd.DataFrame(
         {
             "Open": [10.0, 11.0, float("nan"), 12.0],
-            "High": [11.0, 12.0, 13.0, 5.0],   # last row: High < Low → invalid
+            "High": [11.0, 12.0, 13.0, 5.0],  # last row: High < Low → invalid
             "Low": [9.0, 10.0, 12.0, 9.0],
             "Close": [10.5, 11.5, float("nan"), 12.5],  # row 3: NaN close → dropped
             "Volume": [100, 200, 300, 400],
