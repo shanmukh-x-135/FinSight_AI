@@ -55,7 +55,7 @@ shared components.
 |--------|----------|----------------|--------------|
 | **Dashboard** (`/dashboard`) | bespoke | `MetricCard`, `DashboardWatchlist`, `AIInsightCard` + `EvidencePanel`, `StockCard` | `GET /dashboard/summary` (one batched call) |
 | **Market Intelligence** (`/market`) | Analytics | `MetricCard`, `Heatmap`, `TechnicalSummaryCard`, `EconomicEventsCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /market/{breadth,gainers,losers,sectors,technical-summary,economic-events}` + `GET /recommendations` |
-| **Historical Similarity** (`/history`) | Analytics | `MetricCard`, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
+| **Historical Similarity** (`/history`) | Analytics | `MetricCard`, model/coverage badges, deterministic factor cards, `DataTable`, `AIInsightCard` + `EvidencePanel` | `GET /history/similar` |
 | **Portfolio** (`/portfolio`) | Analytics | `MetricCard`, `DonutChart`, `AIInsightCard` + `EvidencePanel`, `DataTable` | `GET /portfolios/{id}/analytics` + `GET /recommendations` (filtered to holdings) |
 | **Watchlist** (`/watchlist`) | Management | `DataTable` + form | `GET/POST/PATCH/DELETE /watchlist` |
 | **AI Assistant** (`/chat`) | Conversation | message stream, recent-question history, `EvidencePanel` | `POST /chat?stream=true`, `GET/DELETE /chat/history` |
