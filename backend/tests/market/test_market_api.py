@@ -221,8 +221,15 @@ class _FakeIngestClient:
     ) -> list[PriceBar]:
         current = date.today()
         return [
-            PriceBar(current - timedelta(days=1), 10, 11, 9, 10, 100),
-            PriceBar(current, 10, 12, 10, 11, 120),
+            PriceBar(
+                current - timedelta(days=59 - index),
+                10 + index,
+                11 + index,
+                9 + index,
+                10.5 + index,
+                100 + index,
+            )
+            for index in range(60)
         ]
 
     def fetch_fundamentals(self, symbol: str) -> FundamentalsData:

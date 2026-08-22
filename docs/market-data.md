@@ -16,13 +16,37 @@ oil, gold, and the US 10-year Treasury yield). They reuse `daily_prices` but are
 stored with `is_active=false`; consequently they feed historical similarity
 without appearing in equity APIs, breadth, sectors, watchlists, or portfolios.
 
+The curated equity universe currently contains 15 approved symbols. Following
+the Tata Motors commercial-vehicle demerger, NSE renamed the existing listed
+`TATAMOTORS` security to `TMPV` effective 24 October 2025; `TMPV.NS` is therefore
+the approved continuity symbol. `TMCV.NS` is the separately listed demerged
+commercial-vehicle company and is not treated as an alias. When `TMPV.NS`
+ingests successfully, any existing `TATAMOTORS.NS` stock row is deactivated
+without renaming or deleting its historical prices.
+
 The client (`app/shared/clients/yfinance_client.py`):
 - **retries** transient failures (`market_fetch_max_attempts`, linear backoff);
 - uses explicit inclusive `start` / exclusive `end` dates plus SDK and outer
   timeouts; yfinance's currently incompatible repair path is opt-in;
 - **validates** — drops bars with NaN / non-finite / non-positive OHLC, or
   `high < low`. Yahoo returns a NaN close for the in-progress session, so the
-incomplete latest bar is discarded rather than stored as corrupt data.
+  incomplete latest bar is discarded rather than stored as corrupt data;
+- classifies Yahoo's missing-ticker response separately from retryable provider
+  failures, avoiding pointless retries for renamed or delisted symbols.
+
+The ingestion path additionally rejects malformed OHLCV relationships,
+duplicate dates, materially stale history, and full-window histories too short
+to compute the longest configured equity indicator. Operators can run the same
+configured-universe checks without touching PostgreSQL:
+
+```bash
+cd backend
+./.venv/bin/python -m app.market.universe --target-date YYYY-MM-DD
+```
+
+The command prints per-symbol bar counts and classified health status and exits
+nonzero if any of the 15 equities or four macro proxies is unhealthy. It is an
+explicit EOD/universe preflight tool; no network validation runs at API startup.
 
 Before the external EOD runner enters the durable pipeline, the P10.3 preflight
 uses maintained offline NSE session/holiday rules, waits for the configured
@@ -126,7 +150,9 @@ Daily % change is computed from the two most recent `daily_prices` rows.
 `backend/tests/market/`:
 - **Indicators** — reference-value goldens (hand-derived) + property checks.
 - **Ingestion** — fake client: full-pipeline storage, inactive macro-proxy
-  persistence, partial-failure isolation, idempotency, exact incremental/full
+  persistence, ticker retirement with history preservation, universe health,
+  stale/invalid/insufficient-history classification, partial-failure isolation,
+  idempotency, exact incremental/full
   windows, overlap correction, future-row rejection, rollback-safe watermarks,
   periodic reconciliation, and canonical indicators; yfinance retry
   (success-after-transient, exhaustion), window options, and invalid-bar dropping.
@@ -157,6 +183,11 @@ curl localhost:8000/api/v1/market/stocks/RELIANCE.NS
 
 - yfinance/Yahoo is an unofficial source and can rate-limit or change; the client
   retries and isolates failures but ingestion quality depends on the provider.
+- Yahoo backfills pre-rename history under `TMPV.NS` and retains the roughly 40%
+  14 October 2025 demerger price step. That is a real corporate-action value
+  transfer rather than an ordinary market loss. The old `TATAMOTORS.NS` rows are
+  preserved separately and inactive; richer corporate-action normalization and
+  effective-dated aliases remain Phase 10C/10D work.
 - Fundamentals are best-effort (fields may be missing); a fundamentals failure
   does not sink the symbol's price/indicator ingestion.
 - Economic events require a Trading Economics subscription/API key. The UI

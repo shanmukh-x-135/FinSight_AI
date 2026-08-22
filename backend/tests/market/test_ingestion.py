@@ -141,6 +141,51 @@ async def test_ingest_isolates_failures(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_replacement_ingestion_retires_old_symbol_without_rewriting_history(
+    db_session: AsyncSession,
+) -> None:
+    old_stock = Stock(symbol="TATAMOTORS.NS", name="Historical Tata Motors")
+    db_session.add(old_stock)
+    await db_session.flush()
+    old_bar = _make_bars(1)[0]
+    await MarketRepository(db_session).upsert_daily_prices(old_stock.id, [old_bar])
+    await db_session.commit()
+
+    result = await MarketIngestionService(db_session, FakeClient()).ingest(
+        ["TMPV.NS"], target_trading_date=TARGET
+    )
+
+    assert result.failed == []
+    await db_session.refresh(old_stock)
+    assert old_stock.is_active is False
+    assert old_stock.symbol == "TATAMOTORS.NS"
+    assert await db_session.scalar(
+        select(func.count()).select_from(DailyPrice).where(
+            DailyPrice.stock_id == old_stock.id
+        )
+    ) == 1
+    replacement = await MarketRepository(db_session).get_stock_by_symbol("TMPV.NS")
+    assert replacement is not None and replacement.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_failed_replacement_does_not_retire_old_symbol(
+    db_session: AsyncSession,
+) -> None:
+    old_stock = Stock(symbol="TATAMOTORS.NS", name="Historical Tata Motors")
+    db_session.add(old_stock)
+    await db_session.commit()
+
+    result = await MarketIngestionService(
+        db_session, FakeClient(fail_symbols=["TMPV.NS"])
+    ).ingest(["TMPV.NS"], target_trading_date=TARGET)
+
+    assert result.failed == ["TMPV.NS"]
+    await db_session.refresh(old_stock)
+    assert old_stock.is_active is True
+
+
+@pytest.mark.asyncio
 async def test_ingest_enforces_provider_deadline(
     db_session: AsyncSession, monkeypatch
 ) -> None:
@@ -221,6 +266,32 @@ def test_yfinance_retry_raises_after_exhaustion() -> None:
 
     with pytest.raises(MarketDataError):
         client._retry("thing", "SYM", always_fail)
+
+
+def test_yfinance_classifies_missing_symbol_without_retry(monkeypatch) -> None:
+    from yfinance.exceptions import YFTzMissingError
+
+    from app.shared.clients import yfinance_client as mod
+    from app.shared.clients.market_data import MarketDataUnavailableError
+
+    calls = 0
+
+    class FakeTicker:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def history(self, **_kwargs):
+            nonlocal calls
+            calls += 1
+            raise YFTzMissingError("STALE.NS")
+
+    monkeypatch.setattr(mod.yf, "Ticker", FakeTicker)
+
+    with pytest.raises(MarketDataUnavailableError):
+        mod.YFinanceClient(max_attempts=3, base_delay=0).fetch_daily_prices(
+            "STALE.NS"
+        )
+    assert calls == 1
 
 
 def test_yfinance_drops_nan_and_invalid_bars(monkeypatch) -> None:
