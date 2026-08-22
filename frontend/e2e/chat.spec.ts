@@ -8,7 +8,7 @@ test.beforeAll(async ({ request }) => {
 
 test("stream a grounded answer, reload persisted history, and clear it", async ({ page }) => {
   await login(page);
-  await page.getByRole("link", { name: "Assistant", exact: true }).first().click();
+  await page.getByRole("link", { name: "AI", exact: true }).first().click();
   await expect(page).toHaveURL(/\/chat$/);
   await expect(page.getByRole("heading", { name: "AI Research Assistant" })).toBeVisible();
 

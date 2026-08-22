@@ -54,9 +54,9 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
     : null;
   return (
     <article className="max-w-3xl" aria-label="FinSight AI response">
-      <Card className="gap-0 border-blue-100 py-0 shadow-sm">
-        <div className="flex items-center gap-2 border-b bg-blue-50/50 px-4 py-3">
-          <Sparkles className="h-4 w-4 text-blue-600" aria-hidden />
+      <Card className="gap-0 border-primary/20 py-0 shadow-sm">
+        <div className="flex items-center gap-2 border-b bg-primary/5 px-4 py-3">
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden />
           <span className="text-sm font-semibold">FinSight AI</span>
           {generationLabel && (
             <span className="text-xs text-muted-foreground">· {generationLabel}</span>
@@ -194,8 +194,8 @@ export default function ChatPage() {
   const userPrompts = messages.filter((message) => message.role === "user").slice().reverse();
 
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-9rem)] max-w-7xl gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="order-2 rounded-xl border bg-muted/20 p-4 lg:order-1" aria-label="Chat history">
+    <div className="mx-auto grid min-h-[calc(100vh-8rem)] max-w-[1500px] gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <aside className="order-2 rounded-xl border border-border/70 bg-card/70 p-4 lg:order-1" aria-label="Chat history">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden />
@@ -234,10 +234,10 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      <section className="order-1 flex min-h-[38rem] min-w-0 flex-col overflow-hidden rounded-xl border bg-background lg:order-2">
+      <section className="order-1 flex min-h-[38rem] min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/55 shadow-[0_1px_2px_rgba(0,0,0,.04)] lg:order-2">
         <header className="border-b px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary">
               <MessageSquareText className="h-5 w-5" aria-hidden />
             </div>
             <div>
@@ -254,7 +254,7 @@ export default function ChatPage() {
             <p className="text-sm text-muted-foreground">Loading conversation…</p>
           ) : messages.length === 0 && !sending ? (
             <div className="mx-auto flex max-w-2xl flex-col items-center py-12 text-center">
-              <div className="rounded-2xl bg-blue-50 p-4 text-blue-600">
+              <div className="rounded-2xl bg-primary/10 p-4 text-primary">
                 <Sparkles className="h-7 w-7" aria-hidden />
               </div>
               <h2 className="mt-4 text-lg font-semibold">Ask about the evidence</h2>
@@ -267,7 +267,7 @@ export default function ChatPage() {
                     key={suggestion}
                     type="button"
                     onClick={() => void send(suggestion)}
-                    className="rounded-xl border p-3 text-left text-sm hover:border-blue-200 hover:bg-blue-50/40"
+                    className="rounded-xl border border-border/70 bg-background/50 p-3 text-left text-sm hover:border-primary/40 hover:bg-primary/5"
                   >
                     {suggestion}
                   </button>
@@ -285,14 +285,14 @@ export default function ChatPage() {
           )}
           {sending && (
             <article className="max-w-3xl" aria-label="FinSight AI is responding">
-              <Card className="gap-0 border-blue-100 p-4 shadow-sm">
+              <Card className="gap-0 border-primary/20 p-4 shadow-sm">
                 <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Sparkles className="h-4 w-4 text-blue-600" aria-hidden />
+                  <Sparkles className="h-4 w-4 text-primary" aria-hidden />
                   FinSight AI
                 </div>
                 <p className="mt-3 text-sm leading-7" aria-live="polite">
                   {streamedText || "Reviewing your evidence…"}
-                  <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-blue-600 align-middle" aria-hidden />
+                  <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary align-middle" aria-hidden />
                 </p>
               </Card>
             </article>

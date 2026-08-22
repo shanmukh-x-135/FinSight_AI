@@ -269,6 +269,8 @@ export interface WatchlistItem {
   change_percent: number | null;
   pinned: boolean;
   sort_order: number;
+  rsi_14?: number | null;
+  trend?: string | null;
 }
 
 export const portfolioApi = {
@@ -339,6 +341,52 @@ export interface Quote {
   volume: number | null;
 }
 
+export interface MarketStockSnapshot extends Quote {
+  rsi_14: number | null;
+  ema_20: number | null;
+  ema_50: number | null;
+  macd_histogram: number | null;
+  trend: string | null;
+}
+
+export interface Fundamentals {
+  market_cap: number | null;
+  pe_ratio: number | null;
+  eps: number | null;
+  dividend_yield: number | null;
+  week52_high: number | null;
+  week52_low: number | null;
+}
+
+export interface StockDetail extends Quote {
+  industry: string | null;
+  exchange: string | null;
+  fundamentals: Fundamentals | null;
+}
+
+export interface PricePoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface IndicatorPoint {
+  date: string;
+  rsi_14: number | null;
+  ema_20: number | null;
+  ema_50: number | null;
+  macd: number | null;
+  macd_signal: number | null;
+  macd_histogram: number | null;
+  bb_upper: number | null;
+  bb_middle: number | null;
+  bb_lower: number | null;
+  atr_14: number | null;
+}
+
 export interface Breadth {
   advancers: number;
   decliners: number;
@@ -388,6 +436,13 @@ export interface EconomicCalendar {
 }
 
 export const marketApi = {
+  stocks: () => request<MarketStockSnapshot[]>("/api/v1/market/stocks"),
+  detail: (symbol: string) =>
+    request<StockDetail>(`/api/v1/market/stocks/${encodeURIComponent(symbol)}`),
+  prices: (symbol: string, limit = 180) =>
+    request<PricePoint[]>(`/api/v1/market/stocks/${encodeURIComponent(symbol)}/prices?limit=${limit}`),
+  indicators: (symbol: string, limit = 180) =>
+    request<IndicatorPoint[]>(`/api/v1/market/stocks/${encodeURIComponent(symbol)}/indicators?limit=${limit}`),
   gainers: (limit = 5) => request<Quote[]>(`/api/v1/market/gainers?limit=${limit}`),
   losers: (limit = 5) => request<Quote[]>(`/api/v1/market/losers?limit=${limit}`),
   breadth: () => request<Breadth>("/api/v1/market/breadth"),
@@ -396,6 +451,47 @@ export const marketApi = {
     request<TechnicalSummary>("/api/v1/market/technical-summary"),
   economicEvents: (days = 14) =>
     request<EconomicCalendar>(`/api/v1/market/economic-events?days=${days}`),
+};
+
+// ----- News & sentiment ----------------------------------------------------
+export interface SentimentDaily {
+  date: string;
+  avg_sentiment: number;
+  article_count: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+}
+
+export interface StockSentiment {
+  symbol: string;
+  name: string | null;
+  latest_sentiment: number | null;
+  series: SentimentDaily[];
+}
+
+export interface LatestSentiment {
+  symbol: string;
+  latest_sentiment: number | null;
+}
+
+export interface NewsArticle {
+  id: number;
+  source: string;
+  url: string;
+  title: string;
+  summary: string;
+  published_at: string | null;
+  sentiment_label: string;
+  sentiment_score: number;
+  tags: string[];
+}
+
+export const newsApi = {
+  recent: (limit = 50) => request<NewsArticle[]>(`/api/v1/news?limit=${limit}`),
+  latestSentiment: () => request<LatestSentiment[]>("/api/v1/news/sentiment"),
+  stockSentiment: (symbol: string) =>
+    request<StockSentiment>(`/api/v1/news/sentiment/${encodeURIComponent(symbol)}`),
 };
 
 // ----- Historical similarity types (Phase 4 reads) --------------------------

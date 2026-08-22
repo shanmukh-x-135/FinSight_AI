@@ -10,7 +10,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError, reportsApi, type ReportSummary } from "@/lib/api";
+import { PageHeader, Panel, SectionHeader } from "@/components/workspace";
 
 const PAGE = 10;
 
@@ -39,7 +39,7 @@ const columns: Column<ReportSummary>[] = [
     header: "",
     align: "right",
     render: (r) => (
-      <Link href={`/reports/${r.id}`} className="text-blue-600 hover:underline">
+      <Link href={`/reports/${r.id}`} className="text-primary hover:underline">
         Open →
       </Link>
     ),
@@ -126,24 +126,12 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">Reports</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your evidence-backed report history. Generate, open, and export as Markdown or PDF.
-          </p>
-        </div>
-        <Button onClick={onGenerate} disabled={generating}>
+    <div className="mx-auto max-w-6xl space-y-5">
+      <PageHeader eyebrow="Research archive" title="Reports" description="Generate, review, and export evidence-backed research as Markdown or PDF." actions={<Button onClick={onGenerate} disabled={generating}>
           {generating ? "Generating…" : "Generate report"}
-        </Button>
-      </div>
+        </Button>} />
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-base">Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Panel><SectionHeader title="Report filters" description="Narrow the archive by report type and generation date." /><div className="mt-4">
           <form onSubmit={applyFilters} className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="type">Type</Label>
@@ -185,12 +173,11 @@ export default function ReportsPage() {
               </Button>
             )}
           </form>
-        </CardContent>
-      </Card>
+        </div></Panel>
 
-      {error && <p role="alert" className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-4 text-sm text-negative">{error}</p>}
 
-      <div className="mt-6">
+      <Panel><SectionHeader title="Generated reports" description="Most recent reports appear first." /><div className="mt-4">
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading reports…</p>
         ) : (
@@ -201,7 +188,7 @@ export default function ReportsPage() {
             emptyMessage="No reports yet — generate your first one."
           />
         )}
-      </div>
+      </div></Panel>
 
       <div className="mt-4 flex items-center justify-between">
         <Button

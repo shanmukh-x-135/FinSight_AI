@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError, api } from "@/lib/api";
+import { PageHeader } from "@/components/workspace";
 import { useAuth } from "@/lib/auth-context";
 
 const RISK = ["conservative", "moderate", "aggressive"];
@@ -89,13 +90,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl">
-      <h2 className="text-2xl font-bold">Settings</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Personalize how FinSight AI analyzes the market for you.
-      </p>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <PageHeader eyebrow="Workspace" title="Settings" description="Personalize the deterministic risk and relevance context used in reports and recommendations." />
 
-      <Card className="mt-6">
+      <Card className="border-border/70 bg-card/80 shadow-none">
         <CardHeader>
           <CardTitle className="text-base">Investment preferences</CardTitle>
           <CardDescription>Used to tailor reports and recommendations.</CardDescription>

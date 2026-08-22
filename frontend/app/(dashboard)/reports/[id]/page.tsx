@@ -88,8 +88,8 @@ export default function ReportDetailPage() {
   if (notFound || !report) {
     return (
       <div className="mx-auto max-w-4xl">
-        <p className="text-sm text-red-600">Report not found.</p>
-        <Link href="/reports" className="mt-2 inline-block text-sm text-blue-600 hover:underline">
+        <p className="text-sm text-negative">Report not found.</p>
+        <Link href="/reports" className="mt-2 inline-block text-sm text-primary hover:underline">
           ← Back to reports
         </Link>
       </div>
@@ -274,7 +274,7 @@ export default function ReportDetailPage() {
   return (
     <>
       {exportError && (
-        <p role="alert" className="mx-auto mb-3 max-w-4xl text-sm text-red-600">{exportError}</p>
+        <p role="alert" className="mx-auto mb-3 max-w-4xl text-sm text-negative">{exportError}</p>
       )}
       <ReportPageTemplate
         title={`FinSight AI — ${report.report_type.charAt(0).toUpperCase()}${report.report_type.slice(1)} Report`}

@@ -1,12 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { intelligenceApi, marketApi } from "@/lib/api";
+import { intelligenceApi, marketApi, newsApi } from "@/lib/api";
 
 import MarketPage from "./page";
 
 vi.mock("@/lib/api", () => ({
   marketApi: {
+    stocks: vi.fn(),
     breadth: vi.fn(),
     gainers: vi.fn(),
     losers: vi.fn(),
@@ -14,11 +15,14 @@ vi.mock("@/lib/api", () => ({
     technicalSummary: vi.fn(),
     economicEvents: vi.fn(),
   },
+  newsApi: { latestSentiment: vi.fn() },
   intelligenceApi: { recommendations: vi.fn() },
 }));
 
 describe("MarketPage AI analysis states", () => {
   beforeEach(() => {
+    vi.mocked(marketApi.stocks).mockResolvedValue([]);
+    vi.mocked(newsApi.latestSentiment).mockResolvedValue([]);
     vi.mocked(marketApi.breadth).mockResolvedValue({
       advancers: 8,
       decliners: 4,

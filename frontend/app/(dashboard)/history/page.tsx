@@ -1,174 +1,42 @@
 "use client";
 
-/**
- * Historical Similarity page (Phase 7) — Analytics page template.
- *
- * Surfaces Phase 4's deterministic engine: the sessions most similar to today
- * and what actually happened next, with the statistics framed explicitly as
- * historical context — not a forecast. The narrative here is a factual
- * description of the returned numbers, not an LLM prediction.
- */
-
 import { useEffect, useState } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { DataTable, type Column } from "@/components/DataTable";
+import { HistoryOutcomeChart } from "@/components/finance-charts";
 import { MetricCard, toneOf } from "@/components/MetricCard";
-import { AnalyticsPageTemplate } from "@/components/templates/AnalyticsPageTemplate";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
 import { historyApi, type SimilarSession, type SimilarityResult } from "@/lib/api";
-import { ratioPct, signClass } from "@/lib/utils";
+import { ratioPct } from "@/lib/utils";
 
-const outcomeClass = (o: string | null) =>
-  o === "bullish" ? "text-green-600" : o === "bearish" ? "text-red-600" : "text-muted-foreground";
-
-const sessionColumns: Column<SimilarSession>[] = [
-  { key: "date", header: "Date", render: (s) => <span className="font-medium">{s.date}</span> },
-  { key: "similarity", header: "Similarity", align: "right", render: (s) => `${(s.similarity_score * 100).toFixed(1)}%` },
-  { key: "avg_return", header: "Session return", align: "right", render: (s) => <span className={signClass(s.avg_return)}>{ratioPct(s.avg_return)}</span> },
-  { key: "next_day", header: "Next day", align: "right", render: (s) => <span className={signClass(s.next_day_return)}>{ratioPct(s.next_day_return)}</span> },
-  { key: "outcome", header: "Outcome", align: "right", render: (s) => <span className={`capitalize ${outcomeClass(s.outcome)}`}>{s.outcome ?? "—"}</span> },
+const columns: Column<SimilarSession>[] = [
+  { key: "date", header: "Historical session", render: (row) => <span className="font-semibold">{row.date}</span> },
+  { key: "similarity", header: "Similarity", align: "right", render: (row) => `${(row.similarity_score * 100).toFixed(1)}%` },
+  { key: "session", header: "Session return", align: "right", render: (row) => <TrendValue compact value={row.avg_return}>{ratioPct(row.avg_return)}</TrendValue> },
+  { key: "breadth", header: "Advancers", align: "right", render: (row) => ratioPct(row.pct_advancers, 1, false) },
+  { key: "rsi", header: "Avg RSI", align: "right", render: (row) => row.avg_rsi.toFixed(1) },
+  { key: "next", header: "Next session", align: "right", render: (row) => <TrendValue compact value={row.next_day_return}>{ratioPct(row.next_day_return)}</TrendValue> },
+  { key: "outcome", header: "Outcome", render: (row) => <StatusBadge label={row.outcome ?? "unknown"} tone={row.outcome === "bullish" ? "positive" : row.outcome === "bearish" ? "negative" : "neutral"} /> },
 ];
 
 export default function HistoryPage() {
   const [result, setResult] = useState<SimilarityResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    historyApi
-      .similar(10)
-      .then((d) => !cancelled && setResult(d))
-      .catch(() => !cancelled && setUnavailable(true))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading historical similarity…</p>;
-  }
-
-  if (unavailable || !result) {
-    return (
-      <AnalyticsPageTemplate
-        title="Historical Similarity"
-        subtitle="How today compares to past market sessions"
-        summaryCards={
-          <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            The historical similarity index has not been built yet. It is created from
-            accumulated market data and rebuilt on schedule.
-          </div>
-        }
-      />
-    );
-  }
+  useEffect(() => { let active = true; historyApi.similar(10).then((data) => active && setResult(data)).catch(() => active && setUnavailable(true)).finally(() => active && setLoading(false)); return () => { active = false; }; }, []);
+  if (loading) return <PageSkeleton />;
+  if (unavailable || !result) return <div className="space-y-5"><PageHeader eyebrow="Research" title="Historical Similarity" description="How the current market state compares with stored sessions." /><DataState kind="unavailable" title="Similarity index unavailable" description="The index is built from accumulated market sessions and rebuilt on schedule." /></div>;
 
   const stats = result.statistics;
-  const total = stats.bullish_count + stats.bearish_count + stats.neutral_count || 1;
   const bullPct = stats.bullish_probability == null ? null : Math.round(stats.bullish_probability * 100);
+  const narrative = stats.sample_size === 0 ? "No comparable historical sessions were found for today." : `The current market resembles ${stats.sample_size} stored sessions. ${bullPct ?? "An unavailable share"}% closed higher on the following session, with an average next-session return of ${ratioPct(stats.avg_next_day_return)}. This is historical context, not a forecast.`;
 
-  const narrative =
-    stats.sample_size === 0
-      ? "No comparable historical sessions were found for today."
-      : `Today's market resembles ${stats.sample_size} past session${stats.sample_size === 1 ? "" : "s"}. ` +
-        (bullPct != null ? `${bullPct}% of them closed higher the next day` : "") +
-        (stats.avg_next_day_return != null ? ` (average ${ratioPct(stats.avg_next_day_return)}).` : ".") +
-        " This is historical context, not a forecast.";
-
-  const summaryCards = (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <MetricCard label="Similar Sessions" value={stats.sample_size} sub={`top-${stats.k} nearest`} />
-      <MetricCard
-        label="Closed Higher"
-        value={bullPct == null ? "—" : `${bullPct}%`}
-        sub="next-day, historically"
-        tone={bullPct == null ? "default" : bullPct >= 50 ? "positive" : "negative"}
-      />
-      <MetricCard
-        label="Avg Next-Day"
-        value={ratioPct(stats.avg_next_day_return)}
-        tone={toneOf(stats.avg_next_day_return)}
-      />
-      <MetricCard
-        label="Best / Worst"
-        value={`${ratioPct(stats.best_case_return)} / ${ratioPct(stats.worst_case_return)}`}
-        sub="observed next-day range"
-      />
-    </div>
-  );
-
-  const charts = (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Next-day outcomes</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex h-3 overflow-hidden rounded-full">
-            <div className="bg-green-500" style={{ width: `${(stats.bullish_count / total) * 100}%` }} />
-            <div className="bg-muted-foreground/40" style={{ width: `${(stats.neutral_count / total) * 100}%` }} />
-            <div className="bg-red-500" style={{ width: `${(stats.bearish_count / total) * 100}%` }} />
-          </div>
-          <div className="grid grid-cols-3 text-center text-sm">
-            <div><p className="font-semibold text-green-600">{stats.bullish_count}</p><p className="text-xs text-muted-foreground">bullish</p></div>
-            <div><p className="font-semibold text-muted-foreground">{stats.neutral_count}</p><p className="text-xs text-muted-foreground">neutral</p></div>
-            <div><p className="font-semibold text-red-600">{stats.bearish_count}</p><p className="text-xs text-muted-foreground">bearish</p></div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Today&apos;s session ({result.query_date})</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 text-sm">
-          <div><p className="text-muted-foreground">Avg return</p><p className={`font-semibold ${signClass(result.query_summary.avg_return)}`}>{ratioPct(result.query_summary.avg_return)}</p></div>
-          <div><p className="text-muted-foreground">% advancers</p><p className="font-semibold">{ratioPct(result.query_summary.pct_advancers, 1, false)}</p></div>
-          <div><p className="text-muted-foreground">A/D ratio</p><p className="font-semibold">{result.query_summary.advance_decline_ratio.toFixed(2)}</p></div>
-          <div><p className="text-muted-foreground">Avg RSI</p><p className="font-semibold">{result.query_summary.avg_rsi.toFixed(1)}</p></div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const aiAnalysis = (
-    <AIInsightCard
-      title="Historical context"
-      narrative={narrative}
-      evidence={{
-        evidence: result.similar_sessions
-          .slice(0, 5)
-          .map((s) => `${s.date}: ${(s.similarity_score * 100).toFixed(0)}% similar → next day ${ratioPct(s.next_day_return)} (${s.outcome ?? "n/a"})`),
-        extra: [
-          { label: "Median next-day", value: ratioPct(stats.median_next_day_return) },
-          { label: "Std deviation", value: ratioPct(stats.std_next_day_return) },
-          ...(stats.ci_low != null && stats.ci_high != null
-            ? [{ label: "95% CI", value: `${ratioPct(stats.ci_low)} to ${ratioPct(stats.ci_high)}` }]
-            : []),
-        ],
-      }}
-    />
-  );
-
-  const tables = (
-    <DataTable
-      columns={sessionColumns}
-      rows={result.similar_sessions}
-      rowKey={(s) => s.date}
-      emptyMessage="No similar sessions found."
-    />
-  );
-
-  return (
-    <AnalyticsPageTemplate
-      title="Historical Similarity"
-      subtitle="How today compares to past market sessions — context, not prediction"
-      summaryCards={summaryCards}
-      charts={charts}
-      aiAnalysis={aiAnalysis}
-      tables={tables}
-    />
-  );
+  return <div className="space-y-5">
+    <PageHeader eyebrow="Research" title="Historical Similarity" description="Nearest market-state analogues and their observed next-session outcomes — context, not prediction." />
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Comparable sessions" value={stats.sample_size} sub={`Top-${stats.k} nearest states`} /><MetricCard label="Closed higher" value={bullPct == null ? "—" : `${bullPct}%`} sub="Following session" tone={bullPct == null ? "default" : bullPct >= 50 ? "positive" : "negative"} /><MetricCard label="Average next session" value={ratioPct(stats.avg_next_day_return)} tone={toneOf(stats.avg_next_day_return)} /><MetricCard label="Observed range" value={`${ratioPct(stats.worst_case_return)} to ${ratioPct(stats.best_case_return)}`} sub="Worst to best" /></div>
+    <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]"><Panel><SectionHeader title="Observed next-session outcomes" description={`${stats.sample_size} nearest sessions in the current result set.`} /><HistoryOutcomeChart result={result} /></Panel><Panel><SectionHeader title={`Current state · ${result.query_date}`} description="Normalized inputs used by the similarity engine." /><dl className="mt-6 grid grid-cols-2 gap-3">{[["Average return", ratioPct(result.query_summary.avg_return)], ["Advancers", ratioPct(result.query_summary.pct_advancers, 1, false)], ["A/D ratio", result.query_summary.advance_decline_ratio.toFixed(2)], ["Average RSI", result.query_summary.avg_rsi.toFixed(1)]].map(([label, value]) => <div key={label} className="rounded-lg border border-border/60 bg-muted/20 p-3"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}</dl>{stats.ci_low != null && stats.ci_high != null && <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3"><p className="text-xs text-muted-foreground">95% confidence interval</p><p className="mt-1 text-sm font-semibold">{ratioPct(stats.ci_low)} to {ratioPct(stats.ci_high)}</p></div>}</Panel></div>
+    <AIInsightCard title="Historical context" narrative={narrative} evidence={{ evidence: result.similar_sessions.slice(0, 5).map((row) => `${row.date}: ${(row.similarity_score * 100).toFixed(0)}% similar → ${ratioPct(row.next_day_return)} (${row.outcome ?? "n/a"})`), extra: [{ label: "Median next-session", value: ratioPct(stats.median_next_day_return) }, { label: "Standard deviation", value: ratioPct(stats.std_next_day_return) }] }} />
+    <Panel><SectionHeader title="Nearest sessions" description="Ranked by normalized feature-vector distance." /><div className="mt-4"><DataTable columns={columns} rows={result.similar_sessions} rowKey={(row) => row.date} emptyMessage="No similar sessions found." caption="Historical market sessions ranked by similarity" /></div></Panel>
+  </div>;
 }

@@ -1,200 +1,85 @@
 "use client";
 
-/**
- * Dashboard — the primary home screen (Phase 7).
- *
- * One batched call to /dashboard/summary backs the whole page: market breadth
- * cards, the deterministic AI market summary, the user's portfolio snapshot,
- * watchlist quotes, today's evidence-backed opportunities (each with a Show
- * Evidence expander), risk alerts, and market movers. All data is real.
- */
-
+import { ArrowRight, BrainCircuit, ShieldAlert, Telescope } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { DashboardWatchlist } from "@/components/DashboardWatchlist";
 import { MetricCard, toneOf } from "@/components/MetricCard";
-import { StockCard } from "@/components/StockCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, TrendValue } from "@/components/workspace";
 import { dashboardApi, type DashboardSummary } from "@/lib/api";
 import { marketNarrativeEvidence } from "@/lib/evidence";
-import { money, pct } from "@/lib/utils";
+import { cn, money, pct } from "@/lib/utils";
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
 
+  function load() {
+    setLoading(true);
+    setError(false);
+    dashboardApi.summary().then(setData).catch(() => setError(true)).finally(() => setLoading(false));
+  }
   useEffect(() => {
-    let cancelled = false;
-    dashboardApi
-      .summary()
-      .then((d) => !cancelled && setData(d))
-      .catch(() => !cancelled && setError("Could not load your dashboard."))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
+    let active = true;
+    dashboardApi.summary().then((next) => active && setData(next)).catch(() => active && setError(true)).finally(() => active && setLoading(false));
+    return () => { active = false; };
   }, []);
 
-  if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading dashboard…</p>;
-  }
-  if (error || !data) {
-    return <p className="text-sm text-red-600">{error ?? "No data."}</p>;
-  }
+  if (loading) return <PageSkeleton />;
+  if (error || !data) return <DataState kind="error" title="Overview unavailable" description="The financial workspace could not be loaded." onRetry={load} />;
 
-  const { market, portfolio, opportunities, risk_alerts } = data;
+  const { market, portfolio, opportunities, risk_alerts: risks } = data;
   const breadth = market.breadth;
+  const observed = breadth.advancers + breadth.decliners + breadth.unchanged;
+  const advanceWidth = observed ? (breadth.advancers / observed) * 100 : 0;
+  const declineWidth = observed ? (breadth.decliners / observed) * 100 : 0;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold">Dashboard</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Your daily, evidence-backed market intelligence.
-        </p>
+    <div className="space-y-5">
+      <PageHeader eyebrow="Daily intelligence" title="Overview" description="A compact read on market participation, portfolio exposure, and evidence-backed signals." actions={<Link href="/chat" className={cn(buttonVariants({ size: "sm" }))}><BrainCircuit className="size-4" />Ask FinSight</Link>} />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Market breadth" value={`${breadth.advancers} / ${breadth.decliners}`} sub={`${breadth.total} tracked · ${breadth.unchanged} unchanged`} tone={toneOf((breadth.advance_decline_ratio ?? 1) - 1)} />
+        <MetricCard label="A/D ratio" value={breadth.advance_decline_ratio?.toFixed(2) ?? "—"} sub={breadth.advance_decline_ratio == null ? "No decliners in sample" : breadth.advance_decline_ratio >= 1 ? "Advancers lead" : "Decliners lead"} tone={toneOf((breadth.advance_decline_ratio ?? 1) - 1)} />
+        <MetricCard label="Portfolio value" value={portfolio ? money(portfolio.total_value) : "—"} sub={portfolio ? pct(portfolio.total_return_percent) : "Create a portfolio to track exposure"} tone={toneOf(portfolio?.total_return_percent)} />
+        <MetricCard label="Active signals" value={opportunities.length + risks.length} sub={`${opportunities.length} watch · ${risks.length} risk`} />
       </div>
 
-      {/* Summary metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          label="Market Breadth"
-          value={`${breadth.advancers} / ${breadth.decliners}`}
-          sub={`${breadth.total} tracked · ${breadth.unchanged} flat`}
-        />
-        <MetricCard
-          label="Advance / Decline"
-          value={breadth.advance_decline_ratio == null ? "—" : breadth.advance_decline_ratio.toFixed(2)}
-          sub={breadth.advance_decline_ratio != null && breadth.advance_decline_ratio >= 1 ? "advancers lead" : "decliners lead"}
-          tone={breadth.advance_decline_ratio == null ? "default" : breadth.advance_decline_ratio >= 1 ? "positive" : "negative"}
-        />
-        <MetricCard
-          label="Portfolio Value"
-          value={portfolio ? money(portfolio.total_value) : "—"}
-          sub={portfolio ? pct(portfolio.total_return_percent) : "No portfolio yet"}
-          tone={portfolio ? toneOf(portfolio.total_return_percent) : "default"}
-        />
-        <MetricCard
-          label="Opportunities"
-          value={opportunities.length}
-          sub="watch-rated today"
-        />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,.85fr)]">
+        <Panel className="surface-grid min-h-72 overflow-hidden">
+          <SectionHeader title="Market participation" description="End-of-day movement across the tracked Indian equity universe." action={<Link href="/market" className="text-xs font-medium text-primary hover:underline">Open screener</Link>} />
+          <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_220px] lg:items-end">
+            <div>
+              <p className="text-xs text-muted-foreground">Advance / decline balance</p>
+              <div className="mt-2 flex items-baseline gap-3"><span className="text-4xl font-semibold tracking-tight">{breadth.advance_decline_ratio?.toFixed(2) ?? "—"}</span><TrendValue value={(breadth.advance_decline_ratio ?? 1) - 1}>{breadth.advance_decline_ratio != null && breadth.advance_decline_ratio >= 1 ? "Broad participation" : "Narrow participation"}</TrendValue></div>
+              <div className="mt-8 flex h-3 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${breadth.advancers} advancers, ${breadth.decliners} decliners, ${breadth.unchanged} unchanged`}><span className="bg-positive" style={{ width: `${advanceWidth}%` }} /><span className="bg-negative" style={{ width: `${declineWidth}%` }} /><span className="flex-1 bg-muted-foreground/35" /></div>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs"><span><i className="mr-1.5 inline-block size-2 rounded-sm bg-positive" />{breadth.advancers} advancing</span><span><i className="mr-1.5 inline-block size-2 rounded-sm bg-negative" />{breadth.decliners} declining</span><span className="text-muted-foreground"><i className="mr-1.5 inline-block size-2 rounded-sm bg-muted-foreground/35" />{breadth.unchanged} flat</span></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[...market.gainers.slice(0, 2), ...market.losers.slice(0, 2)].map((quote) => <Link key={quote.symbol} href={`/market/${encodeURIComponent(quote.symbol)}`} className="rounded-lg border border-border/70 bg-background/65 p-3 transition-colors hover:border-primary/45"><p className="truncate text-xs font-semibold">{quote.symbol}</p><p className="mt-1 text-sm">{money(quote.close)}</p><TrendValue compact value={quote.change_percent}>{pct(quote.change_percent)}</TrendValue></Link>)}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel>
+          <SectionHeader title="Intelligence brief" description="Narrative is generated from deterministic analytics." />
+          <p className="mt-5 text-sm leading-6 text-foreground/90">{data.ai_market_summary}</p>
+          <details className="mt-5 border-t border-border/70 pt-4 text-xs"><summary className="cursor-pointer font-medium text-primary">Review evidence</summary><ul className="mt-3 space-y-2 text-muted-foreground">{marketNarrativeEvidence(market).map((item) => <li key={item}>• {item}</li>)}</ul></details>
+        </Panel>
       </div>
 
-      {/* AI market summary */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          AI Market Summary
-        </h3>
-        <AIInsightCard
-          title="Today's market"
-          narrative={data.ai_market_summary}
-          evidence={{ evidence: marketNarrativeEvidence(market) }}
-        />
-      </section>
+      <DashboardWatchlist items={data.watchlist} />
 
-      <section>
-        <DashboardWatchlist items={data.watchlist} />
-      </section>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel><SectionHeader title="Research opportunities" description="Signals that passed the deterministic watch threshold." action={<Telescope className="size-4 text-primary" />} /><div className="mt-4 space-y-3">{opportunities.length ? opportunities.slice(0, 3).map((item) => <AIInsightCard key={item.symbol} title={`${item.symbol}${item.name ? ` · ${item.name}` : ""}`} narrative={item.explanation} action={item.action} confidence={item.confidence} evidence={{ evidence: item.evidence, risks: item.risks, confidence: item.confidence, historicalContext: item.historical_context }} />) : <DataState kind="empty" title="No watch signals" description="No tracked stock met the current evidence threshold." />}</div></Panel>
+        <Panel><SectionHeader title="Risk monitor" description="Portfolio and watchlist signals requiring attention." action={<ShieldAlert className="size-4 text-negative" />} /><div className="mt-4 space-y-3">{risks.length ? risks.slice(0, 3).map((item) => <AIInsightCard key={item.symbol} title={`${item.symbol}${item.name ? ` · ${item.name}` : ""}`} narrative={item.explanation} action={item.action} confidence={item.confidence} evidence={{ evidence: item.evidence, risks: item.risks, confidence: item.confidence, historicalContext: item.historical_context }} />) : <DataState kind="empty" title="No active risk alerts" description="No tracked position crossed the current deterministic risk threshold." />}</div></Panel>
+      </div>
 
-      {/* Today's opportunities */}
-      <section>
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Today&apos;s Opportunities
-        </h3>
-        {opportunities.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No watch-rated opportunities today. Check back after the next market ingestion.
-          </p>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {opportunities.map((r) => (
-              <AIInsightCard
-                key={r.symbol}
-                title={`${r.symbol}${r.name ? ` · ${r.name}` : ""}`}
-                narrative={r.explanation}
-                action={r.action}
-                confidence={r.confidence}
-                evidence={{
-                  evidence: r.evidence,
-                  risks: r.risks,
-                  confidence: r.confidence,
-                  historicalContext: r.historical_context,
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Risk alerts */}
-      {risk_alerts.length > 0 && (
-        <section>
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Risk Alerts
-          </h3>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {risk_alerts.map((r) => (
-              <AIInsightCard
-                key={r.symbol}
-                title={`${r.symbol}${r.name ? ` · ${r.name}` : ""}`}
-                narrative={r.explanation}
-                action={r.action}
-                confidence={r.confidence}
-                evidence={{
-                  evidence: r.evidence,
-                  risks: r.risks,
-                  confidence: r.confidence,
-                  historicalContext: r.historical_context,
-                }}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Movers */}
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Top Gainers
-          </h3>
-          <div className="space-y-2">
-            {market.gainers.length === 0 && (
-              <p className="text-sm text-muted-foreground">No movers yet.</p>
-            )}
-            {market.gainers.map((q) => (
-              <StockCard key={q.symbol} symbol={q.symbol} name={q.name} price={q.close} changePercent={q.change_percent} />
-            ))}
-          </div>
-        </div>
-        <div>
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Top Losers
-          </h3>
-          <div className="space-y-2">
-            {market.losers.length === 0 && (
-              <p className="text-sm text-muted-foreground">No movers yet.</p>
-            )}
-            {market.losers.map((q) => (
-              <StockCard key={q.symbol} symbol={q.symbol} name={q.name} price={q.close} changePercent={q.change_percent} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Go deeper</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-4 text-sm">
-          <Link href="/market" className="text-blue-600 hover:underline">Market Intelligence →</Link>
-          <Link href="/history" className="text-blue-600 hover:underline">Historical Similarity →</Link>
-          <Link href="/portfolio" className="text-blue-600 hover:underline">Portfolio →</Link>
-        </CardContent>
-      </Card>
+      <div className="flex justify-end"><Link href="/history" className={cn(buttonVariants({ variant: "ghost" }))}>Compare today with historical analogues <ArrowRight className="size-4" /></Link></div>
     </div>
   );
 }
