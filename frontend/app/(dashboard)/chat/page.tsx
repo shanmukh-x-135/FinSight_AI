@@ -13,13 +13,16 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/workspace";
 import { ApiError, chatApi, type ChatMessage } from "@/lib/api";
 
 const SUGGESTED_QUESTIONS = [
-  "How are my portfolio and watchlist doing?",
+  "Analyse my portfolio using current evidence.",
   "What does today's market breadth show?",
-  "What happened after similar historical sessions?",
-  "Summarize the latest tagged news sentiment.",
+  "Research RELIANCE.NS using current evidence.",
+  "Find historical analogues for today's market.",
+  "Summarise the key risks in my portfolio.",
+  "Generate an end-of-day research brief.",
 ];
 
 function formatTime(value: string): string {
@@ -68,6 +71,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
           )}
         </div>
         <div className="px-4 py-4">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Summary</p>
           <p className="text-sm leading-7 text-foreground/90">{message.content}</p>
           <EvidencePanel
             evidence={message.evidence}
@@ -251,7 +255,7 @@ export default function ChatPage() {
 
         <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6" aria-label="Conversation">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading conversation…</p>
+            <div role="status" aria-label="Loading conversation" className="space-y-4"><Skeleton className="ml-auto h-16 w-2/3" /><Skeleton className="h-36 w-4/5" /><span className="sr-only">Loading conversation</span></div>
           ) : messages.length === 0 && !sending ? (
             <div className="mx-auto flex max-w-2xl flex-col items-center py-12 text-center">
               <div className="rounded-2xl bg-primary/10 p-4 text-primary">

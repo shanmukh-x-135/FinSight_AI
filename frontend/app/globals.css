@@ -133,9 +133,12 @@
   body {
     @apply bg-background text-foreground selection:bg-primary/25;
     font-variant-numeric: tabular-nums;
+    overflow-x: clip;
   }
   html {
     @apply font-sans;
+    max-width: 100%;
+    overflow-x: clip;
   }
 }
 

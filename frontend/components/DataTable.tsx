@@ -37,8 +37,9 @@ export function DataTable<T>({
   compact = true,
 }: DataTableProps<T>) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(0,0,0,.03)]">
-      <table className="w-full min-w-max text-sm" aria-busy={loading}>
+    <div className="max-w-full overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(0,0,0,.03)] [contain:paint]">
+      <div className="w-full overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-max text-sm" aria-busy={loading}>
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead>
           <tr className="border-b border-border/70 bg-muted/35 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -83,7 +84,8 @@ export function DataTable<T>({
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

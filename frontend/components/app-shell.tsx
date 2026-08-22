@@ -68,7 +68,7 @@ export function AppShell({ children, email, onLogout }: { children: ReactNode; e
           </div>
         </aside>
 
-        <div className={cn("min-h-screen transition-[padding]", collapsed ? "lg:pl-16" : "lg:pl-52")}>
+        <div className={cn("min-h-screen min-w-0 transition-[padding]", collapsed ? "lg:pl-16" : "lg:pl-52")}>
           <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-xl sm:px-6">
             <div className="flex items-center gap-3">
               <Link href="/dashboard" className="flex items-center gap-2 lg:hidden"><span className="grid size-7 place-items-center rounded-md bg-primary text-xs font-black text-primary-foreground">F</span><span className="text-sm font-semibold">FinSight AI</span></Link>
@@ -80,7 +80,7 @@ export function AppShell({ children, email, onLogout }: { children: ReactNode; e
               <Button variant="ghost" size="icon-sm" onClick={toggleTheme} aria-label={dark ? "Use light theme" : "Use dark theme"}>{dark ? <Sun className="size-4" /> : <Moon className="size-4" />}</Button>
             </div>
           </header>
-          <main className="mx-auto w-full max-w-[1600px] px-4 py-5 pb-24 sm:px-6 lg:pb-8">{children}</main>
+          <main className="mx-auto w-full min-w-0 max-w-[1600px] px-4 py-5 pb-24 sm:px-6 lg:pb-8">{children}</main>
         </div>
 
         <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 flex overflow-x-auto border-t border-border/80 bg-background/95 px-2 pb-[max(.4rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-xl lg:hidden">

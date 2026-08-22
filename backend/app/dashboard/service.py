@@ -31,6 +31,8 @@ from app.intelligence.recommendation_engine import (
     select_watchlist,
 )
 from app.intelligence.report_generator import _rec_to_dict
+from app.market.service import MarketQueryService
+from app.news.service import NewsService
 from app.portfolio.service import PortfolioService
 from config.settings import settings
 
@@ -50,6 +52,10 @@ class DashboardService:
             if user_id is not None
             else []
         )
+        market_queries = MarketQueryService(self.db)
+        sectors = await market_queries.get_sectors_overview()
+        technical = await market_queries.get_technical_summary()
+        sentiment = await NewsService(self.db).list_latest_sentiment()
 
         # Recommendations: deterministic ranking; the LLM only explains each pick.
         candidates = await self.cb.build_candidates(history)
@@ -99,6 +105,9 @@ class DashboardService:
             "ai_market_summary": market_result.text,
             "portfolio": portfolio,
             "watchlist": [item.model_dump(mode="json") for item in user_watchlist],
+            "sectors": [item.model_dump(mode="json") for item in sectors],
+            "technical": technical.model_dump(mode="json"),
+            "sentiment": [item.model_dump(mode="json") for item in sentiment],
             "opportunities": [_rec_to_dict(r) for r in opportunities],
             "risk_alerts": [_rec_to_dict(r) for r in risk_alerts],
             "history": history,

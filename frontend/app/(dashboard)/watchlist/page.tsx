@@ -1,6 +1,6 @@
 "use client";
 
-import { Pin, PinOff, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowDownUp, Pin, PinOff, Plus, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -17,13 +17,20 @@ export default function WatchlistPage() {
   const [loading, setLoading] = useState(true);
   const [symbol, setSymbol] = useState("");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"symbol" | "change" | "rsi" | "sentiment">("change");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => setItems(await watchlistApi.list()), []);
   useEffect(() => { let active = true; Promise.all([watchlistApi.list(), newsApi.latestSentiment()]).then(([nextItems, nextSentiment]) => { if (active) { setItems(nextItems); setSentiment(nextSentiment); } }).catch(() => active && setError("Could not load your watchlist.")).finally(() => active && setLoading(false)); return () => { active = false; }; }, []);
   const sentimentMap = useMemo(() => new Map(sentiment.map((row) => [row.symbol, row.latest_sentiment])), [sentiment]);
-  const filtered = useMemo(() => items.filter((item) => `${item.symbol} ${item.name ?? ""}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  const filtered = useMemo(() => items.filter((item) => `${item.symbol} ${item.name ?? ""}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    if (sort === "symbol") return a.symbol.localeCompare(b.symbol);
+    if (sort === "rsi") return (b.rsi_14 ?? -Infinity) - (a.rsi_14 ?? -Infinity);
+    if (sort === "sentiment") return (sentimentMap.get(b.symbol) ?? -Infinity) - (sentimentMap.get(a.symbol) ?? -Infinity);
+    return (b.change_percent ?? -Infinity) - (a.change_percent ?? -Infinity);
+  }), [items, query, sentimentMap, sort]);
 
   async function onAdd(event: FormEvent) { event.preventDefault(); setError(null); setBusy(true); try { await watchlistApi.add(symbol.trim().toUpperCase()); setSymbol(""); await reload(); } catch (reason) { setError(reason instanceof ApiError ? reason.message : "Could not add to watchlist."); } finally { setBusy(false); } }
   async function togglePin(item: WatchlistItem) { await watchlistApi.update(item.id, { pinned: !item.pinned }); await reload(); }
@@ -41,5 +48,5 @@ export default function WatchlistPage() {
     { key: "actions", header: <span className="sr-only">Actions</span>, align: "right", render: (item) => <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${item.symbol}`} onClick={() => remove(item.id)}><Trash2 className="size-3.5 text-negative" /></Button> },
   ];
 
-  return <div className="space-y-5"><PageHeader eyebrow="Monitoring" title="Watchlist" description="Track price, momentum, technical direction, and news tone in one compact view." actions={<form onSubmit={onAdd} className="flex gap-2"><Input aria-label="Stock symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="RELIANCE.NS" className="w-40" required /><Button type="submit" size="sm" disabled={busy}><Plus className="size-4" />{busy ? "Adding" : "Add"}</Button></form>} />{error && <div role="alert" className="rounded-lg border border-negative/30 bg-negative/10 p-3 text-sm text-negative">{error}</div>}<Panel><SectionHeader title="Monitored instruments" description={`${items.length} tracked · pinned names remain first`} /><label className="relative my-4 block max-w-sm"><span className="sr-only">Search watchlist</span><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search watchlist" className="pl-8" /></label>{!loading && items.length === 0 ? <DataState kind="empty" title="Your watchlist is empty" description="Add an NSE symbol to begin monitoring it." /> : <DataTable columns={columns} rows={filtered} rowKey={(item) => item.id} loading={loading} emptyMessage="No watchlist items match this search." caption="Watchlist instruments and latest research signals" />}</Panel></div>;
+  return <div className="space-y-5"><PageHeader eyebrow="Monitoring" title="Watchlist" description="Track price, momentum, technical direction, and news tone in one compact view." actions={<form onSubmit={onAdd} className="flex gap-2"><Input aria-label="Stock symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="RELIANCE.NS" className="w-40" required /><Button type="submit" size="sm" disabled={busy}><Plus className="size-4" />{busy ? "Adding" : "Add"}</Button></form>} />{error && <div role="alert" className="rounded-lg border border-negative/30 bg-negative/10 p-3 text-sm text-negative">{error}</div>}<Panel><SectionHeader title="Monitored instruments" description={`${items.length} tracked · pinned names remain first`} action={<ArrowDownUp className="size-4 text-muted-foreground" />} /><div className="my-4 flex max-w-xl flex-col gap-2 sm:flex-row"><label className="relative block flex-1"><span className="sr-only">Search watchlist</span><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search watchlist" className="pl-8" /></label><select aria-label="Sort watchlist" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="change">1D change</option><option value="rsi">RSI</option><option value="sentiment">News sentiment</option><option value="symbol">Symbol</option></select></div>{!loading && items.length === 0 ? <DataState kind="empty" title="Your watchlist is empty" description="Add an NSE symbol to begin monitoring it." /> : <DataTable columns={columns} rows={filtered} rowKey={(item) => item.id} loading={loading} emptyMessage="No watchlist items match this search." caption="Watchlist instruments and latest research signals" />}</Panel></div>;
 }

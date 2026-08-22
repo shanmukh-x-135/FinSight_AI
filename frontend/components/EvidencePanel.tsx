@@ -86,9 +86,15 @@ export function EvidencePanel({
               {evidence.map((e, i) => (
                 <Row key={i}>{e}</Row>
               ))}
-              {hist && !evidence.includes(hist) && <Row>{hist}</Row>}
             </ul>
           </div>
+
+          {hist && !evidence.includes(hist) && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historical context</p>
+              <p className="mt-1 text-sm">{hist}</p>
+            </div>
+          )}
 
           {risks && risks.length > 0 && (
             <div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownUp, Search } from "lucide-react";
+import { ArrowDownUp, BookmarkCheck, BookmarkPlus, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -11,8 +11,9 @@ import { Heatmap } from "@/components/Heatmap";
 import { EconomicEventsCard, TechnicalSummaryCard } from "@/components/MarketContext";
 import { MetricCard, toneOf } from "@/components/MetricCard";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
-import { intelligenceApi, marketApi, newsApi, type Breadth, type EconomicCalendar, type LatestSentiment, type MarketStockSnapshot, type Recommendation, type SectorOverview, type TechnicalSummary } from "@/lib/api";
+import { intelligenceApi, marketApi, newsApi, watchlistApi, type Breadth, type EconomicCalendar, type LatestSentiment, type MarketStockSnapshot, type Recommendation, type SectorOverview, type TechnicalSummary, type WatchlistItem } from "@/lib/api";
 import { money, pct } from "@/lib/utils";
 
 type SortKey = "symbol" | "change" | "rsi";
@@ -27,6 +28,9 @@ export default function MarketPage() {
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [risks, setRisks] = useState<Recommendation[]>([]);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchBusy, setWatchBusy] = useState<string | null>(null);
+  const [watchError, setWatchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState("");
@@ -40,14 +44,35 @@ export default function MarketPage() {
       .catch(() => active && setError(true))
       .finally(() => active && setLoading(false));
     intelligenceApi.recommendations().then((data) => { if (active) { setRecs(data.watchlist); setRisks(data.risk_alerts); } }).catch(() => active && setAiUnavailable(true));
+    watchlistApi.list().then((items) => active && setWatchlist(items)).catch(() => active && setWatchError("Watchlist actions are temporarily unavailable."));
     return () => { active = false; };
   }, []);
 
   const sentimentMap = useMemo(() => new Map(sentiment.map((row) => [row.symbol, row.latest_sentiment])), [sentiment]);
+  const watchedMap = useMemo(() => new Map(watchlist.map((row) => [row.symbol, row.id])), [watchlist]);
   const filtered = useMemo(() => stocks.filter((stock) => (sector === "All sectors" || stock.sector === sector) && `${stock.symbol} ${stock.name ?? ""}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "symbol" ? a.symbol.localeCompare(b.symbol) : sort === "rsi" ? (b.rsi_14 ?? -Infinity) - (a.rsi_14 ?? -Infinity) : (b.change_percent ?? -Infinity) - (a.change_percent ?? -Infinity)), [query, sector, sort, stocks]);
 
   if (loading) return <PageSkeleton />;
   if (error || !breadth) return <DataState kind="error" title="Market data unavailable" description="The end-of-day market snapshot could not be loaded." />;
+
+  async function toggleWatch(symbol: string) {
+    setWatchBusy(symbol);
+    setWatchError(null);
+    try {
+      const existing = watchedMap.get(symbol);
+      if (existing != null) {
+        await watchlistApi.remove(existing);
+        setWatchlist((items) => items.filter((item) => item.id !== existing));
+      } else {
+        await watchlistApi.add(symbol);
+        setWatchlist(await watchlistApi.list());
+      }
+    } catch {
+      setWatchError(`Could not update ${symbol} in your watchlist.`);
+    } finally {
+      setWatchBusy(null);
+    }
+  }
 
   const columns: Column<MarketStockSnapshot>[] = [
     { key: "symbol", header: "Instrument", render: (row) => <Link href={`/market/${encodeURIComponent(row.symbol)}`} className="block min-w-40 font-semibold text-foreground hover:text-primary"><span>{row.symbol}</span><span className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">{row.name ?? "Name unavailable"}</span></Link> },
@@ -58,6 +83,7 @@ export default function MarketPage() {
     { key: "trend", header: "Trend", render: (row) => row.trend ? <StatusBadge label={row.trend} tone={row.trend === "bullish" ? "positive" : row.trend === "bearish" ? "negative" : "neutral"} /> : <span className="text-xs text-muted-foreground">—</span> },
     { key: "sentiment", header: "News", align: "right", render: (row) => { const value = sentimentMap.get(row.symbol); return <TrendValue compact value={value}>{value == null ? "—" : value.toFixed(2)}</TrendValue>; } },
     { key: "volume", header: "Volume", align: "right", render: (row) => row.volume?.toLocaleString("en-IN") ?? "—" },
+    { key: "watch", header: <span className="sr-only">Watchlist</span>, align: "right", render: (row) => { const watched = watchedMap.has(row.symbol); return <Button type="button" variant="ghost" size="icon-xs" disabled={watchBusy === row.symbol} aria-label={watched ? `Remove ${row.symbol} from watchlist` : `Add ${row.symbol} to watchlist`} onClick={() => toggleWatch(row.symbol)}>{watched ? <BookmarkCheck className="size-4 text-primary" /> : <BookmarkPlus className="size-4 text-muted-foreground" />}</Button>; } },
   ];
 
   return (
@@ -72,6 +98,7 @@ export default function MarketPage() {
           <select aria-label="Filter by sector" value={sector} onChange={(event) => setSector(event.target.value)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm"><option>All sectors</option>{sectors.map((item) => <option key={item.sector}>{item.sector}</option>)}</select>
           <select aria-label="Sort stocks" value={sort} onChange={(event) => setSort(event.target.value as SortKey)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="change">1D change</option><option value="rsi">RSI</option><option value="symbol">Symbol</option></select>
         </div>
+        {watchError && <p role="status" className="mb-3 text-xs text-warning">{watchError}</p>}
         <DataTable columns={columns} rows={filtered} rowKey={(row) => row.symbol} emptyMessage="No instruments match these filters." caption="Tracked market instruments with price, technical, and sentiment metrics" />
       </Panel>
 

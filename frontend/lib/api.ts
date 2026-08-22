@@ -609,6 +609,9 @@ export interface DashboardSummary {
   ai_market_summary: string;
   portfolio: PortfolioAnalytics | null;
   watchlist: WatchlistItem[];
+  sectors: SectorOverview[];
+  technical: TechnicalSummary;
+  sentiment: LatestSentiment[];
   opportunities: Recommendation[];
   risk_alerts: Recommendation[];
   history: SimilarityResult | null;

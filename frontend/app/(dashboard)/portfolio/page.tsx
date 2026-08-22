@@ -175,6 +175,7 @@ export default function PortfolioPage() {
 
   const charts = a && (
     <div className="grid gap-4 xl:grid-cols-3">
+      <Panel className="xl:col-span-3"><SectionHeader title="Portfolio equity curve" description="Performance through time requires dated cash flows and position history." /><div className="mt-4"><DataState kind="unavailable" title="Historical portfolio valuation is not available" description="FinSight currently stores present holdings and cost basis, not transaction timing. An equity curve is intentionally withheld rather than reconstructed from incomplete data." /></div></Panel>
       <Panel>
           <SectionHeader title="Sector allocation" description="Current market value by sector." />
           <div className="mt-4">

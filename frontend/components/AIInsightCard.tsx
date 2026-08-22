@@ -15,9 +15,9 @@ import { cn } from "@/lib/utils";
  * card itself never computes anything; it displays already-built content.
  */
 const actionStyle: Record<string, string> = {
-  watch: "bg-green-100 text-green-700",
-  avoid: "bg-red-100 text-red-700",
-  hold: "bg-muted text-muted-foreground",
+  watch: "border border-positive/25 bg-positive/10 text-positive",
+  avoid: "border border-negative/25 bg-negative/10 text-negative",
+  hold: "border border-border bg-muted text-muted-foreground",
 };
 
 export interface AIInsightCardProps {

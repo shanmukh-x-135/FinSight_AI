@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError, api } from "@/lib/api";
-import { PageHeader } from "@/components/workspace";
+import { PageHeader, Skeleton } from "@/components/workspace";
 import { useAuth } from "@/lib/auth-context";
 
 const RISK = ["conservative", "moderate", "aggressive"];
@@ -101,7 +101,7 @@ export default function SettingsPage() {
         <form onSubmit={onSubmit}>
           <CardContent className="flex flex-col gap-4">
             {loading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <div role="status" aria-label="Loading preferences" className="space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><span className="sr-only">Loading preferences</span></div>
             ) : (
               <>
                 <div className="flex flex-col gap-2">

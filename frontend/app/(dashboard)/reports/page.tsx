@@ -178,16 +178,14 @@ export default function ReportsPage() {
       {error && <p role="alert" className="mt-4 text-sm text-negative">{error}</p>}
 
       <Panel><SectionHeader title="Generated reports" description="Most recent reports appear first." /><div className="mt-4">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading reports…</p>
-        ) : (
           <DataTable
             columns={columns}
             rows={rows}
             rowKey={(r) => r.id}
+            loading={loading}
+            loadingMessage="Loading reports"
             emptyMessage="No reports yet — generate your first one."
           />
-        )}
       </div></Panel>
 
       <div className="mt-4 flex items-center justify-between">

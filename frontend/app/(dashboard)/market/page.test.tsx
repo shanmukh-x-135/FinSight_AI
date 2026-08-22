@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { intelligenceApi, marketApi, newsApi } from "@/lib/api";
+import { intelligenceApi, marketApi, newsApi, watchlistApi } from "@/lib/api";
 
 import MarketPage from "./page";
 
@@ -17,12 +17,15 @@ vi.mock("@/lib/api", () => ({
   },
   newsApi: { latestSentiment: vi.fn() },
   intelligenceApi: { recommendations: vi.fn() },
+  watchlistApi: { list: vi.fn(), add: vi.fn(), remove: vi.fn() },
 }));
 
 describe("MarketPage AI analysis states", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(marketApi.stocks).mockResolvedValue([]);
     vi.mocked(newsApi.latestSentiment).mockResolvedValue([]);
+    vi.mocked(watchlistApi.list).mockResolvedValue([]);
     vi.mocked(marketApi.breadth).mockResolvedValue({
       advancers: 8,
       decliners: 4,
@@ -93,5 +96,17 @@ describe("MarketPage AI analysis states", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "AI analysis is temporarily unavailable. The market data above is still current.",
     );
+  });
+
+  it("adds a screener row to the authenticated watchlist", async () => {
+    vi.mocked(marketApi.stocks).mockResolvedValue([{ symbol: "AAA.NS", name: "Alpha", sector: "Technology", date: "2026-08-21", close: 110, previous_close: 100, change: 10, change_percent: 10, volume: 1000, rsi_14: 62, ema_20: 105, ema_50: 101, macd_histogram: 2, trend: "bullish" }]);
+    vi.mocked(watchlistApi.add).mockResolvedValue({ id: 9 });
+    vi.mocked(watchlistApi.list).mockResolvedValueOnce([]).mockResolvedValue([{ id: 9, symbol: "AAA.NS", name: "Alpha", sector: "Technology", current_price: 110, previous_close: 100, change: 10, change_percent: 10, pinned: false, sort_order: 0, rsi_14: 62, trend: "bullish" }]);
+    vi.mocked(intelligenceApi.recommendations).mockResolvedValue({ watchlist: [], risk_alerts: [], generation: { schema_version: 1, configured_backend: "deterministic", actual_backends: ["deterministic"], requested_models: [], model_versions: [], generation_count: 0, provider_attempt_count: 0, provider_response_count: 0, fallback_count: 0, usage: { prompt_tokens: null, candidate_tokens: null, total_tokens: null, cached_tokens: null, thoughts_tokens: null }, items: [] } });
+    render(<MarketPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add AAA.NS to watchlist" }));
+    await waitFor(() => expect(watchlistApi.add).toHaveBeenCalledWith("AAA.NS"));
+    expect(await screen.findByRole("button", { name: "Remove AAA.NS from watchlist" })).toBeVisible();
   });
 });

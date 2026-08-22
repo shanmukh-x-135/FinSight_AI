@@ -30,8 +30,11 @@ describe("DashboardWatchlist", () => {
             current_price: 2910.5,
             change_percent: 1.25,
             pinned: true,
+            rsi_14: 61.2,
+            trend: "bullish",
           }),
         ]}
+        sentimentBySymbol={{ "RELIANCE.NS": 0.42 }}
       />,
     );
 
@@ -40,6 +43,9 @@ describe("DashboardWatchlist", () => {
     expect(screen.getByText("₹2,910.5")).toBeInTheDocument();
     expect(screen.getByText("+1.25%")).toHaveClass("text-positive");
     expect(screen.getByText("Pinned")).toHaveClass("sr-only");
+    expect(screen.getByText("61.2")).toBeInTheDocument();
+    expect(screen.getByText("bullish")).toBeInTheDocument();
+    expect(screen.getByText("0.42")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage watchlist" })).toHaveAttribute(
       "href",
       "/watchlist",

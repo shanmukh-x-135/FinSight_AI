@@ -14,9 +14,11 @@ import { useEffect, useState } from "react";
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { MetricCard, toneOf } from "@/components/MetricCard";
 import { StockCard } from "@/components/StockCard";
+import { ReportBreadthVisual, ReportHistoryVisual, ReportPortfolioVisual, ReportSentimentVisual } from "@/components/report-visuals";
 import { ReportPageTemplate } from "@/components/templates/ReportPageTemplate";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DataState, PageSkeleton } from "@/components/workspace";
 import {
   downloadReport,
   reportsApi,
@@ -29,7 +31,7 @@ import {
   marketNarrativeEvidence,
   portfolioNarrativeEvidence,
 } from "@/lib/evidence";
-import { money, pct, ratioPct } from "@/lib/utils";
+import { cn, money, pct, ratioPct } from "@/lib/utils";
 
 function RecCard({ r }: { r: Recommendation }) {
   return (
@@ -83,12 +85,12 @@ export default function ReportDetailPage() {
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading report…</p>;
+    return <PageSkeleton />;
   }
   if (notFound || !report) {
     return (
-      <div className="mx-auto max-w-4xl">
-        <p className="text-sm text-negative">Report not found.</p>
+      <div className="mx-auto max-w-4xl space-y-3">
+        <DataState kind="error" title="Report unavailable" description="The report was not found or does not belong to this account." />
         <Link href="/reports" className="mt-2 inline-block text-sm text-primary hover:underline">
           ← Back to reports
         </Link>
@@ -116,9 +118,7 @@ export default function ReportDetailPage() {
 
   const actions = (
     <>
-      <Link href="/reports">
-        <Button variant="ghost" size="sm">← Back</Button>
-      </Link>
+      <Link href="/reports" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>← Back</Link>
       <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => onExport("markdown")}>
         {exporting === "markdown" ? "Exporting…" : "Export Markdown"}
       </Button>
@@ -148,7 +148,7 @@ export default function ReportDetailPage() {
             />
           )}
           {market.breadth && (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <><ReportBreadthVisual breadth={market.breadth} /><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <MetricCard label="Advancers" value={market.breadth.advancers} tone="positive" />
               <MetricCard label="Decliners" value={market.breadth.decliners} tone="negative" />
               <MetricCard label="Unchanged" value={market.breadth.unchanged} tone="neutral" />
@@ -157,7 +157,7 @@ export default function ReportDetailPage() {
                 label="A/D Ratio"
                 value={market.breadth.advance_decline_ratio == null ? "—" : market.breadth.advance_decline_ratio.toFixed(2)}
               />
-            </div>
+            </div></>
           )}
           {(market.gainers?.length || market.losers?.length) && (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -194,6 +194,7 @@ export default function ReportDetailPage() {
             <MetricCard label="Diversification" value={portfolio.diversification_score == null ? "—" : `${Math.round(portfolio.diversification_score)}/100`} />
             <MetricCard label="Holdings" value={portfolio.number_of_holdings ?? "—"} />
           </div>
+          <ReportPortfolioVisual health={portfolio.health_score} diversification={portfolio.diversification_score} />
         </>
       )}
 
@@ -207,14 +208,14 @@ export default function ReportDetailPage() {
             />
           )}
           {hist.statistics && (
-            <div className="grid gap-4 sm:grid-cols-3">
+            <><ReportHistoryVisual statistics={hist.statistics} /><div className="grid gap-4 sm:grid-cols-3">
               <MetricCard label="Similar Sessions" value={hist.statistics.sample_size} sub={`top-${hist.statistics.k} nearest`} />
               <MetricCard
                 label="Closed Higher"
                 value={hist.statistics.bullish_probability == null ? "—" : `${Math.round(hist.statistics.bullish_probability * 100)}%`}
               />
               <MetricCard label="Avg Next-Day" value={ratioPct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
-            </div>
+            </div></>
           )}
           <p className="text-xs italic text-muted-foreground">
             Historical context, not a forecast.
@@ -223,7 +224,7 @@ export default function ReportDetailPage() {
       )}
 
       {!market && !portfolio && !hist && (
-        <p className="text-sm text-muted-foreground">No analysis sections in this report.</p>
+        <DataState kind="empty" title="No analysis sections" description="This stored report does not contain market, portfolio, or historical analysis." />
       )}
     </div>
   );
@@ -232,7 +233,7 @@ export default function ReportDetailPage() {
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-2">
         {recs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No watch-rated opportunities in this report.</p>
+          <DataState kind="empty" title="No watch-rated opportunities" description="No recommendation crossed the report's deterministic watch threshold." />
         ) : (
           recs.map((r) => <RecCard key={`w-${r.symbol}`} r={r} />)
         )}
@@ -254,6 +255,7 @@ export default function ReportDetailPage() {
         <CardTitle className="text-base">Notable news</CardTitle>
       </CardHeader>
       <CardContent>
+        <ReportSentimentVisual labels={news.map((item) => item.sentiment_label)} />
         <ul className="space-y-2 text-sm">
           {news.slice(0, 5).map((a, i) => (
             <li key={i} className="flex flex-wrap items-center gap-2">

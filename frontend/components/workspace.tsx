@@ -48,7 +48,7 @@ export function SectionHeader({
 }
 
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn("rounded-xl border border-border/70 bg-card/85 p-4 shadow-[0_1px_2px_rgba(0,0,0,.04)] backdrop-blur-sm", className)}>{children}</section>;
+  return <section className={cn("min-w-0 rounded-xl border border-border/70 bg-card/85 p-4 shadow-[0_1px_2px_rgba(0,0,0,.04)] backdrop-blur-sm", className)}>{children}</section>;
 }
 
 export function TrendValue({ value, children, compact = false }: { value: number | null | undefined; children?: ReactNode; compact?: boolean }) {

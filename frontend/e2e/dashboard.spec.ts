@@ -27,5 +27,5 @@ test("login loads real dashboard data and reveals grounded evidence", async ({ p
   const evidenceControl = page.getByText("Review evidence", { exact: true });
   await expect(evidenceControl).toBeVisible();
   await evidenceControl.click();
-  await expect(page.getByText(/^Breadth: \d+ advancers,/)).toBeVisible();
+  await expect(page.getByText(/Breadth: \d+ advancers,/)).toBeVisible();
 });

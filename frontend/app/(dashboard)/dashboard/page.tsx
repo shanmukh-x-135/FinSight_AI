@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { DashboardWatchlist } from "@/components/DashboardWatchlist";
+import { Heatmap } from "@/components/Heatmap";
 import { MetricCard, toneOf } from "@/components/MetricCard";
 import { buttonVariants } from "@/components/ui/button";
 import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, TrendValue } from "@/components/workspace";
@@ -37,6 +38,14 @@ export default function DashboardPage() {
   const observed = breadth.advancers + breadth.decliners + breadth.unchanged;
   const advanceWidth = observed ? (breadth.advancers / observed) * 100 : 0;
   const declineWidth = observed ? (breadth.decliners / observed) * 100 : 0;
+  const sentimentBySymbol = Object.fromEntries(data.sentiment.map((row) => [row.symbol, row.latest_sentiment]));
+  const sentimentCounts = data.sentiment.reduce((counts, row) => {
+    if (row.latest_sentiment == null || Math.abs(row.latest_sentiment) < 0.05) counts.neutral += 1;
+    else if (row.latest_sentiment > 0) counts.positive += 1;
+    else counts.negative += 1;
+    return counts;
+  }, { positive: 0, neutral: 0, negative: 0 });
+  const sentimentTotal = sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative;
 
   return (
     <div className="space-y-5">
@@ -72,7 +81,12 @@ export default function DashboardPage() {
         </Panel>
       </div>
 
-      <DashboardWatchlist items={data.watchlist} />
+      <div className="grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
+        <Panel><SectionHeader title="Sector performance" description="Ranked end-of-day movement across sectors with priced constituents." action={<Link href="/market" className="text-xs font-medium text-primary hover:underline">Explore market</Link>} /><div className="mt-4"><Heatmap cells={data.sectors.map((item) => ({ label: item.sector, value: item.average_change_percent, sub: `${item.stock_count} stocks` }))} emptyMessage="Sector performance appears after market prices are ingested." /></div></Panel>
+        <Panel><SectionHeader title="News tone" description="Latest daily sentiment across the active universe." /><div className="mt-6"><div role="img" aria-label={`${sentimentCounts.positive} positive, ${sentimentCounts.neutral} neutral, ${sentimentCounts.negative} negative sentiment readings`} className="flex h-3 overflow-hidden rounded-full bg-muted">{sentimentTotal > 0 && <><span className="bg-positive" style={{ width: `${sentimentCounts.positive / sentimentTotal * 100}%` }} /><span className="bg-muted-foreground/45" style={{ width: `${sentimentCounts.neutral / sentimentTotal * 100}%` }} /><span className="bg-negative" style={{ width: `${sentimentCounts.negative / sentimentTotal * 100}%` }} /></>}</div><div className="mt-4 grid grid-cols-3 text-center text-xs"><div><p className="text-lg font-semibold text-positive">{sentimentCounts.positive}</p><p className="text-muted-foreground">positive</p></div><div><p className="text-lg font-semibold">{sentimentCounts.neutral}</p><p className="text-muted-foreground">neutral</p></div><div><p className="text-lg font-semibold text-negative">{sentimentCounts.negative}</p><p className="text-muted-foreground">negative</p></div></div><div className="mt-5 border-t border-border/60 pt-4 text-xs text-muted-foreground"><span className="font-medium text-foreground">Technical regime:</span> {data.technical.above_ema20_count} of {data.technical.stocks_with_indicators} above EMA 20 · {data.technical.positive_macd_count} positive MACD</div></div></Panel>
+      </div>
+
+      <DashboardWatchlist items={data.watchlist} sentimentBySymbol={sentimentBySymbol} />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel><SectionHeader title="Research opportunities" description="Signals that passed the deterministic watch threshold." action={<Telescope className="size-4 text-primary" />} /><div className="mt-4 space-y-3">{opportunities.length ? opportunities.slice(0, 3).map((item) => <AIInsightCard key={item.symbol} title={`${item.symbol}${item.name ? ` · ${item.name}` : ""}`} narrative={item.explanation} action={item.action} confidence={item.confidence} evidence={{ evidence: item.evidence, risks: item.risks, confidence: item.confidence, historicalContext: item.historical_context }} />) : <DataState kind="empty" title="No watch signals" description="No tracked stock met the current evidence threshold." />}</div></Panel>
