@@ -9,7 +9,7 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice, Stock
+from app.market.models import DailyPrice, Indicator, Stock
 
 PW = "S3curePass!"
 WL = "/api/v1/watchlist"
@@ -36,6 +36,13 @@ async def seed_stocks(db_session: AsyncSession) -> None:
         DailyPrice(stock_id=aaa.id, date=d1, open=100, high=101, low=99, close=100, volume=1),
         DailyPrice(stock_id=aaa.id, date=d2, open=104, high=106, low=103, close=105, volume=1),
         DailyPrice(stock_id=bbb.id, date=d2, open=200, high=201, low=199, close=200, volume=1),
+        Indicator(
+            stock_id=aaa.id,
+            date=d2,
+            rsi_14=61,
+            ema_20=102,
+            macd_histogram=0.5,
+        ),
     ])
     await db_session.commit()
 
@@ -58,6 +65,8 @@ async def test_watchlist_add_list_with_quote(client: AsyncClient, seed_stocks: N
     assert item["current_price"] == pytest.approx(105.0)
     assert item["change"] == pytest.approx(5.0)          # 105 - 100
     assert item["change_percent"] == pytest.approx(5.0)  # 5/100 * 100
+    assert item["rsi_14"] == pytest.approx(61)
+    assert item["trend"] == "bullish"
 
 
 @pytest.mark.asyncio

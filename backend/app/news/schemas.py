@@ -35,6 +35,11 @@ class StockSentimentOut(BaseModel):
     series: list[SentimentDailyOut]
 
 
+class LatestSentimentOut(BaseModel):
+    symbol: str
+    latest_sentiment: float | None
+
+
 class SectorSentimentOut(BaseModel):
     sector: str
     latest_sentiment: float | None

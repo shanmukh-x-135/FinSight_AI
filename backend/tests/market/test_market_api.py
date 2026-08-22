@@ -84,6 +84,20 @@ async def test_breadth(client: AsyncClient, seed_market: None) -> None:
 
 
 @pytest.mark.asyncio
+async def test_market_stocks_returns_dense_batched_snapshots(
+    client: AsyncClient, seed_market: None
+) -> None:
+    response = await client.get("/api/v1/market/stocks")
+    assert response.status_code == 200
+    rows = response.json()["data"]
+    assert [row["symbol"] for row in rows] == ["AAA.NS", "BBB.NS", "CCC.NS"]
+    assert rows[0]["rsi_14"] == pytest.approx(60)
+    assert rows[0]["trend"] == "bullish"
+    assert rows[1]["trend"] == "bearish"
+    assert rows[2]["trend"] is None
+
+
+@pytest.mark.asyncio
 async def test_technical_summary(client: AsyncClient, seed_market: None) -> None:
     data = (await client.get("/api/v1/market/technical-summary")).json()["data"]
     assert data["as_of"] == "2024-01-02"
@@ -208,6 +222,18 @@ async def test_stock_indicators_history(client: AsyncClient, seed_market: None) 
     assert len(data) == 2
     assert data[0]["date"] == "2024-01-01"  # oldest first
     assert data[-1]["rsi_14"] == pytest.approx(60.0)
+
+
+@pytest.mark.asyncio
+async def test_stock_price_history_is_bounded_and_oldest_first(
+    client: AsyncClient, seed_market: None
+) -> None:
+    response = await client.get("/api/v1/market/stocks/AAA.NS/prices?limit=2")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [row["date"] for row in data] == ["2024-01-01", "2024-01-02"]
+    assert data[-1]["close"] == pytest.approx(110)
+    assert set(data[-1]) == {"date", "open", "high", "low", "close", "volume"}
 
 
 # ----- Admin ingestion trigger ---------------------------------------------

@@ -52,6 +52,11 @@ async def test_ingest_then_read(
     series = sentiment.json()["data"]["series"]
     assert series and series[-1]["avg_sentiment"] < 0  # bad news → negative
 
+    latest = (await client.get("/api/v1/news/sentiment")).json()["data"]
+    by_symbol = {row["symbol"]: row["latest_sentiment"] for row in latest}
+    assert by_symbol["RELIANCE.NS"] < 0
+    assert by_symbol["TCS.NS"] > 0
+
     sector = await client.get("/api/v1/news/sentiment/sector/Energy")
     assert sector.status_code == 200
     sector_data = sector.json()["data"]

@@ -51,6 +51,25 @@ class StockDetailOut(QuoteOut):
     fundamentals: FundamentalsOut | None
 
 
+class MarketStockSnapshotOut(QuoteOut):
+    rsi_14: float | None
+    ema_20: float | None
+    ema_50: float | None
+    macd_histogram: float | None
+    trend: str | None
+
+
+class PricePointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    date: date
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
 class IndicatorPointOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

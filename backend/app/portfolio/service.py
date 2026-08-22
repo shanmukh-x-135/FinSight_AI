@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.repository import MarketRepository
+from app.market.signals import trend_signal
 from app.portfolio.analytics import HoldingInput, compute_portfolio_analytics
 from app.portfolio.constants import DEFAULT_PORTFOLIO_NAME
 from app.portfolio.exceptions import (
@@ -160,9 +161,9 @@ class PortfolioService:
             snapshot = snapshots.get(item.stock_id)
             stock = snapshot.stock if snapshot else None
             prices = snapshot.prices if snapshot else ()
+            indicator = snapshot.indicator if snapshot else None
             latest = prices[0] if prices else None
             previous = prices[1] if len(prices) > 1 else None
-            indicator = snapshot.indicator if snapshot else None
             inputs.append(
                 HoldingInput(
                     id=item.id,
@@ -189,6 +190,7 @@ class PortfolioService:
             snapshot = snapshots.get(item.stock_id)
             stock = snapshot.stock if snapshot else None
             prices = snapshot.prices if snapshot else ()
+            indicator = snapshot.indicator if snapshot else None
             latest = prices[0] if prices else None
             previous = prices[1] if len(prices) > 1 else None
             change = change_pct = None
@@ -205,6 +207,12 @@ class PortfolioService:
                     previous_close=previous.close if previous else None,
                     change=change,
                     change_percent=change_pct,
+                    rsi_14=indicator.rsi_14 if indicator else None,
+                    trend=trend_signal(
+                        latest.close if latest else None,
+                        indicator.ema_20 if indicator else None,
+                        indicator.macd_histogram if indicator else None,
+                    ),
                     pinned=item.pinned,
                     sort_order=item.sort_order,
                 )

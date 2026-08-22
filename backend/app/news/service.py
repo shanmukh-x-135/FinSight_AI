@@ -23,6 +23,7 @@ from app.news.models import NewsArticle
 from app.news.repository import NewsRepository
 from app.news.schemas import (
     IngestNewsResult,
+    LatestSentimentOut,
     NewsArticleOut,
     SectorSentimentOut,
     SentimentDailyOut,
@@ -184,6 +185,17 @@ class NewsService:
                 for s in series
             ],
         )
+
+    async def list_latest_sentiment(self) -> list[LatestSentimentOut]:
+        stocks = await self.market.list_active_stocks()
+        latest = await self.repo.get_latest_sentiment_map()
+        return [
+            LatestSentimentOut(
+                symbol=stock.symbol,
+                latest_sentiment=latest.get(stock.id),
+            )
+            for stock in sorted(stocks, key=lambda item: item.symbol)
+        ]
 
     async def get_sector_sentiment(self, sector: str) -> SectorSentimentOut:
         if not await self.market.list_stocks_by_sector(sector):
