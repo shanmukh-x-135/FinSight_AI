@@ -13,6 +13,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.history.artifacts import CorpusRow, IndexCorpus
 from app.history.constants import ARTIFACT_SCHEMA_VERSION, generations_dir
+from app.history.feature_engineering import (
+    FEATURE_NAMES,
+    FEATURE_VERSION,
+    NORMALIZATION_METHOD,
+)
 from app.history.models import (
     HistoricalEmbedding,
     HistoricalIndexState,
@@ -29,23 +34,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _features(offset: float) -> dict[str, float]:
-    return {
-        "avg_return": offset,
-        "median_return": offset,
-        "pct_advancers": 0.5 + offset,
-        "advance_decline_ratio": 1.0 + offset,
-        "avg_rsi": 50.0 + offset,
-        "avg_ema20_distance": 0.01 + offset,
-        "avg_ema50_distance": 0.02 + offset,
-        "avg_bollinger_position": 0.5 + offset,
-        "avg_atr_pct": 0.01 + offset,
-        "avg_macd_hist_pct": 0.001 + offset,
-        "avg_sentiment": offset,
-        "usd_inr_return": offset,
-        "crude_oil_return": offset,
-        "gold_return": offset,
-        "us_10y_yield_return": offset,
-    }
+    return {name: offset + index / 1000 for index, name in enumerate(FEATURE_NAMES)}
 
 
 @pytest.mark.asyncio
@@ -67,6 +56,8 @@ async def test_postgres_reconstructs_faiss_after_process_restart_and_disk_loss(
                     "corpus_hash": existing_state.corpus_hash,
                     "session_count": existing_state.session_count,
                     "dimension": existing_state.dimension,
+                    "feature_version": existing_state.feature_version,
+                    "normalization_method": existing_state.normalization_method,
                     "artifact_schema_version": existing_state.artifact_schema_version,
                     "built_at": existing_state.built_at,
                 }
@@ -76,20 +67,33 @@ async def test_postgres_reconstructs_faiss_after_process_restart_and_disk_loss(
                 feature = _features(index / 1000)
                 session = HistoricalSession(
                     date=session_date,
-                    avg_return=feature["avg_return"],
+                    feature_version=FEATURE_VERSION,
+                    feature_dimension=len(FEATURE_NAMES),
+                    avg_return=feature["equal_weight_return"],
                     median_return=feature["median_return"],
-                    pct_advancers=feature["pct_advancers"],
+                    pct_advancers=feature["advancing_share"],
                     advance_decline_ratio=feature["advance_decline_ratio"],
-                    avg_rsi=feature["avg_rsi"],
+                    avg_rsi=feature["median_rsi"],
                     feature_vector=feature,
-                    next_day_return=feature["avg_return"],
+                    usable_constituent_count=50,
+                    expected_constituent_count=50,
+                    coverage_ratio=1.0,
+                    sector_coverage_ratio=1.0,
+                    membership_mode="effective",
+                    quality_flags=[],
+                    next_day_return=feature["equal_weight_return"],
                     outcome="bullish",
                 )
                 db.add(session)
                 sessions.append(session)
             await db.flush()
             db.add_all(
-                HistoricalEmbedding(session_id=item.id, faiss_id=item.id, dim=15)
+                HistoricalEmbedding(
+                    session_id=item.id,
+                    faiss_id=item.id,
+                    dim=len(FEATURE_NAMES),
+                    feature_version=FEATURE_VERSION,
+                )
                 for item in sessions
             )
             await db.flush()
@@ -109,6 +113,7 @@ async def test_postgres_reconstructs_faiss_after_process_restart_and_disk_loss(
                     session_id=session.id,
                     faiss_id=embedding.faiss_id,
                     dimension=embedding.dim,
+                    feature_version=embedding.feature_version,
                     feature_vector=session.feature_vector,
                 )
                 for embedding, session in snapshot
@@ -118,6 +123,8 @@ async def test_postgres_reconstructs_faiss_after_process_restart_and_disk_loss(
                 session_count=len(corpus.ids),
                 dimension=corpus.dimension,
                 artifact_schema_version=ARTIFACT_SCHEMA_VERSION,
+                feature_version=FEATURE_VERSION,
+                normalization_method=NORMALIZATION_METHOD,
                 built_at=datetime.now(tz=timezone.utc),
             )
             await db.commit()

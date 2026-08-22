@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import delete, select, true
+from sqlalchemy import delete, exists, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.history.models import (
@@ -17,8 +17,13 @@ from app.history.models import (
     HistoricalSession,
     HistoricalStatistics,
 )
-from app.market.models import DailyPrice, Indicator, Stock
-from app.news.models import SentimentDaily
+from app.history.session_builder import (
+    EquityIndicatorRow,
+    EquityPriceRow,
+    MembershipPeriod,
+    UniverseStock,
+)
+from app.market.models import DailyPrice, IndexMembership, Indicator, Stock
 from app.shared.upsert import conflict_insert
 
 
@@ -27,25 +32,48 @@ class HistoryRepository:
         self.db = db
 
     # ----- Market data (inputs to feature engineering) --------------------
-    async def get_price_rows(self) -> list[tuple[int, date, float]]:
-        result = await self.db.execute(
-            select(DailyPrice.stock_id, DailyPrice.date, DailyPrice.close)
-            .join(Stock, Stock.id == DailyPrice.stock_id)
-            .where(Stock.history_eligible.is_(True))
-            .order_by(DailyPrice.stock_id, DailyPrice.date)
+    async def get_universe_stocks(self, index_code: str) -> list[UniverseStock]:
+        has_membership = exists().where(
+            IndexMembership.stock_id == Stock.id,
+            IndexMembership.index_code == index_code,
         )
-        return [(r[0], r[1], r[2]) for r in result.all()]
+        result = await self.db.execute(
+            select(Stock.id, Stock.sector)
+            .where(or_(Stock.history_eligible.is_(True), has_membership))
+            .order_by(Stock.id)
+        )
+        return [UniverseStock(row[0], row[1]) for row in result.all()]
 
-    async def get_sentiment_rows(self) -> list[tuple[int, date, float]]:
-        """(stock_id, date, avg_sentiment) from the daily sentiment aggregate."""
+    async def get_memberships(self, index_code: str) -> list[MembershipPeriod]:
         result = await self.db.execute(
             select(
-                SentimentDaily.stock_id, SentimentDaily.date, SentimentDaily.avg_sentiment
+                IndexMembership.stock_id,
+                IndexMembership.valid_from,
+                IndexMembership.valid_to,
             )
+            .where(IndexMembership.index_code == index_code)
+            .order_by(IndexMembership.valid_from, IndexMembership.stock_id)
         )
-        return [(r[0], r[1], r[2]) for r in result.all()]
+        return [MembershipPeriod(row[0], row[1], row[2]) for row in result.all()]
 
-    async def get_indicator_rows(self) -> list[tuple]:
+    async def get_price_rows(self, stock_ids: list[int]) -> list[EquityPriceRow]:
+        if not stock_ids:
+            return []
+        result = await self.db.execute(
+            select(
+                DailyPrice.stock_id,
+                DailyPrice.date,
+                DailyPrice.close,
+                DailyPrice.volume,
+            )
+            .where(DailyPrice.stock_id.in_(stock_ids))
+            .order_by(DailyPrice.stock_id, DailyPrice.date)
+        )
+        return [EquityPriceRow(row[0], row[1], row[2], row[3]) for row in result.all()]
+
+    async def get_indicator_rows(self, stock_ids: list[int]) -> list[EquityIndicatorRow]:
+        if not stock_ids:
+            return []
         result = await self.db.execute(
             select(
                 Indicator.stock_id,
@@ -53,15 +81,20 @@ class HistoryRepository:
                 Indicator.rsi_14,
                 Indicator.ema_20,
                 Indicator.ema_50,
-                Indicator.bb_upper,
-                Indicator.bb_lower,
                 Indicator.atr_14,
-                Indicator.macd_histogram,
-            )
-            .join(Stock, Stock.id == Indicator.stock_id)
-            .where(Stock.history_eligible.is_(True))
+            ).where(Indicator.stock_id.in_(stock_ids))
         )
-        return list(result.all())
+        return [
+            EquityIndicatorRow(
+                stock_id=row[0],
+                date=row[1],
+                rsi=row[2],
+                ema20=row[3],
+                ema50=row[4],
+                atr=row[5],
+            )
+            for row in result.all()
+        ]
 
     async def get_macro_price_rows(
         self, symbols: list[str]
@@ -81,19 +114,44 @@ class HistoryRepository:
         session_date: date,
         *,
         features: dict[str, float],
+        feature_version: str,
+        feature_dimension: int,
+        usable_constituent_count: int,
+        expected_constituent_count: int,
+        coverage_ratio: float,
+        sector_coverage_ratio: float,
+        membership_mode: str,
+        quality_flags: list[str],
         next_day_return: float | None,
         outcome: str | None,
+        next_session_breadth: float | None,
+        forward_5_session_return: float | None,
+        forward_5_session_drawdown: float | None,
+        forward_5_session_upside: float | None,
     ) -> HistoricalSession:
         values = {
             "date": session_date,
-            "avg_return": features["avg_return"],
+            "feature_version": feature_version,
+            "feature_dimension": feature_dimension,
+            "avg_return": features["equal_weight_return"],
             "median_return": features["median_return"],
-            "pct_advancers": features["pct_advancers"],
+            "pct_advancers": features["advancing_share"],
             "advance_decline_ratio": features["advance_decline_ratio"],
-            "avg_rsi": features["avg_rsi"],
+            # Backward-compatible summary column; v1 defines this as median RSI.
+            "avg_rsi": features["median_rsi"],
             "feature_vector": features,
+            "usable_constituent_count": usable_constituent_count,
+            "expected_constituent_count": expected_constituent_count,
+            "coverage_ratio": coverage_ratio,
+            "sector_coverage_ratio": sector_coverage_ratio,
+            "membership_mode": membership_mode,
+            "quality_flags": quality_flags,
             "next_day_return": next_day_return,
             "outcome": outcome,
+            "next_session_breadth": next_session_breadth,
+            "forward_5_session_return": forward_5_session_return,
+            "forward_5_session_drawdown": forward_5_session_drawdown,
+            "forward_5_session_upside": forward_5_session_upside,
         }
         stmt = conflict_insert(self.db, HistoricalSession).values(**values)
         result = await self.db.execute(
@@ -108,21 +166,42 @@ class HistoryRepository:
         )
         return result.scalar_one()
 
-    async def list_sessions(self) -> list[HistoricalSession]:
+    async def delete_incompatible_sessions(
+        self, feature_version: str, valid_dates: list[date]
+    ) -> None:
+        statement = delete(HistoricalSession).where(
+            or_(
+                HistoricalSession.feature_version != feature_version,
+                HistoricalSession.date.not_in(valid_dates),
+            )
+        )
+        await self.db.execute(statement)
+
+    async def list_sessions(self, feature_version: str) -> list[HistoricalSession]:
         result = await self.db.execute(
-            select(HistoricalSession).order_by(HistoricalSession.date.asc())
+            select(HistoricalSession)
+            .where(HistoricalSession.feature_version == feature_version)
+            .order_by(HistoricalSession.date.asc())
         )
         return list(result.scalars().all())
 
-    async def get_session_by_date(self, session_date: date) -> HistoricalSession | None:
+    async def get_session_by_date(
+        self, session_date: date, feature_version: str
+    ) -> HistoricalSession | None:
         result = await self.db.execute(
-            select(HistoricalSession).where(HistoricalSession.date == session_date)
+            select(HistoricalSession).where(
+                HistoricalSession.date == session_date,
+                HistoricalSession.feature_version == feature_version,
+            )
         )
         return result.scalar_one_or_none()
 
-    async def get_latest_session(self) -> HistoricalSession | None:
+    async def get_latest_session(self, feature_version: str) -> HistoricalSession | None:
         result = await self.db.execute(
-            select(HistoricalSession).order_by(HistoricalSession.date.desc()).limit(1)
+            select(HistoricalSession)
+            .where(HistoricalSession.feature_version == feature_version)
+            .order_by(HistoricalSession.date.desc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -134,22 +213,35 @@ class HistoryRepository:
         )
         return {s.id: s for s in result.scalars().all()}
 
-    async def count_sessions(self) -> int:
-        return len(await self.list_sessions())
+    async def count_sessions(self, feature_version: str) -> int:
+        return len(await self.list_sessions(feature_version))
 
     # ----- Embeddings (index references) ----------------------------------
     async def clear_embeddings(self) -> None:
         await self.db.execute(delete(HistoricalEmbedding))
         await self.db.flush()
 
-    async def add_embedding(self, session_id: int, faiss_id: int, dim: int) -> None:
+    async def add_embedding(
+        self,
+        session_id: int,
+        faiss_id: int,
+        dim: int,
+        feature_version: str,
+    ) -> None:
         stmt = conflict_insert(self.db, HistoricalEmbedding).values(
-            session_id=session_id, faiss_id=faiss_id, dim=dim
+            session_id=session_id,
+            faiss_id=faiss_id,
+            dim=dim,
+            feature_version=feature_version,
         )
         await self.db.execute(
             stmt.on_conflict_do_update(
                 index_elements=[HistoricalEmbedding.session_id],
-                set_={"faiss_id": stmt.excluded.faiss_id, "dim": stmt.excluded.dim},
+                set_={
+                    "faiss_id": stmt.excluded.faiss_id,
+                    "dim": stmt.excluded.dim,
+                    "feature_version": stmt.excluded.feature_version,
+                },
             )
         )
 
@@ -160,6 +252,8 @@ class HistoryRepository:
         session_count: int,
         dimension: int,
         artifact_schema_version: int,
+        feature_version: str,
+        normalization_method: str,
         built_at: datetime,
     ) -> None:
         values = {
@@ -168,6 +262,8 @@ class HistoryRepository:
             "session_count": session_count,
             "dimension": dimension,
             "artifact_schema_version": artifact_schema_version,
+            "feature_version": feature_version,
+            "normalization_method": normalization_method,
             "built_at": built_at,
             "updated_at": built_at,
         }
@@ -192,7 +288,12 @@ class HistoryRepository:
             .join(
                 HistoricalSession, HistoricalSession.id == HistoricalEmbedding.session_id
             )
-            .where(HistoricalIndexState.id == 1)
+            .where(
+                HistoricalIndexState.id == 1,
+                HistoricalEmbedding.feature_version
+                == HistoricalIndexState.feature_version,
+                HistoricalSession.feature_version == HistoricalIndexState.feature_version,
+            )
             .order_by(HistoricalSession.id)
         )
         rows = result.all()

@@ -1,144 +1,127 @@
-# Historical Intelligence Engine (Phase 4)
+# Historical Market-Regime Similarity (Phase 10D)
 
-The platform's core differentiator: find the past trading sessions most similar
-to today's market conditions, and summarize what happened next — **evidence over
-prediction**. Every stage is deterministic; the LLM (later) only explains these
-outputs, it never computes them.
+Historical similarity compares the current aggregate market regime with past
+trading sessions and reports what actually happened afterward. It is research
+context, not a price forecast. Every feature, outcome, distance, factor
+explanation, and statistic is deterministic; an LLM never computes or ranks it.
 
-## Pipeline
+## Reconstruction contract
 
-```
-market data → daily feature vector → normalize → FAISS index → Top-K search → statistics
-```
-
-### 1. Feature engineering (`feature_engineering.py`)
-
-For each trading date, aggregate the tracked universe into one market feature
-vector (15 dimensions, fixed order):
+`market_regime_v1` replaces the legacy 15-feature representation with a fixed,
+ticker-order-independent 25-feature vector:
 
 | Group | Features |
-|-------|----------|
-| Market | avg_return, median_return, pct_advancers, advance_decline_ratio |
-| Technical (scale-free) | avg_rsi, avg_ema20_distance, avg_ema50_distance, avg_bollinger_position, avg_atr_pct, avg_macd_hist_pct |
-| Sentiment | avg_sentiment from Phase 5 per-stock daily news aggregation |
-| Macro (cross-asset) | USD/INR return, crude-oil return, gold return, US 10-year yield return |
+|---|---|
+| Direction | equal-weight return, median return |
+| Breadth | advancing/declining/unchanged shares, capped A/D ratio, shares above EMA20 and EMA50 |
+| Momentum | median/IQR RSI, overbought/oversold shares, median/IQR 20-session momentum |
+| Volatility | median ATR/close, return IQR, median 20-session realized volatility |
+| Volume | median 20-session relative volume, elevated-volume share |
+| Sector | dispersion of sector returns, leader/laggard spread |
+| Macro | USD/INR, crude, gold, and US 10-year daily returns |
 
-Technical features are scale-free (ratios/distances) so they average sensibly
-across stocks of different prices. A date only becomes a session if **every**
-feature is computable (≥3 stocks, all indicators present, and all four macro
-proxy observations present) — no imputation, no NaNs in the index. Macro prices
-are fetched through the same validated yfinance client and stored as inactive
-`Stock` rows, so they cannot leak into equity breadth or sector calculations.
+Inputs with naturally dangerous tails are winsorized before aggregation. All
+rolling values use only the current or earlier observations: 20-session
+momentum, realized volatility, and relative volume cannot see future data.
+Sentiment is deliberately excluded because reliable full-window per-company
+history is unavailable; missing historical news is not silently treated as
+neutral evidence.
 
-The **outcome label** stored per session is the *next* session's `avg_return`
-(the actual next-day market move) — this is what statistics are computed against.
+A candidate date is accepted only when it has at least three usable expected
+constituents, at least 80% constituent coverage, at least 60% sector-metadata
+coverage, and all four macro returns. Rejected dates are counted by reason and
+reported by rebuild/bootstrap telemetry. Accepted sessions persist usable and
+expected counts, coverage ratios, membership mode, and quality flags.
 
-Return and breadth fields are represented by the API as decimal ratios
-(`0.01` means 1%, and `pct_advancers=0.60` means 60%). Frontend and report
-export formatters scale these ratios by 100 for display; market and portfolio
-fields whose names end in `_percent` are already percentage-point values.
+## Effective membership without invented history
 
-### 2. Normalization — the drift-prevention invariant
+Membership intervals use `[valid_from, valid_to)`. On and after the first known
+NIFTY50 membership snapshot, reconstruction uses the exact effective members for
+the session date, including retired constituents whose stored history remains.
 
-Vectors are z-score standardized by a `Normalizer` fitted once for a
-content-addressed corpus generation. The FAISS index and its normalizer are
-published and validated together, so the query path cannot mix generations.
-There is exactly one `Normalizer` class; normalization happens nowhere else.
-Zero-variance features map to 0 (no div-by-zero, no effect on distance).
+The database cannot truthfully infer membership before its first snapshot. For
+those dates, the builder uses the available tracked historical equities as a
+proxy and labels every session `available_data_proxy` with
+`historical_membership_unknown`. It never presents current membership as known
+past membership. Migration `0014`'s `history_eligible` values remain useful to
+discover legacy tracked stocks, but are no longer the permanent reconstruction
+definition.
 
-### 3. Index (`embeddings.py`)
+## Normalization, indexing, and versioning
 
-The normalized vector *is* the embedding. It's stored in a FAISS
-`IndexIDMap(IndexFlatL2)` keyed by `session_id` — **exact** L2 search, so
-rebuilding from identical data yields byte-identical rankings (verified). The
-index + normalizer are a local cache under
-`DATA_DIR/faiss/generations/<corpus-hash>/`. PostgreSQL owns the raw feature
-vectors, current index membership, and committed corpus identity. Missing,
-stale, or corrupt cache generations are deterministically reconstructed on
-demand and atomically republished. Queries still succeed if cache publication
-is temporarily unavailable.
+The feature order, `market_regime_v1`, and
+`median_iqr_clip8_v1` normalization method form one persisted contract.
+Normalization uses corpus medians and IQRs; zero-IQR dimensions become zero and
+normalized values are clipped to ±8. This is more resistant to market outliers
+than the legacy mean/std scaler.
 
-The database transaction commits before cache publication. Generation-scoped
-paths, a process lock, staging directory, manifest-last validation, and atomic
-rename prevent partial artifacts or concurrent writers from becoming visible.
-The manifest binds both files with SHA-256 checksums before FAISS deserialization.
-An interrupted publication therefore cannot supersede committed database state.
+The normalized vector is indexed by an exact
+`IndexIDMap(IndexFlatL2)`. FAISS returns squared L2; the API converts this to
+root-mean-square normalized feature distance, then reports
+`similarity = 1 / (1 + distance)`. Exact L2 remains appropriate because robust
+normalization makes dimensions comparable and the corpus is small enough that
+approximate search would add complexity without benefit.
 
-### 4. Similarity search (`similarity.py`, `service.py`)
+Migration `0015_market_regime_history` marks legacy sessions with a distinct
+version and clears their embeddings/statistics/index state. Legacy rows remain
+inspectable until the first successful rebuild atomically replaces stale dates.
+Queries refuse schema, feature-version, dimension, normalization, corpus-hash,
+row-count, or ID mismatches instead of interpreting incompatible vectors.
 
-Query today's (or any date's) normalized vector, retrieve Top-(K+1), drop the
-session itself, and score `similarity = 1 / (1 + L2_distance)`.
+PostgreSQL owns raw vectors, embedding membership, and the committed singleton
+index state. `DATA_DIR/faiss/generations/<corpus-hash>/` is only a
+generation-addressed cache. Missing or corrupt files are reconstructed from the
+committed database snapshot, checksummed, and atomically published. Database
+commit precedes cache publication, so a publication failure cannot expose an
+uncommitted corpus.
 
-### 5. Statistics (`similarity.py`)
+## Outcomes and explanations
 
-Computed from the **actual next-day returns** of the retrieved neighbours:
-bullish/bearish/neutral counts, bullish probability, mean/median/std next-day
-return, best/worst case, and a 95% confidence interval of the mean
-(`mean ± 1.96·std/√n`). Never generated by an LLM.
+Each historical session stores separately from its input vector:
 
-## Data model (migrations `0005_history`, `0012_history_index_state`)
+- next-session equal-weight return and breadth;
+- compounded return over the next five accepted trading sessions;
+- realized peak drawdown and upside over that five-session path; and
+- bullish/bearish/neutral next-session label.
 
-- **historical_sessions** — one per date: summary columns + the full
-  `feature_vector` (JSON) + `next_day_return` + `outcome`.
-- **historical_embeddings** — a *reference* (`faiss_id == session_id`) linking a
-  committed session to its FAISS entry. It records membership and dimension;
-  the raw pre-normalized vector is the session's PostgreSQL `feature_vector`.
-- **historical_index_state** — singleton corpus hash, row count, dimension,
-  artifact schema version, and build timestamp for the committed generation.
-- **historical_statistics** — cached outlook statistics for a session (the latest
-  session is refreshed on each rebuild).
+The last session and sessions without a complete five-session horizon retain
+honest `null` outcomes. Outcome fields never enter FAISS. API statistics use
+only known next-session outcomes from retrieved neighbours.
 
-## Endpoints
+Each analogue also exposes its three closest and two most divergent feature
+groups. Group similarity and its explanation are calculated from the same
+robust-normalized dimensions, with no generated prose and no raw-vector leak.
+
+## API and UI
 
 | Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v1/history/similar?date=&k=` | Top-K similar sessions + statistics (date defaults to latest) |
-| `POST /api/v1/admin/jobs/history-rebuild/run` | Rebuild the index (administrator only) |
+|---|---|
+| `GET /api/v1/history/similar?date=&k=` | Version metadata, query quality/regimes, analogues, factor explanations, forward outcomes, statistics |
+| `POST /api/v1/admin/jobs/history-rebuild/run` | Reconstruct sessions and atomically rebuild PostgreSQL/FAISS state (admin) |
 
-The rebuild is also chained into the **post-close EOD pipeline** (ingest → rebuild
-index) so the index never goes stale.
-
-### Phase 10C universe compatibility
-
-Dynamic NIFTY 50 membership does not silently redefine historical sessions.
-Although the vector remains 15 aggregate features (not 15 ticker dimensions),
-filtering all old dates by today's membership would introduce survivorship bias.
-Migration `0014` therefore freezes the pre-Phase-10C reconstruction set in
-`stocks.history_eligible`; constituent synchronization does not change it.
-Effective-date-aware reconstruction, the expanded production bootstrap, and the
-deliberate FAISS corpus rebuild are deferred to Phase 10D. See
-[Dynamic NIFTY 50 Universe](dynamic-universe.md).
-
-## Determinism & reproducibility
-
-Exact FAISS search + fixed feature order + a deterministically-fitted normalizer
-⇒ rebuilding from the same PostgreSQL corpus produces identical rankings. The
-SHA-256 corpus identity covers the schema version, ordered feature contract,
-session IDs, and every raw float value.
+The `/history` workspace displays model/dimension/membership/coverage badges,
+current breadth/momentum/volatility regimes, deterministic closest/divergent
+factors, next-session and five-session outcomes, and the existing evidence card.
+The `available_data_proxy` badge keeps unknown historical membership visible.
 
 ## Verification
 
-- **Unit**: feature engineering (hand-verified), normalizer (zero-variance,
-  reproducibility, save/load), statistics (hand-verified), FAISS store (retrieval
-  correctness, persistence, determinism).
-- **Integration**: a controlled two-regime market (calm-up vs volatile-down) — a
-  query from one regime retrieves neighbours from the *same* regime; rebuild
-  reproducibility; index-not-built / insufficient-history errors; missing and
-  corrupt cache recovery; failed publication after commit; no publication
-  before commit; state-integrity rejection; concurrent publication.
-- **PostgreSQL**: migration `0012` legacy backfill and a fresh-process query
-  after complete local cache loss are exercised against the production engine.
-- **Live**: 194 macro-complete real sessions indexed at 15 dimensions from
-  Phase 2 data; the latest-session query returned five ranked analogues with
-  five real next-day outcomes, and the rebuild remained deterministic.
+- Feature tests cover exact order/dimension, clipping, sparse coverage, missing
+  macro/sector data, sentiment exclusion, robust normalization, and finite
+  output.
+- Reconstruction tests cover effective additions/removals, unknown-history
+  proxy labels, input-order determinism, warmup rejection, and future-data
+  leakage.
+- Service/index tests cover same-regime retrieval, outcome dates, idempotent
+  rebuilds, incompatible versions, empty corpora, FAISS construction failure,
+  commit/publication boundaries, checksums, concurrent publishers, and missing
+  or corrupt cache recovery.
+- On 22 August 2026, an isolated local PostgreSQL staging database completed a
+  live 50-equity + four-macro bootstrap: 12,693 equity price rows, 12,043
+  indicator rows, 254 candidate dates, 198 accepted sessions, 56 explicitly
+  rejected dates, dimension 25, and a 21,384-byte approximate FAISS footprint.
+  A repeat kept all row/session counts stable and used incremental ingestion;
+  moving the active cache generation aside was followed by a successful
+  PostgreSQL-backed query and automatic reconstruction.
 
-~98% coverage across the history modules.
-
-## Known limitations
-
-- FII/DII flow is not included in the vector because the current providers do
-  not expose a reliable historical series. The implemented cross-asset macro
-  set covers USD/INR, crude, gold, and sovereign yields; adding institutional
-  flow later requires a trustworthy source and an index rebuild.
-- Similarity quality scales with historical depth; ~1y (~200 sessions) is enough
-  for defensible analogues but more backfill improves it.
+Production was not mutated. See [Expanded Production Bootstrap](expanded-bootstrap.md).

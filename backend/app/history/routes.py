@@ -28,7 +28,9 @@ history_admin_router = APIRouter(prefix="/admin", tags=["admin"])
     "(default: latest) and summarizes what happened the next day.",
 )
 async def similar_sessions(
-    date: date | None = Query(default=None, description="Query session date (YYYY-MM-DD)"),
+    date: date | None = Query(
+        default=None, description="Query session date (YYYY-MM-DD)"
+    ),
     k: int | None = Query(default=None, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> dict:

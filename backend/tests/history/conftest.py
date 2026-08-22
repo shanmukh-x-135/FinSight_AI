@@ -3,7 +3,7 @@ FAISS directory."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
@@ -13,8 +13,19 @@ from app.market.constants import MACRO_PROXIES
 from app.market.models import DailyPrice, Indicator, Stock
 from config.settings import settings
 
-A_DATES = [date(2024, 1, d) for d in range(1, 11)]   # calm-up regime
-B_DATES = [date(2024, 2, d) for d in range(1, 11)]    # volatile-down regime
+
+def _business_dates(start: date, count: int) -> list[date]:
+    dates: list[date] = []
+    current = start
+    while len(dates) < count:
+        if current.weekday() < 5:
+            dates.append(current)
+        current += timedelta(days=1)
+    return dates
+
+
+A_DATES = _business_dates(date(2024, 1, 1), 40)  # calm-up regime
+B_DATES = _business_dates(date(2024, 4, 1), 40)  # volatile-down regime
 
 
 @pytest.fixture
@@ -30,7 +41,7 @@ async def seeded_market(db_session: AsyncSession) -> None:
         Stock(
             symbol=f"S{i}.NS",
             name=f"S{i}",
-            sector="Technology",
+            sector="Technology" if i % 2 == 0 else "Financial Services",
             exchange="NSE",
             history_eligible=True,
         )
@@ -43,26 +54,48 @@ async def seeded_market(db_session: AsyncSession) -> None:
     for si, stock in enumerate(stocks):
         close = 100.0 + si * 10
         for di, d in enumerate(all_dates):
-            regime_a = d.month == 1
+            regime_a = d in A_DATES
+            regime_index = di if regime_a else di - len(A_DATES)
             close += 1.0 if regime_a else -1.0
             db_session.add(
-                DailyPrice(stock_id=stock.id, date=d, open=close, high=close * 1.01,
-                           low=close * 0.99, close=close, volume=1000)
+                DailyPrice(
+                    stock_id=stock.id,
+                    date=d,
+                    open=close,
+                    high=close * 1.01,
+                    low=close * 0.99,
+                    close=close,
+                    volume=1000 + di * 10 + si,
+                )
             )
             if regime_a:
-                db_session.add(Indicator(
-                    stock_id=stock.id, date=d, rsi_14=58 + 0.3 * di,
-                    ema_20=close * 0.99, ema_50=close * 0.97,
-                    bb_upper=close * 1.02, bb_lower=close * 0.98,
-                    atr_14=close * 0.01, macd_histogram=close * 0.003,
-                ))
+                db_session.add(
+                    Indicator(
+                        stock_id=stock.id,
+                        date=d,
+                        rsi_14=58 + 0.3 * regime_index,
+                        ema_20=close * 0.99,
+                        ema_50=close * 0.97,
+                        bb_upper=close * 1.02,
+                        bb_lower=close * 0.98,
+                        atr_14=close * 0.01,
+                        macd_histogram=close * 0.003,
+                    )
+                )
             else:
-                db_session.add(Indicator(
-                    stock_id=stock.id, date=d, rsi_14=38 + 0.3 * di,
-                    ema_20=close * 1.01, ema_50=close * 1.03,
-                    bb_upper=close * 1.04, bb_lower=close * 0.96,
-                    atr_14=close * 0.03, macd_histogram=-close * 0.003,
-                ))
+                db_session.add(
+                    Indicator(
+                        stock_id=stock.id,
+                        date=d,
+                        rsi_14=38 + 0.3 * regime_index,
+                        ema_20=close * 1.01,
+                        ema_50=close * 1.03,
+                        bb_upper=close * 1.04,
+                        bb_lower=close * 0.96,
+                        atr_14=close * 0.03,
+                        macd_histogram=-close * 0.003,
+                    )
+                )
 
     macro_stocks = [
         Stock(
@@ -80,7 +113,7 @@ async def seeded_market(db_session: AsyncSession) -> None:
     for mi, stock in enumerate(macro_stocks):
         close = 70.0 + mi * 20
         for d in all_dates:
-            close *= 1.002 if d.month == 1 else 0.997
+            close *= 1.002 if d in A_DATES else 0.997
             db_session.add(
                 DailyPrice(
                     stock_id=stock.id,

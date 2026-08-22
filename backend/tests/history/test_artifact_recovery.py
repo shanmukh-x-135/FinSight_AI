@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import json
-import runpy
 import shutil
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.history.artifacts import CorpusRow, HistoryArtifactCache, IndexCorpus
@@ -22,8 +19,14 @@ from app.history.constants import (
     generations_dir,
 )
 from app.history.exceptions import IndexNotBuiltError
+from app.history.feature_engineering import FEATURE_NAMES, FEATURE_VERSION
 from app.history.models import HistoricalIndexState
 from app.history.service import HistoryService
+from tests.history.conftest import A_DATES
+
+
+def _features(offset: float = 0.0) -> dict[str, float]:
+    return {name: offset + index / 100 for index, name in enumerate(FEATURE_NAMES)}
 
 
 async def _state(db_session: AsyncSession) -> HistoricalIndexState:
@@ -42,8 +45,9 @@ async def test_build_commits_generation_identity_and_cache(
     state = await _state(db_session)
     generation = Path(generations_dir()) / state.corpus_hash
 
-    assert state.session_count == 19
-    assert state.dimension == 15
+    assert state.session_count == 60
+    assert state.dimension == len(FEATURE_NAMES)
+    assert state.feature_version == FEATURE_VERSION
     assert (generation / MANIFEST_FILENAME).is_file()
     assert (generation / INDEX_FILENAME).is_file()
 
@@ -58,7 +62,7 @@ async def test_missing_cache_is_reconstructed_from_database(
     generation = Path(generations_dir()) / state.corpus_hash
     shutil.rmtree(generation)
 
-    result = await service.query_similar(query_date=date(2024, 1, 6), k=5)
+    result = await service.query_similar(query_date=A_DATES[30], k=5)
 
     assert len(result.similar_sessions) == 5
     assert (generation / MANIFEST_FILENAME).is_file()
@@ -78,7 +82,7 @@ async def test_corrupt_cache_is_repaired_from_database(
     generation = Path(generations_dir()) / state.corpus_hash
     (generation / artifact).write_bytes(b"corrupt")
 
-    result = await service.query_similar(query_date=date(2024, 1, 6), k=3)
+    result = await service.query_similar(query_date=A_DATES[30], k=3)
 
     assert len(result.similar_sessions) == 3
     manifest = json.loads((generation / MANIFEST_FILENAME).read_text())
@@ -95,12 +99,12 @@ async def test_checksum_rejects_structurally_valid_but_modified_artifact(
     generation = Path(generations_dir()) / state.corpus_hash
     normalizer_path = generation / NORMALIZER_FILENAME
     normalizer = json.loads(normalizer_path.read_text())
-    normalizer["mean"][0] += 1000
+    normalizer["center"][0] += 1000
     normalizer_path.write_text(json.dumps(normalizer))
 
-    result = await service.query_similar(query_date=date(2024, 1, 6), k=3)
+    result = await service.query_similar(query_date=A_DATES[30], k=3)
 
-    assert all(item.date.month == 1 for item in result.similar_sessions)
+    assert all(item.date in A_DATES for item in result.similar_sessions)
 
 
 @pytest.mark.asyncio
@@ -119,7 +123,7 @@ async def test_cache_write_failure_does_not_break_database_backed_query(
         raise OSError("simulated cache failure")
 
     monkeypatch.setattr(HistoryArtifactCache, "publish", fail_publish)
-    result = await service.query_similar(query_date=date(2024, 1, 6), k=2)
+    result = await service.query_similar(query_date=A_DATES[30], k=2)
     assert len(result.similar_sessions) == 2
 
 
@@ -137,8 +141,8 @@ async def test_build_succeeds_after_database_commit_when_cache_publish_fails(
     result = await HistoryService(db_session).build_index()
     state = await _state(db_session)
 
-    assert result.sessions_indexed == 19
-    assert state.session_count == 19
+    assert result.sessions_indexed == 60
+    assert state.session_count == 60
     assert not (Path(generations_dir()) / state.corpus_hash).exists()
 
 
@@ -159,6 +163,24 @@ async def test_uncommitted_build_never_publishes_generation(
 
 
 @pytest.mark.asyncio
+async def test_faiss_construction_failure_leaves_no_committed_partial_corpus(
+    db_session: AsyncSession,
+    seeded_market: None,
+    tmp_data_dir: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_reconstruct(_self: IndexCorpus) -> None:
+        raise RuntimeError("simulated FAISS construction failure")
+
+    monkeypatch.setattr(IndexCorpus, "reconstruct", fail_reconstruct)
+    with pytest.raises(RuntimeError, match="FAISS construction failure"):
+        await HistoryService(db_session).build_index()
+    await db_session.rollback()
+
+    assert await db_session.scalar(select(func.count(HistoricalIndexState.id))) == 0
+
+
+@pytest.mark.asyncio
 async def test_inconsistent_committed_state_is_not_silently_used(
     db_session: AsyncSession, seeded_market: None, tmp_data_dir: str
 ) -> None:
@@ -173,92 +195,51 @@ async def test_inconsistent_committed_state_is_not_silently_used(
 
 
 def test_corpus_hash_is_order_independent_and_content_addressed() -> None:
-    feature = {
-        "avg_return": 0.1,
-        "median_return": 0.1,
-        "pct_advancers": 0.5,
-        "advance_decline_ratio": 1.0,
-        "avg_rsi": 50.0,
-        "avg_ema20_distance": 0.01,
-        "avg_ema50_distance": 0.02,
-        "avg_bollinger_position": 0.5,
-        "avg_atr_pct": 0.01,
-        "avg_macd_hist_pct": 0.001,
-        "avg_sentiment": 0.0,
-        "usd_inr_return": 0.0,
-        "crude_oil_return": 0.0,
-        "gold_return": 0.0,
-        "us_10y_yield_return": 0.0,
-    }
-    first = CorpusRow(1, 1, 15, feature)
-    second = CorpusRow(2, 2, 15, feature)
+    feature = _features()
+    dimension = len(FEATURE_NAMES)
+    first = CorpusRow(1, 1, dimension, FEATURE_VERSION, feature)
+    second = CorpusRow(2, 2, dimension, FEATURE_VERSION, feature)
     forward = IndexCorpus.from_rows([first, second])
     reverse = IndexCorpus.from_rows([second, first])
     changed = IndexCorpus.from_rows(
-        [first, CorpusRow(2, 2, 15, {**feature, "avg_return": 0.2})]
+        [
+            first,
+            CorpusRow(
+                2,
+                2,
+                dimension,
+                FEATURE_VERSION,
+                {**feature, "equal_weight_return": 0.2},
+            ),
+        ]
     )
 
     assert forward.corpus_hash == reverse.corpus_hash
     assert forward.corpus_hash != changed.corpus_hash
 
 
-def test_migration_backfill_hash_matches_runtime_contract() -> None:
-    feature = {
-        "avg_return": 0.1,
-        "median_return": 0.1,
-        "pct_advancers": 0.5,
-        "advance_decline_ratio": 1.0,
-        "avg_rsi": 50.0,
-        "avg_ema20_distance": 0.01,
-        "avg_ema50_distance": 0.02,
-        "avg_bollinger_position": 0.5,
-        "avg_atr_pct": 0.01,
-        "avg_macd_hist_pct": 0.001,
-        "avg_sentiment": 0.0,
-        "usd_inr_return": 0.0,
-        "crude_oil_return": 0.0,
-        "gold_return": 0.0,
-        "us_10y_yield_return": 0.0,
-    }
-    runtime = IndexCorpus.from_rows([CorpusRow(7, 7, 15, feature)])
-    migration_path = (
-        Path(__file__).parents[2] / "alembic" / "versions" / "0012_history_index_state.py"
-    )
-    migration = runpy.run_path(str(migration_path))
-    legacy_row = SimpleNamespace(
-        session_id=7,
-        faiss_id=7,
-        dim=15,
-        feature_vector=feature,
-    )
-
-    assert migration["_corpus_hash"]([legacy_row]) == runtime.corpus_hash
+def test_legacy_feature_version_is_rejected() -> None:
+    with pytest.raises(ValueError, match="feature version"):
+        IndexCorpus.from_rows(
+            [CorpusRow(7, 7, len(FEATURE_NAMES), "legacy_v0", _features())]
+        )
 
 
 def test_concurrent_publishers_leave_one_valid_generation(tmp_path, monkeypatch) -> None:
     from config.settings import settings
 
     monkeypatch.setattr(settings, "data_dir", str(tmp_path))
-    feature = {
-        "avg_return": 0.1,
-        "median_return": 0.1,
-        "pct_advancers": 0.5,
-        "advance_decline_ratio": 1.0,
-        "avg_rsi": 50.0,
-        "avg_ema20_distance": 0.01,
-        "avg_ema50_distance": 0.02,
-        "avg_bollinger_position": 0.5,
-        "avg_atr_pct": 0.01,
-        "avg_macd_hist_pct": 0.001,
-        "avg_sentiment": 0.0,
-        "usd_inr_return": 0.0,
-        "crude_oil_return": 0.0,
-        "gold_return": 0.0,
-        "us_10y_yield_return": 0.0,
-    }
+    feature = _features()
+    dimension = len(FEATURE_NAMES)
     corpus = IndexCorpus.from_rows(
         [
-            CorpusRow(index, index, 15, {**feature, "avg_return": index / 100})
+            CorpusRow(
+                index,
+                index,
+                dimension,
+                FEATURE_VERSION,
+                {**feature, "equal_weight_return": index / 100},
+            )
             for index in range(1, 6)
         ]
     )
@@ -268,5 +249,5 @@ def test_concurrent_publishers_leave_one_valid_generation(tmp_path, monkeypatch)
         list(pool.map(lambda _item: cache.publish(), range(8)))
 
     loaded_normalizer, loaded_store = cache.load()
-    assert loaded_normalizer.mean.size == 15
+    assert loaded_normalizer.mean.size == dimension
     assert loaded_store.ids == corpus.ids
