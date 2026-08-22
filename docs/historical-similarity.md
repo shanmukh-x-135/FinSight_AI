@@ -123,5 +123,17 @@ The `available_data_proxy` badge keeps unknown historical membership visible.
   A repeat kept all row/session counts stable and used incremental ingestion;
   moving the active cache generation aside was followed by a successful
   PostgreSQL-backed query and automatic reconstruction.
+- The populated database was downgraded from migration 0015 to 0014 and upgraded
+  again: all 13,721 price rows and 12,043 indicators were preserved, incompatible
+  index state was retired, and an incremental bootstrap restored 198 v1 sessions.
+- Representative real HTTP requests returned 200 for breadth, gainers, sectors,
+  all 50 market stocks, RELIANCE history, and similarity. The first similarity
+  request took 12.47 ms; 20 warm requests averaged 6.69 ms (5.91–7.86 ms) on the
+  local staging machine.
+- Real-stack Playwright verification logged in through the built frontend,
+  rendered the populated 50-stock market table and RELIANCE price chart, then
+  verified the version, dimension, coverage, factor explanations, and forward
+  outcomes on `/history`. Responsive mocked-data checks passed at desktop and
+  mobile widths.
 
 Production was not mutated. See [Expanded Production Bootstrap](expanded-bootstrap.md).

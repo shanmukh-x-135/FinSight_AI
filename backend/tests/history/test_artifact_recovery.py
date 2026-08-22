@@ -181,6 +181,31 @@ async def test_faiss_construction_failure_leaves_no_committed_partial_corpus(
 
 
 @pytest.mark.asyncio
+async def test_index_state_persistence_failure_preserves_previous_generation(
+    db_session: AsyncSession,
+    seeded_market: None,
+    tmp_data_dir: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = HistoryService(db_session)
+    await service.build_index()
+    committed = await _state(db_session)
+    committed_hash = committed.corpus_hash
+
+    async def fail_index_state(**_kwargs: object) -> None:
+        raise RuntimeError("simulated index-state persistence failure")
+
+    monkeypatch.setattr(service.repo, "upsert_index_state", fail_index_state)
+    with pytest.raises(RuntimeError, match="index-state persistence failure"):
+        await service.build_index()
+    await db_session.rollback()
+
+    assert (await _state(db_session)).corpus_hash == committed_hash
+    result = await HistoryService(db_session).query_similar(query_date=A_DATES[30], k=3)
+    assert len(result.similar_sessions) == 3
+
+
+@pytest.mark.asyncio
 async def test_inconsistent_committed_state_is_not_silently_used(
     db_session: AsyncSession, seeded_market: None, tmp_data_dir: str
 ) -> None:

@@ -112,3 +112,8 @@ never a static mock.
   browser once with `npx playwright install chromium`. Use
   `E2E_BASE_URL`, `E2E_API_URL`, `E2E_EMAIL`, and `E2E_PASSWORD` with
   `npm run test:e2e:external` when testing an already-running remote stack.
+  Set `E2E_PHASE10D_LIVE=1` for the populated-staging journey, which verifies
+  the real 50-stock market table, stock price chart, regime model/version and
+  coverage disclosures, deterministic factor explanations, and forward-outcome
+  table. The mocked visual workspace separately checks those additions at
+  desktop and mobile widths.

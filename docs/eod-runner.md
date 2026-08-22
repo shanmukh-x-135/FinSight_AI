@@ -25,6 +25,15 @@ the orchestration level and retries resume the same logical run. P10.5 forwards
 that target date into every bounded per-symbol market fetch; see
 [Incremental Market Ingestion](incremental-market-ingestion.md).
 
+After market and news checkpoints complete, the Phase 10D history checkpoint
+reconstructs accepted regime sessions and the exact-L2 FAISS generation from
+PostgreSQL. It reports candidate, rejected, and indexed-session counts plus
+feature dimension, normalization method, build time, and approximate index
+bytes. Local FAISS files remain disposable: a later web query reconstructs a
+missing generation from the committed database state. Initial 50-stock setup is
+an explicit operator workflow, not an EOD responsibility; see
+[Expanded NIFTY50 Bootstrap](expanded-bootstrap.md).
+
 ## Exit behavior
 
 | Code | Meaning |

@@ -96,3 +96,8 @@ symbol success/failure and ingestion modes, bars fetched, candidate/accepted/
 rejected session counts and rejection reasons, feature version/dimension,
 normalization method, build duration, approximate index bytes, and full
 before/after database counts.
+
+The isolated live migration test also verified the upgrade path on populated
+data: downgrade 0015→0014 followed by upgrade to head preserved stocks, prices,
+indicators, and user tables; it retired only incompatible history index state.
+The next guarded run used incremental windows and restored the v1 corpus.

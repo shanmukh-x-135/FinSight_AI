@@ -9,6 +9,10 @@ vi.mock("@/lib/api", () => ({
   historyApi: { similar: vi.fn() },
 }));
 
+vi.mock("@/components/finance-charts", () => ({
+  HistoryOutcomeChart: () => <div data-testid="history-outcome-chart" />,
+}));
+
 const result: SimilarityResult = {
   feature_version: "market_regime_v1",
   vector_dimension: 25,
