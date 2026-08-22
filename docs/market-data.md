@@ -17,9 +17,9 @@ oil, gold, and the US 10-year Treasury yield). They reuse `daily_prices` but are
 stored with `is_active=false`; consequently they feed historical similarity
 without appearing in equity APIs, breadth, sectors, watchlists, or portfolios.
 
-The legacy production dataset contains 15 equity histories, but that list is no
-longer the runtime membership source. Phase 10C intentionally does not perform
-the expanded production bootstrap. Following the Tata Motors commercial-vehicle
+The expanded bootstrap reads all 50 approved memberships and the four macro
+proxies, then rebuilds versioned historical similarity only after every symbol
+succeeds. See [Expanded NIFTY50 Bootstrap](expanded-bootstrap.md). Following the Tata Motors commercial-vehicle
 demerger, NSE renamed the existing listed
 `TATAMOTORS` security to `TMPV` effective 24 October 2025; `TMPV.NS` is therefore
 the approved continuity symbol. `TMCV.NS` is the separately listed demerged

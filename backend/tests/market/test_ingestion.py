@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market import constants as market_constants
+from app.market import service as market_service
 from app.market.exceptions import UniverseNotInitializedError
 from app.market.models import DailyPrice, Fundamentals, IndexMembership, Indicator, Stock
 from app.market.repository import MarketRepository
@@ -224,6 +225,34 @@ async def test_ingest_isolates_failures(db_session: AsyncSession) -> None:
     # The good symbols persisted despite the bad one in the middle.
     assert await MarketRepository(db_session).get_stock_by_symbol("GOOD.NS") is not None
     assert await MarketRepository(db_session).get_stock_by_symbol("BAD.NS") is None
+
+
+@pytest.mark.asyncio
+async def test_indicator_failure_rolls_back_the_symbol_and_is_safe_to_retry(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = market_service.compute_indicator_points
+
+    def fail_indicators(_bars: list[PriceBar]) -> list[dict]:
+        raise RuntimeError("simulated indicator failure")
+
+    monkeypatch.setattr(market_service, "compute_indicator_points", fail_indicators)
+    failed = await MarketIngestionService(db_session, FakeClient()).ingest(
+        ["RETRY.NS"], target_trading_date=TARGET
+    )
+    assert failed.failed == ["RETRY.NS"]
+    assert await MarketRepository(db_session).get_stock_by_symbol("RETRY.NS") is None
+
+    monkeypatch.setattr(market_service, "compute_indicator_points", original)
+    recovered = await MarketIngestionService(db_session, FakeClient()).ingest(
+        ["RETRY.NS"], target_trading_date=TARGET
+    )
+    assert recovered.succeeded == ["RETRY.NS"]
+    stock = await MarketRepository(db_session).get_stock_by_symbol("RETRY.NS")
+    assert stock is not None
+    assert await db_session.scalar(
+        select(func.count(DailyPrice.id)).where(DailyPrice.stock_id == stock.id)
+    ) == len(_make_bars())
 
 
 @pytest.mark.asyncio

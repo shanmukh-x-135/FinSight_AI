@@ -1,8 +1,8 @@
 # Dynamic NIFTY 50 Universe (Phase 10C)
 
-Phase 10C replaces the hardcoded equity list with an effective-dated,
-database-backed NIFTY 50 universe. It changes universe management only: it does
-not load the expanded production price corpus or rebuild historical similarity.
+Phase 10C replaced the hardcoded equity list with an effective-dated,
+database-backed NIFTY 50 universe. Phase 10D now uses those intervals for
+historical reconstruction and provides the guarded expanded bootstrap.
 
 ## Architecture and sources of truth
 
@@ -124,26 +124,19 @@ Migrations `0013_dynamic_universe` and `0014_freeze_history_universe` add:
 - `stock_symbol_aliases` for explicit alias/replacement relationships; and
 - `stocks.history_eligible`, a frozen compatibility boundary described below.
 
-## Historical-similarity boundary
+## Historical-similarity evolution
 
-The 15 historical features are aggregate market measures, not one dimension per
-stock. Their dimension therefore remains unchanged. However, rebuilding old
-dates from only today's active members would create survivorship bias.
+Migration `0014` temporarily froze the pre-Phase-10C tracked set so a normal EOD
+rebuild could not silently introduce survivorship bias. Phase 10D replaces that
+temporary boundary with `[valid_from, valid_to)` membership resolution. Dates
+before the first known snapshot use an explicitly labeled available-data proxy;
+they are never presented as known membership. The new 25-dimensional aggregate
+regime model remains independent of ticker ordering. See
+[Historical Market-Regime Similarity](historical-similarity.md).
 
-Migration `0014` captures the pre-Phase-10C active equity set in
-`history_eligible`. Universe synchronization does not add new candidates to or
-remove retired candidates from that frozen reconstruction set. This prevents a
-normal EOD history rebuild from silently changing the legacy corpus. Phase 10D
-must replace this temporary boundary with effective-date-aware reconstruction,
-perform the deliberate 50-stock production bootstrap, and then rebuild the
-historical sessions/FAISS corpus.
-
-## Deferred to Phase 10D
-
-- production 50-stock price and indicator bootstrap;
-- effective-membership-aware historical session reconstruction;
-- historical regime-feature and FAISS corpus redesign/rebuild; and
-- richer corporate-action normalization.
+The guarded 50-stock price/indicator/history workflow is documented in
+[Expanded NIFTY50 Bootstrap](expanded-bootstrap.md). Corporate-action handling
+continues to preserve retired histories and explicit symbol replacements.
 
 ## Phase 10C live verification
 

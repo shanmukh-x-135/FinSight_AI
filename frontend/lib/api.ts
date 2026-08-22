@@ -501,6 +501,24 @@ export interface SessionSummary {
   pct_advancers: number;
   advance_decline_ratio: number;
   avg_rsi: number;
+  feature_version?: string;
+  median_rsi?: number;
+  median_atr_percent?: number;
+  median_relative_volume?: number;
+  coverage_ratio?: number;
+  usable_constituents?: number;
+  expected_constituents?: number;
+  membership_mode?: "effective_membership" | "available_data_proxy" | string;
+  quality_flags?: string[];
+  breadth_regime?: string;
+  momentum_regime?: string;
+  volatility_regime?: string;
+}
+
+export interface FactorComparison {
+  factor: string;
+  similarity_score: number;
+  explanation: string;
 }
 
 export interface SimilarSession extends SessionSummary {
@@ -508,6 +526,12 @@ export interface SimilarSession extends SessionSummary {
   distance: number;
   next_day_return: number | null;
   outcome: string | null;
+  next_session_breadth?: number | null;
+  forward_5_session_return?: number | null;
+  forward_5_session_drawdown?: number | null;
+  forward_5_session_upside?: number | null;
+  matching_factors?: FactorComparison[];
+  divergence_factors?: FactorComparison[];
 }
 
 export interface HistoryStatistics {
@@ -527,6 +551,9 @@ export interface HistoryStatistics {
 }
 
 export interface SimilarityResult {
+  feature_version?: string;
+  vector_dimension?: number;
+  normalization_method?: string;
   query_date: string;
   query_summary: SessionSummary;
   similar_sessions: SimilarSession[];

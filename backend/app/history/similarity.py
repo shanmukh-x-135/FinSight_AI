@@ -10,10 +10,56 @@ from __future__ import annotations
 import math
 import statistics as stats
 
+import numpy as np
+
+from app.history.feature_engineering import FEATURE_GROUPS, FEATURE_NAMES, Normalizer
+
+
+def normalized_l2_distance(squared_distance: float, dimension: int) -> float:
+    """Convert FAISS squared L2 to root-mean-square feature distance."""
+    if dimension <= 0:
+        raise ValueError("dimension must be positive")
+    return math.sqrt(max(squared_distance, 0.0) / dimension)
+
 
 def distance_to_similarity(distance: float) -> float:
-    """Map a non-negative L2 distance to a (0, 1] similarity (monotonic)."""
+    """Map a non-negative normalized distance to a (0, 1] score."""
     return 1.0 / (1.0 + max(distance, 0.0))
+
+
+def compare_feature_groups(
+    query_features: dict[str, float],
+    analogue_features: dict[str, float],
+    normalizer: Normalizer,
+) -> tuple[list[dict[str, float | str]], list[dict[str, float | str]]]:
+    """Return deterministic matching/diverging regime factors without raw vectors."""
+    query = normalizer.transform([query_features[name] for name in FEATURE_NAMES])
+    analogue = normalizer.transform([analogue_features[name] for name in FEATURE_NAMES])
+    comparisons: list[dict[str, float | str]] = []
+    for group, names in FEATURE_GROUPS.items():
+        indices = [FEATURE_NAMES.index(name) for name in names]
+        delta = query[indices] - analogue[indices]
+        distance = float(np.sqrt(np.mean(np.square(delta))))
+        comparisons.append(
+            {
+                "factor": group,
+                "similarity_score": distance_to_similarity(distance),
+                "explanation": (
+                    f"{group.replace('_', ' ').title()} features have "
+                    f"{distance_to_similarity(distance) * 100:.0f}% group similarity "
+                    "after robust normalization."
+                ),
+            }
+        )
+    matching = sorted(
+        comparisons,
+        key=lambda item: (-float(item["similarity_score"]), str(item["factor"])),
+    )[:3]
+    diverging = sorted(
+        comparisons,
+        key=lambda item: (float(item["similarity_score"]), str(item["factor"])),
+    )[:2]
+    return matching, diverging
 
 
 def outcome_label(next_day_return: float | None) -> str | None:

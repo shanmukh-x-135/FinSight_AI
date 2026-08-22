@@ -42,6 +42,8 @@ class HistoricalSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[date] = mapped_column(Date, unique=True, index=True, nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    feature_dimension: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Readable summary columns (also present inside feature_vector).
     avg_return: Mapped[float] = mapped_column(Float, nullable=False)
@@ -52,10 +54,20 @@ class HistoricalSession(Base):
 
     # The full normalized-input feature dict (raw, pre-normalization values).
     feature_vector: Mapped[dict] = mapped_column(JSON, nullable=False)
+    usable_constituent_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_constituent_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    coverage_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    sector_coverage_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    membership_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    quality_flags: Mapped[list[str]] = mapped_column(JSON, nullable=False)
 
     # Outcome (the label): next trading session's market average return.
     next_day_return: Mapped[float | None] = mapped_column(Float)
     outcome: Mapped[str | None] = mapped_column(String(10))  # bullish/bearish/neutral
+    next_session_breadth: Mapped[float | None] = mapped_column(Float)
+    forward_5_session_return: Mapped[float | None] = mapped_column(Float)
+    forward_5_session_drawdown: Mapped[float | None] = mapped_column(Float)
+    forward_5_session_upside: Mapped[float | None] = mapped_column(Float)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -85,6 +97,7 @@ class HistoricalEmbedding(Base):
     # The id used for this vector inside the FAISS IndexIDMap (== session_id).
     faiss_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     dim: Mapped[int] = mapped_column(Integer, nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=_utcnow,
@@ -109,6 +122,8 @@ class HistoricalIndexState(Base):
     corpus_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     session_count: Mapped[int] = mapped_column(Integer, nullable=False)
     dimension: Mapped[int] = mapped_column(Integer, nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    normalization_method: Mapped[str] = mapped_column(String(32), nullable=False)
     artifact_schema_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1
     )

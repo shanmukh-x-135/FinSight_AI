@@ -9,7 +9,7 @@ from config.settings import settings
 INDEX_FILENAME = "history.index"
 NORMALIZER_FILENAME = "normalizer.json"
 MANIFEST_FILENAME = "manifest.json"
-ARTIFACT_SCHEMA_VERSION = 1
+ARTIFACT_SCHEMA_VERSION = 2
 
 # Minimum indexed sessions for a usable similarity engine.
 MIN_SESSIONS_TO_BUILD = 5

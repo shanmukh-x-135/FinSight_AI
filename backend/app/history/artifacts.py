@@ -25,6 +25,8 @@ from app.history.constants import (
 from app.history.embeddings import FaissIndexStore
 from app.history.feature_engineering import (
     FEATURE_NAMES,
+    FEATURE_VERSION,
+    NORMALIZATION_METHOD,
     Normalizer,
     vector_from_features,
 )
@@ -35,6 +37,7 @@ class CorpusRow:
     session_id: int
     faiss_id: int
     dimension: int
+    feature_version: str
     feature_vector: dict[str, float]
 
 
@@ -44,6 +47,7 @@ class IndexCorpus:
     vectors: list[list[float]]
     corpus_hash: str
     dimension: int
+    feature_version: str
 
     @classmethod
     def from_rows(cls, rows: Iterable[CorpusRow]) -> "IndexCorpus":
@@ -55,12 +59,17 @@ class IndexCorpus:
         vectors: list[list[float]] = []
         digest = hashlib.sha256()
         digest.update(struct.pack(">I", ARTIFACT_SCHEMA_VERSION))
+        version_encoded = FEATURE_VERSION.encode("utf-8")
+        digest.update(struct.pack(">H", len(version_encoded)))
+        digest.update(version_encoded)
         for name in FEATURE_NAMES:
             encoded = name.encode("utf-8")
             digest.update(struct.pack(">H", len(encoded)))
             digest.update(encoded)
 
         for row in ordered:
+            if row.feature_version != FEATURE_VERSION:
+                raise ValueError("History feature version is incompatible")
             if row.session_id != row.faiss_id:
                 raise ValueError("History embedding ID does not match its session")
             vector = vector_from_features(row.feature_vector)
@@ -79,6 +88,7 @@ class IndexCorpus:
             vectors=vectors,
             corpus_hash=digest.hexdigest(),
             dimension=len(FEATURE_NAMES),
+            feature_version=FEATURE_VERSION,
         )
 
     def reconstruct(self) -> tuple[Normalizer, FaissIndexStore]:
@@ -102,6 +112,8 @@ class HistoryArtifactCache:
             "corpus_hash": self.corpus.corpus_hash,
             "session_count": len(self.corpus.ids),
             "dimension": self.corpus.dimension,
+            "feature_version": FEATURE_VERSION,
+            "normalization_method": NORMALIZATION_METHOD,
         }
         if (
             not isinstance(manifest, dict)
@@ -155,6 +167,8 @@ class HistoryArtifactCache:
                     "corpus_hash": self.corpus.corpus_hash,
                     "session_count": len(self.corpus.ids),
                     "dimension": self.corpus.dimension,
+                    "feature_version": FEATURE_VERSION,
+                    "normalization_method": NORMALIZATION_METHOD,
                     "index_sha256": _file_sha256(staging / INDEX_FILENAME),
                     "normalizer_sha256": _file_sha256(staging / NORMALIZER_FILENAME),
                 }

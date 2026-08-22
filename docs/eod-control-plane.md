@@ -82,7 +82,16 @@ idempotency keys. See [Write Idempotency](write-idempotency.md).
 P10.5 also forwards the logical target into bounded per-symbol provider windows;
 see [Incremental Market Ingestion](incremental-market-ingestion.md). P10.6 makes
 PostgreSQL authoritative for deterministic FAISS reconstruction; see
-[Historical Intelligence](historical-similarity.md). P10.7 records actual Gemini
+[Historical Intelligence](historical-similarity.md). Phase 10D retains the same
+`market → news → history` checkpoint order, but the history step now
+reconstructs the versioned `market_regime_v1` corpus using effective membership
+where known and explicit available-data proxy labels before the first trusted
+snapshot. Market ingestion remains strict: the history checkpoint does not run
+until all 50 approved equities and four macro proxies succeed. The regime model
+does not consume RSS sentiment, so missing historical news is never converted
+to neutral feature data. A failed reconstruction or index-state write rolls
+back without superseding the previously committed PostgreSQL/FAISS generation;
+a retry safely reruns the same upserts. P10.7 records actual Gemini
 model/response/usage and deterministic-fallback provenance across generated
 surfaces; see [AI Intelligence](ai-intelligence.md). Later phases cover
 deployment resources and provider accounts. The zero-cost production contract

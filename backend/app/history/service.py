@@ -1,25 +1,16 @@
-"""Historical intelligence service: build the index, run similarity queries.
-
-Pipeline (all deterministic — no AI):
-  market data → daily feature vectors → fit normalizer → FAISS index → statistics.
-
-The normalizer is fitted once per content-addressed corpus generation. Both the
-build and query paths use that generation, preventing normalization drift.
-"""
+"""Versioned market-regime reconstruction, FAISS build, and similarity query."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 from datetime import date, datetime, timezone
+from time import monotonic
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.history.artifacts import CorpusRow, HistoryArtifactCache, IndexCorpus
-from app.history.constants import (
-    ARTIFACT_SCHEMA_VERSION,
-    MIN_SESSIONS_TO_BUILD,
-)
+from app.history.constants import ARTIFACT_SCHEMA_VERSION, MIN_SESSIONS_TO_BUILD
 from app.history.embeddings import FaissIndexStore
 from app.history.exceptions import (
     IndexNotBuiltError,
@@ -27,24 +18,32 @@ from app.history.exceptions import (
     SessionNotFoundError,
 )
 from app.history.feature_engineering import (
-    MacroDay,
+    FEATURE_NAMES,
+    FEATURE_VERSION,
+    NORMALIZATION_METHOD,
     Normalizer,
-    StockDay,
-    compute_session_feature,
     vector_from_features,
 )
 from app.history.models import HistoricalSession
 from app.history.repository import HistoryRepository
 from app.history.schemas import (
+    FactorComparison,
     RebuildResult,
     SessionSummary,
     SimilarityResponse,
     SimilarSessionOut,
     StatisticsOut,
 )
+from app.history.session_builder import (
+    EngineeredSession,
+    ReconstructionResult,
+    RegimeSessionBuilder,
+)
 from app.history.similarity import (
+    compare_feature_groups,
     compute_statistics,
     distance_to_similarity,
+    normalized_l2_distance,
     outcome_label,
 )
 from app.market.constants import MACRO_FEATURE_SYMBOLS
@@ -52,6 +51,7 @@ from config.logging import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+INDEX_CODE = "NIFTY50"
 
 
 class HistoryService:
@@ -59,48 +59,63 @@ class HistoryService:
         self.db = db
         self.repo = HistoryRepository(db)
 
-    # ----- Build -----------------------------------------------------------
     async def build_index(self) -> RebuildResult:
-        session_features = await self._engineer_features()
-        if len(session_features) < MIN_SESSIONS_TO_BUILD:
-            raise InsufficientHistoryError(len(session_features), MIN_SESSIONS_TO_BUILD)
+        started = monotonic()
+        reconstruction = await self._engineer_features()
+        engineered = list(reconstruction.sessions)
+        if len(engineered) < MIN_SESSIONS_TO_BUILD:
+            raise InsufficientHistoryError(len(engineered), MIN_SESSIONS_TO_BUILD)
 
-        # Persist sessions with their next-day outcome (label = next day's return).
         upserted: list[HistoricalSession] = []
-        for i, (session_date, feat) in enumerate(session_features):
-            ndr = (
-                session_features[i + 1][1]["avg_return"]
-                if i + 1 < len(session_features)
-                else None
-            )
+        for index, item in enumerate(engineered):
+            features = item.quality.features
+            assert features is not None
+            forward = self._forward_outcome(engineered, index)
+            next_return = forward[0]
             upserted.append(
                 await self.repo.upsert_session(
-                    session_date,
-                    features=feat,
-                    next_day_return=ndr,
-                    outcome=outcome_label(ndr),
+                    item.date,
+                    features=features,
+                    feature_version=FEATURE_VERSION,
+                    feature_dimension=len(FEATURE_NAMES),
+                    usable_constituent_count=item.quality.usable_constituent_count,
+                    expected_constituent_count=item.quality.expected_constituent_count,
+                    coverage_ratio=item.quality.coverage_ratio,
+                    sector_coverage_ratio=item.quality.sector_coverage_ratio,
+                    membership_mode=item.quality.membership_mode.value,
+                    quality_flags=list(item.quality.quality_flags),
+                    next_day_return=next_return,
+                    outcome=outcome_label(next_return),
+                    next_session_breadth=forward[1],
+                    forward_5_session_return=forward[2],
+                    forward_5_session_drawdown=forward[3],
+                    forward_5_session_upside=forward[4],
                 )
             )
 
-        # Fit the deterministic in-memory index. PostgreSQL is committed before
-        # any cache generation is published, so a process crash cannot make an
-        # uncommitted index visible.
+        await self.repo.delete_incompatible_sessions(
+            FEATURE_VERSION, [item.date for item in engineered]
+        )
         corpus = IndexCorpus.from_rows(
             CorpusRow(
                 session_id=session.id,
                 faiss_id=session.id,
-                dimension=len(vector_from_features(session.feature_vector)),
+                dimension=session.feature_dimension,
+                feature_version=session.feature_version,
                 feature_vector=session.feature_vector,
             )
             for session in upserted
         )
         normalizer, store = corpus.reconstruct()
-        ids = corpus.ids
 
-        # Refresh embedding references.
         await self.repo.clear_embeddings()
-        for s in upserted:
-            await self.repo.add_embedding(s.id, faiss_id=s.id, dim=store.dim)
+        for session in upserted:
+            await self.repo.add_embedding(
+                session.id,
+                faiss_id=session.id,
+                dim=store.dim,
+                feature_version=FEATURE_VERSION,
+            )
 
         built_at = datetime.now(tz=timezone.utc)
         await self.repo.upsert_index_state(
@@ -108,15 +123,16 @@ class HistoryService:
             session_count=len(corpus.ids),
             dimension=corpus.dimension,
             artifact_schema_version=ARTIFACT_SCHEMA_VERSION,
+            feature_version=FEATURE_VERSION,
+            normalization_method=NORMALIZATION_METHOD,
             built_at=built_at,
         )
 
-        # Cache the latest session's outlook statistics.
         latest = upserted[-1]
-        by_id = {s.id: s for s in upserted}
+        by_id = {session.id: session for session in upserted}
         neighbours = self._search(store, normalizer, latest, settings.history_top_k)
         stats = compute_statistics(
-            [by_id[i].next_day_return for i, _ in neighbours if i in by_id],
+            [by_id[session_id].next_day_return for session_id, _ in neighbours],
             settings.history_top_k,
         )
         await self.repo.upsert_statistics(latest.id, stats)
@@ -125,96 +141,75 @@ class HistoryService:
         try:
             await asyncio.to_thread(HistoryArtifactCache(corpus).publish)
         except (OSError, RuntimeError, ValueError) as exc:
-            # Cache loss is non-fatal: every query can reconstruct from the
-            # committed PostgreSQL raw vectors.
             logger.warning(
                 "history_artifact_publish_failed",
                 extra={"error": type(exc).__name__, "generation": corpus.corpus_hash},
             )
+        duration = monotonic() - started
+        approximate_bytes = len(corpus.ids) * (corpus.dimension * 4 + 8)
         logger.info(
             "history_index_built",
-            extra={"sessions": len(ids), "dim": store.dim},
+            extra={
+                "feature_version": FEATURE_VERSION,
+                "sessions": len(corpus.ids),
+                "candidate_sessions": reconstruction.candidate_sessions,
+                "rejected_sessions": reconstruction.rejected_sessions,
+                "rejection_reasons": reconstruction.rejection_reasons,
+                "dimension": store.dim,
+                "duration_seconds": round(duration, 3),
+                "approximate_index_bytes": approximate_bytes,
+            },
         )
         return RebuildResult(
-            sessions_indexed=len(ids), dim=store.dim, latest_date=latest.date
+            sessions_indexed=len(corpus.ids),
+            dim=store.dim,
+            latest_date=latest.date,
+            feature_version=FEATURE_VERSION,
+            normalization_method=NORMALIZATION_METHOD,
+            candidate_sessions=reconstruction.candidate_sessions,
+            rejected_sessions=reconstruction.rejected_sessions,
+            rejection_reasons=reconstruction.rejection_reasons,
+            build_duration_seconds=duration,
+            approximate_index_bytes=approximate_bytes,
         )
 
-    async def _engineer_features(self) -> list[tuple[date, dict[str, float]]]:
-        """Assemble each date's complete market feature vector from Phase 2 data."""
-        price_rows = await self.repo.get_price_rows()  # (stock_id, date, close), sorted
-        indicator_rows = await self.repo.get_indicator_rows()
-        sentiment_rows = await self.repo.get_sentiment_rows()
-        macro_rows = await self.repo.get_macro_price_rows(
-            list(MACRO_FEATURE_SYMBOLS.values())
+    async def _engineer_features(self) -> ReconstructionResult:
+        stocks = await self.repo.get_universe_stocks(INDEX_CODE)
+        stock_ids = [stock.stock_id for stock in stocks]
+        return RegimeSessionBuilder().build(
+            stocks=stocks,
+            memberships=await self.repo.get_memberships(INDEX_CODE),
+            prices=await self.repo.get_price_rows(stock_ids),
+            indicators=await self.repo.get_indicator_rows(stock_ids),
+            macro_prices=await self.repo.get_macro_price_rows(
+                list(MACRO_FEATURE_SYMBOLS.values())
+            ),
         )
-        sentiment_by: dict[tuple[int, date], float] = {
-            (sid, d): value for sid, d, value in sentiment_rows
-        }
 
-        macro_returns: dict[date, dict[str, float]] = {}
-        feature_by_symbol = {
-            symbol: feature for feature, symbol in MACRO_FEATURE_SYMBOLS.items()
-        }
-        previous_macro: dict[str, float] = {}
-        for symbol, d, close in macro_rows:
-            previous = previous_macro.get(symbol)
-            if previous is not None and previous > 0 and close > 0:
-                macro_returns.setdefault(d, {})[feature_by_symbol[symbol]] = (
-                    close / previous - 1.0
-                )
-            previous_macro[symbol] = close
+    @staticmethod
+    def _forward_outcome(
+        sessions: list[EngineeredSession], index: int
+    ) -> tuple[float | None, float | None, float | None, float | None, float | None]:
+        next_item = sessions[index + 1] if index + 1 < len(sessions) else None
+        next_features = next_item.quality.features if next_item else None
+        next_return = next_features["equal_weight_return"] if next_features else None
+        next_breadth = next_features["advancing_share"] if next_features else None
+        horizon = sessions[index + 1 : index + 6]
+        if len(horizon) < 5:
+            return next_return, next_breadth, None, None, None
+        wealth = 1.0
+        peak = 1.0
+        max_drawdown = 0.0
+        max_upside = 0.0
+        for item in horizon:
+            features = item.quality.features
+            assert features is not None
+            wealth *= 1.0 + features["equal_weight_return"]
+            peak = max(peak, wealth)
+            max_drawdown = min(max_drawdown, wealth / peak - 1.0)
+            max_upside = max(max_upside, wealth - 1.0)
+        return next_return, next_breadth, wealth - 1.0, max_drawdown, max_upside
 
-        close_by: dict[tuple[int, date], float] = {}
-        prev_by: dict[tuple[int, date], float | None] = {}
-        last_stock: int | None = None
-        prev: float | None = None
-        for stock_id, d, close in price_rows:
-            if stock_id != last_stock:
-                last_stock, prev = stock_id, None
-            close_by[(stock_id, d)] = close
-            prev_by[(stock_id, d)] = prev
-            prev = close
-
-        ind_by: dict[tuple[int, date], tuple] = {
-            (row[0], row[1]): row for row in indicator_rows
-        }
-
-        stock_ids = {sid for sid, _d in close_by}
-        dates = sorted({d for _sid, d in close_by})
-
-        sessions: list[tuple[date, dict[str, float]]] = []
-        for d in dates:
-            stock_days: list[StockDay] = []
-            for sid in stock_ids:
-                if (sid, d) not in close_by:
-                    continue
-                ind = ind_by.get((sid, d))
-                stock_days.append(
-                    StockDay(
-                        close=close_by[(sid, d)],
-                        prev_close=prev_by[(sid, d)],
-                        rsi=ind[2] if ind else None,
-                        ema20=ind[3] if ind else None,
-                        ema50=ind[4] if ind else None,
-                        bb_upper=ind[5] if ind else None,
-                        bb_lower=ind[6] if ind else None,
-                        atr=ind[7] if ind else None,
-                        macd_hist=ind[8] if ind else None,
-                        sentiment=sentiment_by.get((sid, d)),
-                    )
-                )
-            macro_values = macro_returns.get(d, {})
-            macro = (
-                MacroDay(**macro_values)
-                if len(macro_values) == len(MACRO_FEATURE_SYMBOLS)
-                else None
-            )
-            feat = compute_session_feature(stock_days, macro=macro)
-            if feat is not None:
-                sessions.append((d, feat))
-        return sessions
-
-    # ----- Query -----------------------------------------------------------
     async def query_similar(
         self, query_date: date | None = None, k: int | None = None
     ) -> SimilarityResponse:
@@ -222,19 +217,21 @@ class HistoryService:
         state, snapshot = await self.repo.get_index_snapshot()
         if state is None:
             raise IndexNotBuiltError()
-
         try:
             corpus = IndexCorpus.from_rows(
                 CorpusRow(
                     session_id=session.id,
                     faiss_id=embedding.faiss_id,
                     dimension=embedding.dim,
+                    feature_version=embedding.feature_version,
                     feature_vector=session.feature_vector,
                 )
                 for embedding, session in snapshot
             )
             if (
                 state.artifact_schema_version != ARTIFACT_SCHEMA_VERSION
+                or state.feature_version != FEATURE_VERSION
+                or state.normalization_method != NORMALIZATION_METHOD
                 or state.corpus_hash != corpus.corpus_hash
                 or state.session_count != len(corpus.ids)
                 or state.dimension != corpus.dimension
@@ -242,62 +239,109 @@ class HistoryService:
                 raise ValueError("Committed history index state is inconsistent")
         except (KeyError, TypeError, ValueError) as exc:
             logger.warning(
-                "history_index_incompatible",
-                extra={"error": type(exc).__name__},
+                "history_index_incompatible", extra={"error": type(exc).__name__}
             )
             raise IndexNotBuiltError() from exc
 
         normalizer, store = await self._load_artifacts(corpus)
-
         indexed_sessions = [session for _embedding, session in snapshot]
-        if query_date is None:
-            session = max(indexed_sessions, key=lambda item: item.date, default=None)
-        else:
-            session = next(
-                (item for item in indexed_sessions if item.date == query_date),
-                None,
+        session = (
+            max(indexed_sessions, key=lambda item: item.date, default=None)
+            if query_date is None
+            else next(
+                (item for item in indexed_sessions if item.date == query_date), None
             )
-            if session is None:
-                session = await self.repo.get_session_by_date(query_date)
+        )
         if session is None:
             raise SessionNotFoundError()
 
         neighbours = self._search(store, normalizer, session, k)
-        by_id = await self.repo.get_sessions_by_ids([i for i, _ in neighbours])
-
+        by_id = await self.repo.get_sessions_by_ids(
+            [session_id for session_id, _ in neighbours]
+        )
         similar: list[SimilarSessionOut] = []
-        next_day_returns: list[float | None] = []
-        for nid, dist in neighbours:
-            ns = by_id.get(nid)
-            if ns is None:
+        next_returns: list[float | None] = []
+        for session_id, squared_distance in neighbours:
+            analogue = by_id.get(session_id)
+            if analogue is None:
                 continue
-            next_day_returns.append(ns.next_day_return)
+            normalized_distance = normalized_l2_distance(
+                squared_distance, corpus.dimension
+            )
+            matching, diverging = compare_feature_groups(
+                session.feature_vector, analogue.feature_vector, normalizer
+            )
+            next_returns.append(analogue.next_day_return)
             similar.append(
                 SimilarSessionOut(
-                    date=ns.date,
-                    avg_return=ns.avg_return,
-                    pct_advancers=ns.pct_advancers,
-                    advance_decline_ratio=ns.advance_decline_ratio,
-                    avg_rsi=ns.avg_rsi,
-                    similarity_score=distance_to_similarity(dist),
-                    distance=dist,
-                    next_day_return=ns.next_day_return,
-                    outcome=ns.outcome,
+                    **self._summary(analogue).model_dump(),
+                    similarity_score=distance_to_similarity(normalized_distance),
+                    distance=normalized_distance,
+                    next_day_return=analogue.next_day_return,
+                    outcome=analogue.outcome,
+                    next_session_breadth=analogue.next_session_breadth,
+                    forward_5_session_return=analogue.forward_5_session_return,
+                    forward_5_session_drawdown=analogue.forward_5_session_drawdown,
+                    forward_5_session_upside=analogue.forward_5_session_upside,
+                    matching_factors=[FactorComparison(**item) for item in matching],
+                    divergence_factors=[FactorComparison(**item) for item in diverging],
                 )
             )
-
-        stats = compute_statistics(next_day_returns, k)
         return SimilarityResponse(
+            feature_version=FEATURE_VERSION,
+            vector_dimension=corpus.dimension,
+            normalization_method=NORMALIZATION_METHOD,
             query_date=session.date,
-            query_summary=SessionSummary(
-                date=session.date,
-                avg_return=session.avg_return,
-                pct_advancers=session.pct_advancers,
-                advance_decline_ratio=session.advance_decline_ratio,
-                avg_rsi=session.avg_rsi,
-            ),
+            query_summary=self._summary(session),
             similar_sessions=similar,
-            statistics=StatisticsOut(**stats),
+            statistics=StatisticsOut(**compute_statistics(next_returns, k)),
+        )
+
+    @staticmethod
+    def _summary(session: HistoricalSession) -> SessionSummary:
+        features = session.feature_vector
+        advancing = features["advancing_share"]
+        median_rsi = features["median_rsi"]
+        momentum = features["median_momentum_20"]
+        volatility = max(
+            features["median_atr_pct"], features["median_realized_volatility_20"]
+        )
+        return SessionSummary(
+            date=session.date,
+            avg_return=session.avg_return,
+            pct_advancers=session.pct_advancers,
+            advance_decline_ratio=session.advance_decline_ratio,
+            avg_rsi=session.avg_rsi,
+            feature_version=session.feature_version,
+            median_rsi=median_rsi,
+            median_atr_percent=features["median_atr_pct"] * 100.0,
+            median_relative_volume=features["median_relative_volume_20"],
+            coverage_ratio=session.coverage_ratio,
+            usable_constituents=session.usable_constituent_count,
+            expected_constituents=session.expected_constituent_count,
+            membership_mode=session.membership_mode,
+            quality_flags=session.quality_flags,
+            breadth_regime=(
+                "broad_positive"
+                if advancing >= 0.60
+                else "broad_negative"
+                if advancing <= 0.40
+                else "mixed"
+            ),
+            momentum_regime=(
+                "positive"
+                if median_rsi >= 55 and momentum > 0
+                else "negative"
+                if median_rsi <= 45 and momentum < 0
+                else "neutral"
+            ),
+            volatility_regime=(
+                "high"
+                if volatility >= 0.025
+                else "low"
+                if volatility <= 0.012
+                else "normal"
+            ),
         )
 
     @staticmethod
@@ -312,7 +356,6 @@ class HistoryService:
                 "history_artifact_reconstructing",
                 extra={"reason": type(exc).__name__, "generation": corpus.corpus_hash},
             )
-
         normalizer, store = await asyncio.to_thread(corpus.reconstruct)
         try:
             await asyncio.to_thread(cache.publish)
@@ -323,7 +366,6 @@ class HistoryService:
             )
         return normalizer, store
 
-    # ----- Shared search (identical for build-stats and query) ------------
     @staticmethod
     def _search(
         store: FaissIndexStore,
@@ -331,7 +373,9 @@ class HistoryService:
         session: HistoricalSession,
         k: int,
     ) -> list[tuple[int, float]]:
-        query_vec = normalizer.transform(vector_from_features(session.feature_vector))
-        # Fetch k+1 then drop the session itself (its own nearest match).
-        raw = store.search(query_vec, k + 1)
-        return [(i, d) for i, d in raw if i != session.id][:k]
+        query = normalizer.transform(vector_from_features(session.feature_vector))
+        return [
+            (session_id, distance)
+            for session_id, distance in store.search(query, k + 1)
+            if session_id != session.id
+        ][:k]
