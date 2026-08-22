@@ -124,5 +124,7 @@ class WatchlistItemOut(BaseModel):
     previous_close: float | None
     change: float | None
     change_percent: float | None
+    rsi_14: float | None
+    trend: str | None
     pinned: bool
     sort_order: int

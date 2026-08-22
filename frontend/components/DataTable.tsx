@@ -22,6 +22,8 @@ export interface DataTableProps<T> {
   loading?: boolean;
   loadingMessage?: string;
   emptyMessage?: string;
+  caption?: string;
+  compact?: boolean;
 }
 
 export function DataTable<T>({
@@ -31,16 +33,20 @@ export function DataTable<T>({
   loading = false,
   loadingMessage = "Loading…",
   emptyMessage = "No data.",
+  caption,
+  compact = true,
 }: DataTableProps<T>) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm" aria-busy={loading}>
+    <div className="max-w-full overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(0,0,0,.03)] [contain:paint]">
+      <div className="w-full overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-max text-sm" aria-busy={loading}>
+        {caption && <caption className="sr-only">{caption}</caption>}
         <thead>
-          <tr className="border-b text-left text-muted-foreground">
+          <tr className="border-b border-border/70 bg-muted/35 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             {columns.map((c) => (
               <th
                 key={c.key}
-                className={cn("py-2 pr-3", c.align === "right" && "text-right")}
+                className={cn("whitespace-nowrap px-3 py-2.5", c.align === "right" && "text-right")}
               >
                 {c.header}
               </th>
@@ -50,24 +56,27 @@ export function DataTable<T>({
         <tbody>
           {loading && (
             <tr>
-              <td colSpan={columns.length} className="py-4 text-muted-foreground">
-                {loadingMessage}
+              <td colSpan={columns.length} className="px-3 py-5 text-muted-foreground">
+                <span className="sr-only">{loadingMessage}</span>
+                <div className="space-y-2" aria-hidden>
+                  {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-6 animate-pulse rounded bg-muted/70 motion-reduce:animate-none" />)}
+                </div>
               </td>
             </tr>
           )}
           {!loading && rows.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="py-4 text-muted-foreground">
+              <td colSpan={columns.length} className="px-3 py-10 text-center text-xs text-muted-foreground">
                 {emptyMessage}
               </td>
             </tr>
           )}
           {!loading && rows.map((row, i) => (
-            <tr key={rowKey(row, i)} className="border-b">
+            <tr key={rowKey(row, i)} className="border-b border-border/55 transition-colors last:border-b-0 hover:bg-muted/30">
               {columns.map((c) => (
                 <td
                   key={c.key}
-                  className={cn("py-2 pr-3", c.align === "right" && "text-right", c.className)}
+                  className={cn(compact ? "px-3 py-2.5" : "px-4 py-3.5", c.align === "right" && "text-right", c.className)}
                 >
                   {c.render(row)}
                 </td>
@@ -75,7 +84,8 @@ export function DataTable<T>({
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

@@ -28,7 +28,12 @@ export interface HeatmapProps {
 
 export function Heatmap({ cells, emptyMessage = "No sector data yet." }: HeatmapProps) {
   if (cells.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+    return (
+      <div className="rounded-lg border border-dashed border-border/80 bg-muted/15 px-5 py-8 text-center">
+        <p className="text-sm font-medium">Sector data unavailable</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{emptyMessage}</p>
+      </div>
+    );
   }
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">

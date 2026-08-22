@@ -87,9 +87,25 @@ async def sector_performance(sector: str, db: AsyncSession = Depends(get_db)) ->
     return envelope(data=data)
 
 
+@market_router.get("/stocks", summary="Dense snapshots for the active stock universe")
+async def market_stocks(db: AsyncSession = Depends(get_db)) -> dict:
+    data = await MarketQueryService(db).list_market_stocks()
+    return envelope(data=data)
+
+
 @market_router.get("/stocks/{symbol}", summary="Latest quote + fundamentals for a stock")
 async def stock_detail(symbol: str, db: AsyncSession = Depends(get_db)) -> dict:
     data = await MarketQueryService(db).get_stock_detail(symbol)
+    return envelope(data=data)
+
+
+@market_router.get("/stocks/{symbol}/prices", summary="Recent daily OHLCV history")
+async def stock_prices(
+    symbol: str,
+    limit: int = Query(260, ge=2, le=365),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    data = await MarketQueryService(db).get_price_history(symbol, limit)
     return envelope(data=data)
 
 

@@ -13,12 +13,13 @@ import { AIInsightCard } from "@/components/AIInsightCard";
 import { AIAnalysisState } from "@/components/AIAnalysisState";
 import { DataTable, type Column } from "@/components/DataTable";
 import { DonutChart } from "@/components/donut-chart";
+import { ContributionChart } from "@/components/finance-charts";
 import { MetricCard, toneOf } from "@/components/MetricCard";
-import { AnalyticsPageTemplate } from "@/components/templates/AnalyticsPageTemplate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge } from "@/components/workspace";
 import {
   ApiError,
   intelligenceApi,
@@ -140,7 +141,7 @@ export default function PortfolioPage() {
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading portfolio…</p>;
+    return <PageSkeleton />;
   }
 
   const a = analytics;
@@ -173,12 +174,11 @@ export default function PortfolioPage() {
   );
 
   const charts = a && (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Sector Allocation</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <div className="grid gap-4 xl:grid-cols-3">
+      <Panel className="xl:col-span-3"><SectionHeader title="Portfolio equity curve" description="Performance through time requires dated cash flows and position history." /><div className="mt-4"><DataState kind="unavailable" title="Historical portfolio valuation is not available" description="FinSight currently stores present holdings and cost basis, not transaction timing. An equity curve is intentionally withheld rather than reconstructed from incomplete data." /></div></Panel>
+      <Panel>
+          <SectionHeader title="Sector allocation" description="Current market value by sector." />
+          <div className="mt-4">
           {a.sector_allocation.length ? (
             <DonutChart
               slices={a.sector_allocation.map((s) => ({
@@ -190,21 +190,20 @@ export default function PortfolioPage() {
           ) : (
             <p className="text-sm text-muted-foreground">No holdings yet.</p>
           )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Portfolio Health</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3 text-sm">
+          </div>
+      </Panel>
+      <Panel>
+        <SectionHeader title="Portfolio health" description="Deterministic concentration and volatility measures." />
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div><p className="text-muted-foreground">Diversification</p><p className="font-semibold">{a.diversification_score == null ? "—" : `${a.diversification_score}/100`}</p></div>
           <div><p className="text-muted-foreground">Top holding</p><p className="font-semibold">{a.top_holding_weight_percent == null ? "—" : `${a.top_holding_weight_percent.toFixed(1)}%`}</p></div>
           <div><p className="text-muted-foreground">Volatility</p><p className="font-semibold">{a.volatility_percent == null ? "—" : `${a.volatility_percent.toFixed(2)}%`}</p></div>
-          <div><p className="text-muted-foreground">Risk level</p><p className="font-semibold capitalize">{a.risk_level}</p></div>
+          <div><p className="text-muted-foreground">Risk level</p><p className="mt-1"><StatusBadge label={a.risk_level} tone={a.risk_level === "high" ? "negative" : a.risk_level === "medium" ? "warning" : "positive"} /></p></div>
           <div><p className="text-muted-foreground">Holdings</p><p className="font-semibold">{a.number_of_holdings}</p></div>
           <div><p className="text-muted-foreground">Sectors</p><p className="font-semibold">{a.number_of_sectors}</p></div>
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
+      <Panel><SectionHeader title="P&L contribution" description="Largest unrealized contributors by holding." /><ContributionChart holdings={a.holdings} /></Panel>
     </div>
   );
 
@@ -334,13 +333,9 @@ export default function PortfolioPage() {
   );
 
   return (
-    <AnalyticsPageTemplate
-      title="Portfolio"
-      subtitle={detail?.name}
-      summaryCards={summaryCards}
-      charts={charts}
-      aiAnalysis={aiAnalysis}
-      tables={tables}
-    />
+    <div className="space-y-5">
+      <PageHeader eyebrow="Portfolio analytics" title={detail?.name ?? "Portfolio"} description="Exposure, contribution, risk, and evidence-backed position intelligence." />
+      {error && !analytics ? <DataState kind="error" title="Portfolio unavailable" description={error} /> : <>{summaryCards}{charts}<Panel><SectionHeader title="Position intelligence" description="Signals are ranked deterministically from current analytics." /><div className="mt-4">{aiAnalysis}</div></Panel><Panel><SectionHeader title="Holdings" description="Current valuation and unrealized performance by position." /><div className="mt-4">{tables}</div></Panel></>}
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import Plotly from "plotly.js-basic-dist-min";
+import Plotly from "plotly.js-finance-dist-min";
 import type { Config, Data, Layout } from "plotly.js";
 
 import type { DonutSlice } from "@/components/donut-chart";

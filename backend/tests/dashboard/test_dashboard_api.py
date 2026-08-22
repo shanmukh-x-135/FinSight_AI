@@ -63,6 +63,13 @@ async def test_dashboard_summary_batches_everything(
     assert watched["pinned"] is True
     assert watched["current_price"] == 110
     assert watched["change_percent"] == pytest.approx(10)
+    assert {row["sector"] for row in data["sectors"]} == {"Technology", "Energy"}
+    assert data["technical"]["stocks_with_indicators"] == 3
+    assert {row["symbol"]: row["latest_sentiment"] for row in data["sentiment"]} == {
+        "AAA.NS": pytest.approx(0.4),
+        "BBB.NS": pytest.approx(-0.3),
+        "CCC.NS": None,
+    }
 
     # Opportunities are evidence-backed with a rendered explanation.
     assert "AAA.NS" in {o["symbol"] for o in data["opportunities"]}

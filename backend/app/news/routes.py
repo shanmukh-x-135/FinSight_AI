@@ -30,6 +30,13 @@ async def recent_news(
 
 
 @news_router.get(
+    "/sentiment", summary="Latest sentiment for the active stock universe"
+)
+async def latest_sentiment(db: AsyncSession = Depends(get_db)) -> dict:
+    return envelope(data=await NewsService(db).list_latest_sentiment())
+
+
+@news_router.get(
     "/sentiment/{symbol}", summary="Daily sentiment series for a stock"
 )
 async def stock_sentiment(symbol: str, db: AsyncSession = Depends(get_db)) -> dict:

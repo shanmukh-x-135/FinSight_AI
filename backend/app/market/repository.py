@@ -255,13 +255,19 @@ class MarketRepository:
         )
         return list(result.scalars().all())
 
-    async def get_price_history(self, stock_id: int) -> list[DailyPrice]:
+    async def get_price_history(
+        self, stock_id: int, limit: int | None = None
+    ) -> list[DailyPrice]:
+        statement = select(DailyPrice).where(DailyPrice.stock_id == stock_id)
+        if limit is None:
+            result = await self.db.execute(statement.order_by(DailyPrice.date.asc()))
+            return list(result.scalars().all())
         result = await self.db.execute(
-            select(DailyPrice)
-            .where(DailyPrice.stock_id == stock_id)
-            .order_by(DailyPrice.date.asc())
+            statement.order_by(DailyPrice.date.desc()).limit(limit)
         )
-        return list(result.scalars().all())
+        rows = list(result.scalars().all())
+        rows.reverse()
+        return rows
 
     # ----- Fundamentals ----------------------------------------------------
     async def upsert_fundamentals(self, stock_id: int, data: FundamentalsData) -> None:

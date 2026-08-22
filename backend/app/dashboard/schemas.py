@@ -21,6 +21,9 @@ class DashboardSummaryOut(BaseModel):
     ai_market_summary: str
     portfolio: dict | None
     watchlist: list[dict]
+    sectors: list[dict]
+    technical: dict
+    sentiment: list[dict]
     opportunities: list[dict]
     risk_alerts: list[dict]
     history: dict | None

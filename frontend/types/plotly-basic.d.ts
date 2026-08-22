@@ -1,6 +1,6 @@
-declare module "plotly.js-basic-dist-min" {
+declare module "plotly.js-finance-dist-min" {
   import type * as Plotly from "plotly.js";
 
-  const PlotlyBasic: typeof Plotly;
-  export default PlotlyBasic;
+  const PlotlyFinance: typeof Plotly;
+  export default PlotlyFinance;
 }

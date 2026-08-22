@@ -9,24 +9,23 @@ test.beforeAll(async ({ request }) => {
 test("login loads real dashboard data and reveals grounded evidence", async ({ page }) => {
   await login(page);
 
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText(e2eUser.email)).toBeVisible();
 
   for (const label of [
-    "Market Breadth",
-    "Advance / Decline",
-    "Portfolio Value",
-    "Opportunities",
+    "Market breadth",
+    "A/D ratio",
+    "Portfolio value",
+    "Active signals",
   ]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
 
   await expect(page.getByText("Your Watchlist", { exact: true })).toBeVisible();
-  await expect(page.getByText("AI Market Summary", { exact: true })).toBeVisible();
+  await expect(page.getByText("Intelligence brief", { exact: true })).toBeVisible();
 
-  const evidenceButton = page.getByRole("button", { name: "Show evidence" }).first();
-  await expect(evidenceButton).toBeVisible();
-  await evidenceButton.click();
-  await expect(page.getByText(/^Breadth: \d+ advancers,/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Hide evidence" }).first()).toBeVisible();
+  const evidenceControl = page.getByText("Review evidence", { exact: true });
+  await expect(evidenceControl).toBeVisible();
+  await evidenceControl.click();
+  await expect(page.getByText(/Breadth: \d+ advancers,/)).toBeVisible();
 });

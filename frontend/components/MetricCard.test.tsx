@@ -23,7 +23,7 @@ describe("MetricCard", () => {
 
   it("applies the positive tone colour to the value", () => {
     render(<MetricCard label="P&L" value="+₹500" tone="positive" />);
-    expect(screen.getByText("+₹500")).toHaveClass("text-green-600");
+    expect(screen.getByText("+₹500")).toHaveClass("text-positive");
   });
 
   it("omits the sub line when not provided", () => {

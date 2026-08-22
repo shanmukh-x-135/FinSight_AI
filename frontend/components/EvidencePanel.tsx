@@ -50,7 +50,7 @@ export function EvidencePanel({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+        className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
       >
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         {open ? "Hide evidence" : "Show evidence"}
@@ -66,7 +66,7 @@ export function EvidencePanel({
               <div className="mt-1 flex items-center gap-2">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-blue-600"
+                    className="h-full rounded-full bg-primary"
                     style={{ width: `${Math.max(0, Math.min(100, confidence))}%` }}
                   />
                 </div>
@@ -86,9 +86,15 @@ export function EvidencePanel({
               {evidence.map((e, i) => (
                 <Row key={i}>{e}</Row>
               ))}
-              {hist && !evidence.includes(hist) && <Row>{hist}</Row>}
             </ul>
           </div>
+
+          {hist && !evidence.includes(hist) && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historical context</p>
+              <p className="mt-1 text-sm">{hist}</p>
+            </div>
+          )}
 
           {risks && risks.length > 0 && (
             <div>
@@ -97,7 +103,7 @@ export function EvidencePanel({
               </p>
               <ul className="mt-1 space-y-1">
                 {risks.map((r, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-amber-600">
+                  <li key={i} className="flex gap-2 text-sm text-warning">
                     <span>⚠</span>
                     <span>{r}</span>
                   </li>

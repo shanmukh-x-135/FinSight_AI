@@ -27,12 +27,15 @@ from app.market.schemas import (
     FundamentalsOut,
     IndicatorPointOut,
     IngestionResult,
+    MarketStockSnapshotOut,
+    PricePointOut,
     QuoteOut,
     SectorOverviewOut,
     SectorPerformanceOut,
     StockDetailOut,
     TechnicalSummaryOut,
 )
+from app.market.signals import trend_signal
 from app.market.universe import (
     MINIMUM_EQUITY_HISTORY_BARS,
     MINIMUM_MACRO_HISTORY_BARS,
@@ -431,6 +434,36 @@ class MarketQueryService:
             self._losers_from(quotes, limit),
         )
 
+    async def list_market_stocks(self) -> list[MarketStockSnapshotOut]:
+        """Dense, batched universe rows for the market research table."""
+        stocks = await self.repo.list_active_stocks()
+        snapshots = await self.repo.get_market_snapshots(
+            (stock.id for stock in stocks), known_stocks=stocks
+        )
+        rows: list[MarketStockSnapshotOut] = []
+        for stock in stocks:
+            snapshot = snapshots.get(stock.id)
+            if snapshot is None:
+                continue
+            quote = _quote_from_prices(stock, list(snapshot.prices))
+            indicator = snapshot.indicator
+            rows.append(
+                MarketStockSnapshotOut(
+                    **quote.model_dump(),
+                    rsi_14=indicator.rsi_14 if indicator else None,
+                    ema_20=indicator.ema_20 if indicator else None,
+                    ema_50=indicator.ema_50 if indicator else None,
+                    macd_histogram=indicator.macd_histogram if indicator else None,
+                    trend=trend_signal(
+                        quote.close,
+                        indicator.ema_20 if indicator else None,
+                        indicator.macd_histogram if indicator else None,
+                    ),
+                )
+            )
+        rows.sort(key=lambda row: row.symbol)
+        return rows
+
     async def get_stock_detail(self, symbol: str) -> StockDetailOut:
         stock = await self.repo.get_stock_by_symbol(symbol)
         if stock is None:
@@ -456,6 +489,15 @@ class MarketQueryService:
             raise StockNotFoundError(symbol)
         rows = await self.repo.get_indicator_history(stock.id, limit)
         return [IndicatorPointOut.model_validate(r) for r in rows]
+
+    async def get_price_history(
+        self, symbol: str, limit: int = 260
+    ) -> list[PricePointOut]:
+        stock = await self.repo.get_stock_by_symbol(symbol)
+        if stock is None:
+            raise StockNotFoundError(symbol)
+        rows = await self.repo.get_price_history(stock.id, limit)
+        return [PricePointOut.model_validate(row) for row in rows]
 
     async def get_sector_performance(self, sector: str) -> SectorPerformanceOut:
         stocks = await self.repo.list_stocks_by_sector(sector)

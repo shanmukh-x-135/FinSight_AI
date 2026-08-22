@@ -5,10 +5,12 @@ const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 export default defineConfig({
   testDir: "e2e",
   outputDir: "../test-results",
-  fullyParallel: true,
+  // These journeys intentionally share one real account and mutate its reports,
+  // chat history, and watchlist. Keep them serial so setup cannot race itself.
+  fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: [
     ["list"],
     ["html", { outputFolder: "../playwright-report", open: "never" }],
