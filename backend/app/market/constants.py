@@ -20,8 +20,16 @@ DEFAULT_UNIVERSE: tuple[str, ...] = (
     "AXISBANK.NS",
     "MARUTI.NS",
     "SUNPHARMA.NS",
-    "TATAMOTORS.NS",
+    "TMPV.NS",
 )
+
+# NSE renamed the existing listed Tata Motors entity from TATAMOTORS to TMPV
+# effective 2025-10-24 after its commercial-vehicle demerger. TMCV is the newly
+# listed demerged company, not a ticker alias. Existing TATAMOTORS rows therefore
+# remain historical and are deactivated only after TMPV ingests successfully.
+RETIRED_SYMBOL_REPLACEMENTS: dict[str, str] = {
+    "TATAMOTORS.NS": "TMPV.NS",
+}
 
 DEFAULT_EXCHANGE = "NSE"
 

@@ -51,6 +51,14 @@ class MarketDataError(Exception):
     """Raised when a provider fails to return usable data after retries."""
 
 
+class MarketDataUnavailableError(MarketDataError):
+    """Raised when the provider identifies a symbol as missing/unavailable."""
+
+
+class MarketDataInvalidError(MarketDataError):
+    """Raised when a provider response contains no usable market history."""
+
+
 class MarketDataClient(Protocol):
     """Synchronous provider interface (callers run it off the event loop)."""
 

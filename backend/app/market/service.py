@@ -33,6 +33,11 @@ from app.market.schemas import (
     StockDetailOut,
     TechnicalSummaryOut,
 )
+from app.market.universe import (
+    MINIMUM_EQUITY_HISTORY_BARS,
+    MINIMUM_MACRO_HISTORY_BARS,
+    validate_symbol_history,
+)
 from app.shared.clients.economic_calendar import EconomicCalendarClient
 from app.shared.clients.market_data import (
     FundamentalsData,
@@ -266,7 +271,20 @@ class MarketIngestionService:
         }
         if not bounded:
             raise MarketDataError(f"No valid price bars returned for {symbol}")
-        return [bounded[day] for day in sorted(bounded)]
+        validated = [bounded[day] for day in sorted(bounded)]
+        validate_symbol_history(
+            symbol,
+            validated,
+            target_date=window.target_trading_date,
+            minimum_bars=(
+                MINIMUM_MACRO_HISTORY_BARS
+                if symbol in C.MACRO_PROXIES
+                else MINIMUM_EQUITY_HISTORY_BARS
+            )
+            if window.is_full
+            else 1,
+        )
+        return validated
 
     async def _fetch_fundamentals(self, symbol: str) -> FundamentalsData:
         return await asyncio.wait_for(
@@ -292,6 +310,7 @@ class MarketIngestionService:
             sector=fundamentals.sector if fundamentals is not None else None,
             industry=fundamentals.industry if fundamentals is not None else None,
             exchange=C.DEFAULT_EXCHANGE,
+            is_active=True,
         )
         await self.repo.upsert_daily_prices(stock.id, bars)
         if fundamentals is not None:
@@ -308,6 +327,9 @@ class MarketIngestionService:
         await self.repo.upsert_indicators(stock.id, affected_points)
         if window.is_full and _can_advance_full_watermark(state, target):
             await self.repo.mark_full_price_sync(stock.id, synchronized_at)
+        for retired, replacement in C.RETIRED_SYMBOL_REPLACEMENTS.items():
+            if replacement == symbol:
+                await self.repo.deactivate_stock(retired)
         return SymbolIngestionOutcome(len(bars), window.mode)
 
     async def _ingest_macro_one(

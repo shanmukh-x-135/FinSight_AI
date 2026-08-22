@@ -31,6 +31,14 @@ rolls its transaction back, and does not advance the full-sync watermark. A
 backdated reconciliation also cannot advance that watermark past newer stored
 prices; the next current-date run must still perform its due reconciliation.
 
+Before accepted bars are persisted, the shared universe validator checks OHLCV
+relationships, duplicate dates, freshness, and full-window history depth (50
+bars for every configured symbol, enough to warm the longest equity indicator).
+Provider missing-symbol responses are classified separately from transient
+failures.
+The validator runs inside ingestion and is also available explicitly through
+`python -m app.market.universe`; it never adds network I/O to API startup.
+
 ## Deterministic indicators and fundamentals
 
 Incremental provider bars alone cannot warm EMA-50, MACD, Bollinger, RSI, or ATR.

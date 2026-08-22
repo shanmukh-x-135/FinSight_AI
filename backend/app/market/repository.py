@@ -79,6 +79,15 @@ class MarketRepository:
         )
         return result.scalar_one_or_none()
 
+    async def deactivate_stock(self, symbol: str) -> bool:
+        """Retire an existing symbol without deleting its historical rows."""
+        result = await self.db.execute(
+            update(Stock)
+            .where(Stock.symbol == symbol, Stock.is_active.is_(True))
+            .values(is_active=False)
+        )
+        return bool(result.rowcount)
+
     async def get_stock_by_id(self, stock_id: int) -> Stock | None:
         result = await self.db.execute(select(Stock).where(Stock.id == stock_id))
         return result.scalar_one_or_none()

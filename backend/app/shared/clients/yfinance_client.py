@@ -17,10 +17,13 @@ from datetime import date
 from typing import Any, Callable, TypeVar
 
 import yfinance as yf
+from yfinance.exceptions import YFTickerMissingError
 
 from app.shared.clients.market_data import (
     FundamentalsData,
     MarketDataError,
+    MarketDataInvalidError,
+    MarketDataUnavailableError,
     PriceBar,
 )
 from config.logging import get_logger
@@ -74,6 +77,10 @@ class YFinanceClient:
         for attempt in range(1, self.max_attempts + 1):
             try:
                 return fn()
+            except MarketDataUnavailableError:
+                # Missing/renamed tickers are permanent for this provider
+                # symbol; retrying the exact request cannot repair them.
+                raise
             except Exception as exc:  # noqa: BLE001 — provider raises many types
                 last_exc = exc
                 logger.warning(
@@ -118,6 +125,10 @@ class YFinanceClient:
             ticker = yf.Ticker(symbol)
             try:
                 frame = ticker.history(**history_options)
+            except YFTickerMissingError as exc:
+                raise MarketDataUnavailableError(
+                    f"Symbol unavailable from market-data provider: {symbol}"
+                ) from exc
             except ValueError:
                 if not self.provider_repair:
                     raise
@@ -156,7 +167,9 @@ class YFinanceClient:
 
         bars = self._retry("fetch_daily_prices", symbol, _do)
         if not bars:
-            raise MarketDataError(f"No valid price bars returned for {symbol}")
+            raise MarketDataInvalidError(
+                f"No valid price bars returned for {symbol}"
+            )
         return bars
 
     def fetch_fundamentals(self, symbol: str) -> FundamentalsData:
