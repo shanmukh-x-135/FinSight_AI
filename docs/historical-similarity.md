@@ -98,6 +98,17 @@ return, best/worst case, and a 95% confidence interval of the mean
 The rebuild is also chained into the **post-close EOD pipeline** (ingest → rebuild
 index) so the index never goes stale.
 
+### Phase 10C universe compatibility
+
+Dynamic NIFTY 50 membership does not silently redefine historical sessions.
+Although the vector remains 15 aggregate features (not 15 ticker dimensions),
+filtering all old dates by today's membership would introduce survivorship bias.
+Migration `0014` therefore freezes the pre-Phase-10C reconstruction set in
+`stocks.history_eligible`; constituent synchronization does not change it.
+Effective-date-aware reconstruction, the expanded production bootstrap, and the
+deliberate FAISS corpus rebuild are deferred to Phase 10D. See
+[Dynamic NIFTY 50 Universe](dynamic-universe.md).
+
 ## Determinism & reproducibility
 
 Exact FAISS search + fixed feature order + a deterministically-fitted normalizer

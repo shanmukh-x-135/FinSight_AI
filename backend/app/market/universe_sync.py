@@ -480,7 +480,7 @@ def main() -> int:
     parser.add_argument(
         "--target-date",
         type=_iso_date,
-        help="Validation recency date (defaults to the provider snapshot date).",
+        help="Validation recency date (defaults to the current date).",
     )
     args = parser.parse_args()
     return asyncio.run(_run_cli(args))

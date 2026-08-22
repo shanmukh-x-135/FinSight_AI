@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 _local_locks: dict[int, asyncio.Lock] = {}
 
@@ -32,6 +32,35 @@ async def pipeline_run_lock(db: AsyncSession, lock_id: int) -> AsyncIterator[boo
     """Yield whether this worker acquired the named non-blocking job lock."""
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
+        # Pin a dedicated physical connection. Pipeline services commit their
+        # domain transactions while the session-level advisory lock is held;
+        # using ``db.execute`` directly could return that locked connection to
+        # the pool at commit and later attempt to unlock on another connection.
+        bound_engine = getattr(db, "bind", None)
+        if isinstance(bound_engine, AsyncEngine):
+            async with bound_engine.connect() as connection:
+                acquired = bool(
+                    (
+                        await connection.execute(
+                            text("SELECT pg_try_advisory_lock(:lock_id)"),
+                            {"lock_id": lock_id},
+                        )
+                    ).scalar()
+                )
+                await connection.commit()
+                try:
+                    yield acquired
+                finally:
+                    if acquired:
+                        await connection.execute(
+                            text("SELECT pg_advisory_unlock(:lock_id)"),
+                            {"lock_id": lock_id},
+                        )
+                        await connection.commit()
+            return
+
+        # Lightweight test doubles and explicitly connection-bound sessions use
+        # the established same-session path.
         acquired = bool(
             (
                 await db.execute(

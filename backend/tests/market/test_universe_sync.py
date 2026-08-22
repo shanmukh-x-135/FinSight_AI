@@ -125,6 +125,14 @@ async def test_initial_population_and_repeated_sync_are_idempotent(
     assert second.active_count == 2
     assert market.calls == ["ALPHA.NS", "BETA.NS"]
     assert await db_session.scalar(select(func.count()).select_from(Stock)) == 2
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(Stock)
+            .where(Stock.history_eligible.is_(True))
+        )
+        == 0
+    )
     assert await db_session.scalar(select(func.count()).select_from(IndexMembership)) == 2
     assert (
         await db_session.scalar(select(func.count()).select_from(UniverseSnapshot)) == 1
@@ -292,6 +300,7 @@ async def test_tata_replacement_alias_preserves_retired_stock(
         exchange_symbol="TATAMOTORS",
         exchange="NSE",
         name="Historical Tata Motors",
+        history_eligible=True,
     )
     db_session.add(retired)
     await db_session.commit()
@@ -307,7 +316,9 @@ async def test_tata_replacement_alias_preserves_retired_stock(
     alias = await db_session.scalar(select(StockSymbolAlias))
     await db_session.refresh(retired)
     assert replacement is not None and replacement.exchange_symbol == "TMPV"
+    assert replacement.history_eligible is False
     assert retired.is_active is False
+    assert retired.history_eligible is True
     assert alias is not None
     assert alias.stock_id == replacement.id
     assert alias.retired_stock_id == retired.id

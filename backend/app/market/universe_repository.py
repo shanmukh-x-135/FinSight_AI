@@ -138,6 +138,7 @@ class UniverseRepository:
         constituent: UniverseConstituent,
         resolved: ResolvedSymbol,
     ) -> Stock:
+        existing = await self.market.get_stock_by_symbol(resolved.provider_symbol)
         stock = await self.market.upsert_stock(
             resolved.provider_symbol,
             exchange_symbol=resolved.exchange_symbol,
@@ -148,6 +149,8 @@ class UniverseRepository:
             exchange="NSE",
             is_active=True,
         )
+        if existing is None:
+            stock.history_eligible = False
         latest_result = await self.db.execute(
             select(IndexMembership)
             .where(

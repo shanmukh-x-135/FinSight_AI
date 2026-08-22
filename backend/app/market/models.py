@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -52,6 +53,11 @@ class Stock(Base):
     industry: Mapped[str | None] = mapped_column(String(128))
     exchange: Mapped[str | None] = mapped_column(String(16))
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Frozen Phase-10C compatibility boundary. Universe sync does not expand
+    # historical feature reconstruction until membership-aware Phase 10D work.
+    history_eligible: Mapped[bool] = mapped_column(
+        default=False, server_default=false(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=_utcnow,

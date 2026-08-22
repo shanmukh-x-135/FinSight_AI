@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from enum import StrEnum
 
 from app.market import constants as C
+from app.market import indicators as ind
 from app.shared.clients.market_data import (
     MarketDataClient,
     MarketDataError,
@@ -32,6 +33,7 @@ class SymbolHealthStatus(StrEnum):
     INSUFFICIENT_HISTORY = "insufficient_history"
     INVALID_OHLCV = "invalid_ohlcv"
     STALE_HISTORY = "stale_history"
+    INDICATOR_INCOMPATIBLE = "indicator_incompatible"
 
 
 class SymbolHistoryError(MarketDataError):
@@ -96,6 +98,35 @@ def validate_symbol_history(
     latest_date = max(seen_dates)
     if latest_date < target_date - timedelta(days=max_staleness_days):
         raise SymbolHistoryError(symbol, SymbolHealthStatus.STALE_HISTORY)
+
+    # Incremental ingestion validates a deliberately short overlap window and
+    # computes indicators from canonical stored history after upsert. Candidate
+    # and full-window checks reach this gate with at least the longest period.
+    if len(bars) < C.EMA_LONG_PERIOD:
+        return
+
+    ordered = sorted(bars, key=lambda bar: bar.date)
+    closes = [bar.close for bar in ordered]
+    highs = [bar.high for bar in ordered]
+    lows = [bar.low for bar in ordered]
+    macd_line, macd_signal, macd_histogram = ind.macd(
+        closes, C.MACD_FAST, C.MACD_SLOW, C.MACD_SIGNAL
+    )
+    bb_upper, bb_middle, bb_lower = ind.bollinger_bands(closes, C.BB_PERIOD, C.BB_NUM_STD)
+    latest_indicators = (
+        ind.rsi(closes, C.RSI_PERIOD)[-1],
+        ind.ema(closes, C.EMA_SHORT_PERIOD)[-1],
+        ind.ema(closes, C.EMA_LONG_PERIOD)[-1],
+        macd_line[-1],
+        macd_signal[-1],
+        macd_histogram[-1],
+        bb_upper[-1],
+        bb_middle[-1],
+        bb_lower[-1],
+        ind.atr(highs, lows, closes, C.ATR_PERIOD)[-1],
+    )
+    if any(value is None or not math.isfinite(value) for value in latest_indicators):
+        raise SymbolHistoryError(symbol, SymbolHealthStatus.INDICATOR_INCOMPATIBLE)
 
 
 async def check_configured_universe(
@@ -221,7 +252,7 @@ async def _run_health_check(target_date: date) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate the configured market universe through its provider."
+        description="Validate the DB-approved market universe through its provider."
     )
     parser.add_argument(
         "--target-date", type=_target_date, default=date.today(), help="YYYY-MM-DD"
