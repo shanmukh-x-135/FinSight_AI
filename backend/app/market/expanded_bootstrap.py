@@ -19,8 +19,9 @@ import argparse
 import asyncio
 import json
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from time import monotonic
+from urllib.parse import urlsplit
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,11 +30,17 @@ from app.history.feature_engineering import FEATURE_VERSION
 from app.history.models import HistoricalSession
 from app.history.service import HistoryService
 from app.market.constants import MACRO_PROXIES
-from app.market.models import DailyPrice, Indicator, Stock
+from app.market.models import DailyPrice, Indicator, Stock, UniverseSyncRun
 from app.market.repository import MarketRepository
 from app.market.service import MarketIngestionService
 from app.market.universe_provider import EXPECTED_NIFTY50_COUNT, NIFTY50_INDEX_CODE
-from app.market.universe_sync import UniverseSyncService
+from app.market.universe_sync import (
+    UniversePreflightResult,
+    UniverseSyncResult,
+    UniverseSyncService,
+)
+from app.scheduler.constants import EOD_PIPELINE_NAME, PipelineRunStatus
+from app.scheduler.models import PipelineRun
 from app.shared.database import SessionFactory
 from config.logging import get_logger
 from config.settings import settings
@@ -62,6 +69,8 @@ class BootstrapCounts:
 class BootstrapResult:
     status: str
     environment: str
+    database_host: str
+    database_name: str
     database_revision: str
     target_date: date
     before: BootstrapCounts
@@ -70,6 +79,7 @@ class BootstrapResult:
     ingestion: dict[str, object] | None
     history: dict[str, object] | None
     duration_seconds: float
+    conflicting_jobs: tuple[str, ...] = ()
     production_confirmation_required: str | None = None
 
     def to_payload(self) -> dict[str, object]:
@@ -105,19 +115,29 @@ class ExpandedBootstrapService:
         revision = await self._verify_database_revision()
         before = await self._counts()
         self._verify_execution_authority(execute, production_confirmation)
+        conflicts = await self._verify_no_conflicting_jobs()
+        universe_preflight = await self.universe_service.preflight(
+            index_code=NIFTY50_INDEX_CODE,
+            target_date=target_date,
+        )
+        self._verify_universe(universe_preflight)
+        database_host, database_name = self._database_identity()
 
         if not execute:
             return BootstrapResult(
                 status="preflight_ready",
                 environment=settings.app_env,
+                database_host=database_host,
+                database_name=database_name,
                 database_revision=revision,
                 target_date=target_date,
                 before=before,
                 after=before,
-                universe=None,
+                universe=universe_preflight.to_payload(),
                 ingestion=None,
                 history=None,
                 duration_seconds=monotonic() - started,
+                conflicting_jobs=conflicts,
                 production_confirmation_required=(
                     PRODUCTION_CONFIRMATION if settings.is_production else None
                 ),
@@ -128,20 +148,7 @@ class ExpandedBootstrapService:
             validate_all=True,
             target_date=target_date,
         )
-        if universe.fallback_used:
-            raise BootstrapSafetyError(
-                "Universe sync used a cached snapshot; rerun when the official source is available"
-            )
-        if universe.failed_validation_count:
-            raise BootstrapSafetyError(
-                "Universe validation failed for "
-                f"{universe.failed_validation_count} constituent(s); ingestion was not run"
-            )
-        if universe.active_count != EXPECTED_NIFTY50_COUNT:
-            raise BootstrapSafetyError(
-                f"Expected {EXPECTED_NIFTY50_COUNT} active constituents after sync; "
-                f"found {universe.active_count}"
-            )
+        self._verify_universe(universe)
 
         ingestion = await self.ingestion_service.ingest(target_trading_date=target_date)
         if ingestion.failed:
@@ -169,6 +176,8 @@ class ExpandedBootstrapService:
         result = BootstrapResult(
             status="completed",
             environment=settings.app_env,
+            database_host=database_host,
+            database_name=database_name,
             database_revision=revision,
             target_date=target_date,
             before=before,
@@ -177,6 +186,7 @@ class ExpandedBootstrapService:
             ingestion=ingestion.model_dump(mode="json"),
             history=history.model_dump(mode="json"),
             duration_seconds=duration,
+            conflicting_jobs=conflicts,
         )
         logger.info("expanded_bootstrap_complete", extra=result.to_payload())
         return result
@@ -205,7 +215,7 @@ class ExpandedBootstrapService:
             raise BootstrapSafetyError(
                 "Cannot verify Alembic revision; apply migrations before bootstrap"
             ) from exc
-        await self.db.commit()
+        await self.db.rollback()
         if revisions != [EXPECTED_DATABASE_REVISION]:
             raise BootstrapSafetyError(
                 f"Database revision must be {EXPECTED_DATABASE_REVISION}; "
@@ -262,8 +272,8 @@ class ExpandedBootstrapService:
             )
             or 0
         )
-        # Force all read transactions to close before services that own commits run.
-        await self.db.commit()
+        # Force all read transactions to close without writing during preflight.
+        await self.db.rollback()
         return BootstrapCounts(
             active_constituents=len(approved),
             equities_with_prices=equities_with_prices,
@@ -272,6 +282,81 @@ class ExpandedBootstrapService:
             macros_with_prices=macros_with_prices,
             historical_sessions=historical_sessions,
         )
+
+    @staticmethod
+    def _database_identity() -> tuple[str, str]:
+        parsed = urlsplit(settings.database_url_str)
+        return parsed.hostname or "", parsed.path.lstrip("/")
+
+    @staticmethod
+    def _verify_universe(
+        universe: UniversePreflightResult | UniverseSyncResult,
+    ) -> None:
+        if universe.fallback_used:
+            raise BootstrapSafetyError(
+                "Universe sync used a cached snapshot; rerun when the official source is available"
+            )
+        if universe.fetched_count != EXPECTED_NIFTY50_COUNT:
+            raise BootstrapSafetyError(
+                f"Expected {EXPECTED_NIFTY50_COUNT} fetched constituents; "
+                f"found {universe.fetched_count}"
+            )
+        if universe.normalized_count != EXPECTED_NIFTY50_COUNT:
+            raise BootstrapSafetyError(
+                f"Expected {EXPECTED_NIFTY50_COUNT} normalized constituents; "
+                f"found {universe.normalized_count}"
+            )
+        if universe.failed_validation_count:
+            raise BootstrapSafetyError(
+                "Universe validation failed for "
+                f"{universe.failed_validation_count} constituent(s); ingestion was not run"
+            )
+        if universe.active_count != EXPECTED_NIFTY50_COUNT:
+            raise BootstrapSafetyError(
+                f"Expected {EXPECTED_NIFTY50_COUNT} active constituents after sync; "
+                f"found {universe.active_count}"
+            )
+
+    async def _verify_no_conflicting_jobs(self) -> tuple[str, ...]:
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(
+            seconds=settings.pipeline_stale_after_seconds
+        )
+        eod_run_ids = list(
+            (
+                await self.db.scalars(
+                    select(PipelineRun.id).where(
+                        PipelineRun.pipeline_name == EOD_PIPELINE_NAME,
+                        PipelineRun.status == PipelineRunStatus.RUNNING,
+                        func.coalesce(
+                            PipelineRun.heartbeat_at,
+                            PipelineRun.started_at,
+                            PipelineRun.created_at,
+                        )
+                        >= cutoff,
+                    )
+                )
+            ).all()
+        )
+        universe_run_ids = list(
+            (
+                await self.db.scalars(
+                    select(UniverseSyncRun.id).where(
+                        UniverseSyncRun.status == "running",
+                        UniverseSyncRun.started_at >= cutoff,
+                    )
+                )
+            ).all()
+        )
+        conflicts = tuple(
+            [f"eod:{run_id}" for run_id in eod_run_ids]
+            + [f"universe-sync:{run_id}" for run_id in universe_run_ids]
+        )
+        await self.db.rollback()
+        if conflicts:
+            raise BootstrapSafetyError(
+                "Conflicting production operation is active: " + ", ".join(conflicts)
+            )
+        return conflicts
 
 
 def _iso_date(value: str) -> date:

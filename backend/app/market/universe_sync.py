@@ -115,6 +115,55 @@ class UniverseSyncResult:
         }
 
 
+@dataclass(frozen=True)
+class UniversePreflightResult:
+    """Non-persisted official-universe validation used by guarded operators."""
+
+    index_code: str
+    source: str
+    snapshot_date: date
+    status: str
+    fetched_count: int
+    normalized_count: int
+    validated_count: int
+    added_count: int
+    removed_count: int
+    unchanged_count: int
+    failed_validation_count: int
+    active_count: int
+    fallback_used: bool
+    dry_run: bool
+    failures: tuple[UniverseSyncFailure, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "index_code": self.index_code,
+            "source": self.source,
+            "snapshot_date": self.snapshot_date.isoformat(),
+            "status": self.status,
+            "fetched_count": self.fetched_count,
+            "normalized_count": self.normalized_count,
+            "validated_count": self.validated_count,
+            "added_count": self.added_count,
+            "removed_count": self.removed_count,
+            "unchanged_count": self.unchanged_count,
+            "failed_validation_count": self.failed_validation_count,
+            "active_count": self.active_count,
+            "fallback_used": self.fallback_used,
+            "dry_run": self.dry_run,
+            "failures": [
+                {
+                    "exchange_symbol": item.exchange_symbol,
+                    "provider_symbol": item.provider_symbol,
+                    "status": item.status,
+                    "error": item.error,
+                    "remains_inactive": True,
+                }
+                for item in self.failures
+            ],
+        }
+
+
 class UniverseSyncService:
     def __init__(
         self,
@@ -129,6 +178,90 @@ class UniverseSyncService:
         self.provider = provider or NseNifty50Provider()
         self.resolver = resolver or YahooNseSymbolResolver()
         self.market_client = market_client or build_default_client()
+
+    async def preflight(
+        self,
+        *,
+        index_code: str = NIFTY50_INDEX_CODE,
+        target_date: date | None = None,
+    ) -> UniversePreflightResult:
+        """Fetch, resolve, validate, and diff without persisting an audit run."""
+        index_code = index_code.strip().upper()
+        if index_code != NIFTY50_INDEX_CODE:
+            raise UniverseSyncError(f"Unsupported universe index: {index_code}")
+        lock_id = pipeline_run_lock_id(f"universe-sync:{index_code}", date.min)
+        async with pipeline_run_lock(self.db, lock_id) as acquired:
+            if not acquired:
+                raise UniverseSyncInProgressError(
+                    f"A {index_code} universe sync is already running"
+                )
+            return await self._preflight_locked(
+                index_code=index_code,
+                target_date=target_date or date.today(),
+            )
+
+    async def _preflight_locked(
+        self, *, index_code: str, target_date: date
+    ) -> UniversePreflightResult:
+        try:
+            snapshot = await self.provider.get_constituents(index_code)
+        except UniverseProviderError as exc:
+            raise UniverseSyncError(
+                "Official universe source must be available for preflight; " + str(exc)
+            ) from exc
+
+        candidates, resolution_failures = self._resolve(snapshot)
+        try:
+            active = await self.repo.active_memberships(index_code)
+        finally:
+            # A preflight must leave no transaction or persisted audit state behind.
+            await self.db.rollback()
+
+        candidate_symbols = set(candidates)
+        protected = {failure.exchange_symbol for failure in resolution_failures}
+        unchanged_symbols = candidate_symbols & set(active)
+        new_symbols = candidate_symbols - set(active)
+        removed_symbols = set(active) - candidate_symbols - protected
+        validation_symbols = sorted(candidate_symbols)
+        health = await self._validate(
+            candidates,
+            validation_symbols,
+            target_date=target_date,
+        )
+        failures = [*resolution_failures]
+        for symbol in validation_symbols:
+            result = health[symbol]
+            if not result.healthy:
+                candidate = candidates[symbol]
+                failures.append(
+                    UniverseSyncFailure(
+                        exchange_symbol=symbol,
+                        provider_symbol=candidate.resolved.provider_symbol,
+                        status=result.status.value,
+                        error=f"{result.status.value} for {candidate.resolved.provider_symbol}",
+                    )
+                )
+
+        failed_symbols = {item.exchange_symbol for item in failures}
+        additions = new_symbols - failed_symbols
+        predicted_active = len(active) - len(removed_symbols) + len(additions)
+        return UniversePreflightResult(
+            index_code=index_code,
+            source=snapshot.source,
+            snapshot_date=snapshot.snapshot_date,
+            status="ready" if not failures else "blocked",
+            fetched_count=len(snapshot.constituents),
+            normalized_count=len(candidates),
+            validated_count=len(candidate_symbols - failed_symbols),
+            added_count=len(additions),
+            removed_count=len(removed_symbols),
+            unchanged_count=len(unchanged_symbols),
+            failed_validation_count=len(failures),
+            active_count=predicted_active,
+            fallback_used=False,
+            dry_run=True,
+            failures=tuple(failures),
+        )
 
     async def sync(
         self,

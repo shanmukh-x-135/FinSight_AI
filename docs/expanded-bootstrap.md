@@ -32,7 +32,7 @@ Use an environment whose `DATABASE_URL` is known to be non-production:
 cd backend
 ./.venv/bin/alembic upgrade head
 
-# Read-only: verifies revision 0015 and prints starting counts.
+# Read-only: verifies revision/counts, checks active jobs, and validates all 50.
 ./.venv/bin/python -m app.market.expanded_bootstrap \
   --target-date YYYY-MM-DD
 
@@ -45,6 +45,17 @@ The command exits `0` for a completed preflight/bootstrap and `2` for a blocked
 safety condition. A failed universe or ingestion run prints the exact cause;
 fix the provider/data issue and rerun the same command. Upserts and incremental
 windows prevent duplicate rows.
+
+The default preflight is strictly non-persisting. It acquires the existing
+non-blocking universe lock, fetches the official NSE snapshot, resolves and
+validates every constituent against the market provider, compares the proposed
+membership with the database, and rolls back all read transactions. It does not
+create a universe-sync audit run, snapshot, stock, or membership. Its JSON
+includes the sanitized database host/name, before counts, fetched/normalized/
+validated/quarantined counts, the predicted active universe, and an empty
+`conflicting_jobs` list. A recent running EOD or universe-sync state blocks both
+preflight and execution; stale durable state remains recoverable by the existing
+control-plane rules.
 
 Normal EOD news ingestion remains separate. `market_regime_v1` intentionally
 does not use historical sentiment because a complete comparable backfill does

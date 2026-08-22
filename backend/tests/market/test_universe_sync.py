@@ -141,6 +141,46 @@ async def test_initial_population_and_repeated_sync_are_idempotent(
 
 
 @pytest.mark.asyncio
+async def test_preflight_validates_every_candidate_without_persisting(
+    db_session: AsyncSession,
+) -> None:
+    provider = _Provider([_snapshot("ALPHA", "BETA")])
+    market = _MarketClient()
+    service = UniverseSyncService(db_session, provider=provider, market_client=market)
+
+    result = await service.preflight(target_date=TARGET)
+
+    assert result.status == "ready"
+    assert result.fetched_count == result.normalized_count == 2
+    assert result.validated_count == 2
+    assert result.failed_validation_count == 0
+    assert result.active_count == 2
+    assert result.dry_run is True
+    assert market.calls == ["ALPHA.NS", "BETA.NS"]
+    assert await db_session.scalar(select(func.count()).select_from(Stock)) == 0
+    assert await db_session.scalar(select(func.count()).select_from(UniverseSyncRun)) == 0
+    assert (
+        await db_session.scalar(select(func.count()).select_from(UniverseSyncItem)) == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_preflight_requires_live_official_source_without_cached_fallback(
+    db_session: AsyncSession,
+) -> None:
+    service = UniverseSyncService(
+        db_session,
+        provider=_UnavailableProvider(),
+        market_client=_MarketClient(),
+    )
+
+    with pytest.raises(UniverseSyncError, match="must be available for preflight"):
+        await service.preflight(target_date=TARGET)
+
+    assert await db_session.scalar(select(func.count()).select_from(UniverseSyncRun)) == 0
+
+
+@pytest.mark.asyncio
 async def test_new_and_removed_constituents_preserve_membership_and_price_history(
     db_session: AsyncSession,
 ) -> None:
