@@ -63,9 +63,9 @@
     {
       "id": "follow_up_evidence",
       "question": "What evidence supports this conclusion?",
-      "recent_questions": ["Find historically similar market sessions."],
-      "source_kinds": ["market", "history"],
-      "evidence_contains": ["similar sessions closed higher"]
+      "recent_questions": ["Generate today’s EOD research brief."],
+      "source_kinds": ["portfolio", "watchlist", "market", "history", "news"],
+      "evidence_contains": ["Portfolio value", "Market breadth", "similar sessions closed higher", "Strongest bullish signal"]
     },
     {
       "id": "uncertainty",

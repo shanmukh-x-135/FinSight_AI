@@ -79,11 +79,25 @@ def _topics(question: str, recent_questions: list[str]) -> set[str]:
         selected.update({"market", "news", "signals"})
     if not selected and recent_questions:
         previous = recent_questions[-1].lower()
-        selected = {
-            topic
-            for topic, terms in _TOPIC_TERMS.items()
-            if any(term in previous for term in terms)
-        }
+        if any(term in previous for term in _BRIEF_TERMS + _UNCERTAINTY_TERMS):
+            selected = {
+                "portfolio",
+                "watchlist",
+                "market",
+                "history",
+                "news",
+                "signals",
+            }
+        else:
+            selected = {
+                topic
+                for topic, terms in _TOPIC_TERMS.items()
+                if any(term in previous for term in terms)
+            }
+            if any(term in previous for term in _SIGNAL_TERMS):
+                selected.update({"market", "history", "news", "signals"})
+            if previous.startswith("why ") and " moving" in previous:
+                selected.update({"market", "news", "signals"})
     return selected or {"portfolio", "watchlist", "market"}
 
 

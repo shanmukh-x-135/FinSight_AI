@@ -35,7 +35,7 @@ The fixed fixture at `backend/tests/fixtures/phase10e_golden_queries.json` conta
 | Compare today with a similar historical regime. | Current market plus historical slice and scenario warning |
 | Summarise the strongest bullish and bearish signals. | Deterministically ranked candidates, evidence, confidence, risks |
 | Generate today’s EOD research brief. | Portfolio, watchlist, market, history, news, and signals |
-| What evidence supports this conclusion? | Topic continuity from the preceding user question |
+| What evidence supports this conclusion? | Full topic continuity from the preceding EOD research brief |
 | What data is unavailable or uncertain? | Explicit missing-slice and sparse-indicator inventory |
 
 The harness asserts relevant source kinds, expected exact fixture prices and dates, ticker identifiers, risk language, bounded confidence, non-advice language, and absence of the untrusted question from the facts payload. Extra guards verify that an unknown ticker does not become company evidence, a news citation preserves its HTTP(S) URL and publication time, and an unsafe URL scheme falls back to the internal market page.
