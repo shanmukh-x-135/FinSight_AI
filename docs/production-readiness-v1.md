@@ -74,9 +74,36 @@ reconciliation fixes, and the live associations still contain the audited
 generic-token false positives. A deployment and one normal post-deployment EOD
 run are required to reconcile those persisted links before Part 1 passes.
 
-### Remaining exit evidence
+### Final exit evidence
 
-The normal production news/sentiment path must still be invoked and its
-post-run counts verified after these changes are deployed. This is an operator
-action: repository policy forbids an automatic push. Part 1 is not signed off
-and Phase 10E has not started.
+Part 1 was signed off on 2026-08-24 after the corrected production path ran on
+the `QA` branch. The final evidence is:
+
+- production refresh run `32745789099` completed successfully on `ec178fb`;
+- the final idempotent pass fetched 100 feed entries, inserted no duplicates,
+  reconciled one remaining shared-brand collision, removed one association,
+  and recomputed 18 stock/day sentiment aggregates;
+- 115 total persisted articles, of which 102 were in the seven-day publication
+  window; replayed 2024 feed entries no longer appear as current news;
+- 12 linked articles, 22 associations, and 18 distinct active stocks with links
+  across the persisted corpus;
+- the current public feed contained 8 linked articles, 18 manually audited
+  plausible associations across 14 equities, with source URLs preserved;
+- current article distribution: 49 positive, 37 neutral, 16 negative;
+- current stock-level distribution: 8 positive, 6 neutral, 0 negative, and 36
+  explicitly unavailable. Zero negative stock aggregates is the observed
+  result, not a substitute for missing coverage;
+- latest article ingestion: `2026-08-24T15:14:29.756981Z`;
+- latest sentiment aggregation: `2026-08-24T15:36:05.437909Z`;
+- CI succeeded on final Part 1 revision `6d6cc7d`; Render and Vercel both
+  reported successful deployments for that exact revision;
+- the canonical frontend and `/dashboard` returned HTTP 200, and the deployed
+  dashboard artifact contains the `No recent sentiment` and `unavailable`
+  states covered by the frontend regression tests.
+
+Normal scheduled EOD behavior remains unchanged. A manual `news-only`
+operation now provides an authenticated, fail-closed maintenance path when the
+durable EOD session is already complete; it cannot accept a historical target
+date and therefore cannot perform a fake backfill.
+
+Part 1 is complete. Phase 10E may begin.
