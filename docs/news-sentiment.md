@@ -14,6 +14,13 @@ RSS feeds → dedupe → sentiment score → company tag → aggregate (daily/st
 Wired into the post-close EOD pipeline: **market ingest → news ingest → history
 rebuild**, so sentiment refreshes and the similarity index picks it up.
 
+If the durable EOD session is already complete, operators must not reopen or
+weaken its idempotency ledger merely to refresh news. The existing EOD Actions
+workflow exposes a manual `news-only` operation that runs
+`python -m app.news.runner`: the same fetch, score, tag-reconciliation, and
+aggregation service without market ingestion, fake backfill, or history
+mutation. Supplying a target date with this operation fails closed.
+
 ### 1. News source (`shared/clients/news_client.py`)
 
 Free Indian financial-news **RSS** feeds (Economic Times, Moneycontrol, Business

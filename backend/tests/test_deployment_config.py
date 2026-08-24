@@ -36,6 +36,7 @@ def test_render_blueprint_contains_only_free_api() -> None:
     assert "preDeployCommand" not in api
     assert "disk" not in api
 
+
 def test_render_blueprint_prompts_for_external_secrets() -> None:
     blueprint = yaml.safe_load((REPO_ROOT / "render.yaml").read_text())
     entries = {item["key"]: item for item in blueprint["services"][0]["envVars"]}
@@ -59,6 +60,13 @@ def test_eod_workflow_uses_ist_schedule_and_runtime_runner() -> None:
     dispatch = workflow["on"]["workflow_dispatch"]
     assert dispatch == {
         "inputs": {
+            "operation": {
+                "description": "Operation to run",
+                "required": True,
+                "default": "eod",
+                "type": "choice",
+                "options": ["eod", "news-only"],
+            },
             "target_trading_date": {
                 "description": (
                     "Optional NSE trading date (YYYY-MM-DD). "
@@ -66,7 +74,7 @@ def test_eod_workflow_uses_ist_schedule_and_runtime_runner() -> None:
                 ),
                 "required": False,
                 "type": "string",
-            }
+            },
         }
     }
 
@@ -82,24 +90,37 @@ def test_eod_workflow_uses_ist_schedule_and_runtime_runner() -> None:
 
     automatic = steps["Run one durable EOD attempt with automatic target"]
     assert automatic["if"] == (
-        "github.event_name == 'schedule' || inputs.target_trading_date == ''"
+        "github.event_name == 'schedule' || "
+        "(github.event_name == 'workflow_dispatch' && "
+        "inputs.operation == 'eod' && inputs.target_trading_date == '')"
     )
     assert automatic["run"] == "python -m app.scheduler.runner"
 
     explicit = steps["Run one durable EOD attempt with explicit target"]
     assert explicit["if"] == (
         "github.event_name == 'workflow_dispatch' "
-        "&& inputs.target_trading_date != ''"
+        "&& inputs.operation == 'eod' && inputs.target_trading_date != ''"
     )
-    assert explicit["env"] == {
-        "TARGET_TRADING_DATE": "${{ inputs.target_trading_date }}"
-    }
+    assert explicit["env"] == {"TARGET_TRADING_DATE": "${{ inputs.target_trading_date }}"}
     assert "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" in explicit["run"]
     assert 'date --date="$TARGET_TRADING_DATE"' in explicit["run"]
     assert (
         'python -m app.scheduler.runner --target-trading-date "$TARGET_TRADING_DATE"'
         in explicit["run"]
     )
+
+    reject_news_date = steps["Reject target date for news-only refresh"]
+    assert reject_news_date["if"] == (
+        "github.event_name == 'workflow_dispatch' "
+        "&& inputs.operation == 'news-only' && inputs.target_trading_date != ''"
+    )
+
+    news_only = steps["Refresh current news and sentiment only"]
+    assert news_only["if"] == (
+        "github.event_name == 'workflow_dispatch' "
+        "&& inputs.operation == 'news-only' && inputs.target_trading_date == ''"
+    )
+    assert news_only["run"] == "python -m app.news.runner"
 
 
 def test_vercel_configuration_uses_reproducible_install() -> None:

@@ -10,6 +10,14 @@ on:
       timezone: Asia/Kolkata
   workflow_dispatch:
     inputs:
+      operation:
+        description: "Operation to run"
+        required: true
+        default: eod
+        type: choice
+        options:
+          - eod
+          - news-only
       target_trading_date:
         description: "Optional NSE trading date (YYYY-MM-DD). Leave blank for automatic target."
         required: false
@@ -43,10 +51,15 @@ jobs:
       - name: Install EOD runtime dependencies
         run: python -m pip install -r requirements.txt
       - name: Run one durable EOD attempt with automatic target
-        if: github.event_name == 'schedule' || inputs.target_trading_date == ''
+        if: >-
+          github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' &&
+          inputs.operation == 'eod' && inputs.target_trading_date == '')
         run: python -m app.scheduler.runner
       - name: Run one durable EOD attempt with explicit target
-        if: github.event_name == 'workflow_dispatch' && inputs.target_trading_date != ''
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.operation == 'eod' && inputs.target_trading_date != ''
         env:
           TARGET_TRADING_DATE: ${{ inputs.target_trading_date }}
         run: |
@@ -59,3 +72,15 @@ jobs:
             exit 2
           fi
           python -m app.scheduler.runner --target-trading-date "$TARGET_TRADING_DATE"
+      - name: Reject target date for news-only refresh
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.operation == 'news-only' && inputs.target_trading_date != ''
+        run: |
+          echo "target_trading_date is not valid for a news-only refresh" >&2
+          exit 2
+      - name: Refresh current news and sentiment only
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.operation == 'news-only' && inputs.target_trading_date == ''
+        run: python -m app.news.runner
