@@ -407,4 +407,12 @@ async def test_rejection_logs_category_without_provider_claim_value(caplog) -> N
         if record.getMessage() == "llm_output_rejected_using_fallback"
     )
     assert rejection.reason == "unsupported numeric claim"
-    assert "999" not in str(rejection.__dict__)
+    # Inspect only application-controlled log fields. Standard LogRecord
+    # metadata contains timing/thread numbers that can coincidentally include
+    # the provider claim (for example ``created=19990...``), making an
+    # otherwise-correct redaction test nondeterministic.
+    application_fields = {
+        "message": rejection.getMessage(),
+        "reason": rejection.reason,
+    }
+    assert "999" not in str(application_fields)
