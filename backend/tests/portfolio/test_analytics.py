@@ -22,12 +22,26 @@ import pytest
 from app.portfolio.analytics import HoldingInput, compute_portfolio_analytics
 
 H1 = HoldingInput(
-    id=1, symbol="AAA", name="Alpha", sector="Tech",
-    quantity=10, avg_buy_price=100, current_price=110, previous_close=108, atr=5.5,
+    id=1,
+    symbol="AAA",
+    name="Alpha",
+    sector="Tech",
+    quantity=10,
+    avg_buy_price=100,
+    current_price=110,
+    previous_close=108,
+    atr=5.5,
 )
 H2 = HoldingInput(
-    id=2, symbol="BBB", name="Beta", sector="Energy",
-    quantity=5, avg_buy_price=200, current_price=180, previous_close=185, atr=9.0,
+    id=2,
+    symbol="BBB",
+    name="Beta",
+    sector="Energy",
+    quantity=5,
+    avg_buy_price=200,
+    current_price=180,
+    previous_close=185,
+    atr=9.0,
 )
 
 
@@ -71,6 +85,11 @@ def test_reference_per_holding_values() -> None:
     assert by_symbol["AAA"].weight_percent == pytest.approx(55.0)
     assert by_symbol["BBB"].return_percent == pytest.approx(-10.0)
     assert by_symbol["BBB"].daily_pnl == pytest.approx(-25.0)
+    assert sum(item.unrealized_pnl for item in a.holdings) == pytest.approx(
+        a.total_unrealized_pnl
+    )
+    assert sum(item.daily_pnl for item in a.holdings) == pytest.approx(a.daily_pnl)
+    assert sum(item.weight_percent for item in a.holdings) == pytest.approx(100.0)
 
 
 def test_empty_portfolio() -> None:
@@ -88,8 +107,13 @@ def test_empty_portfolio() -> None:
 
 def test_missing_price_is_unknown_not_a_total_loss() -> None:
     unpriced = HoldingInput(
-        id=3, symbol="NOPRICE", name=None, sector="Tech",
-        quantity=4, avg_buy_price=250, current_price=None,
+        id=3,
+        symbol="NOPRICE",
+        name=None,
+        sector="Tech",
+        quantity=4,
+        avg_buy_price=250,
+        current_price=None,
     )
     a = compute_portfolio_analytics(1, "Incomplete", [H1, unpriced])
 
@@ -111,8 +135,13 @@ def test_missing_price_is_unknown_not_a_total_loss() -> None:
 
 def test_missing_previous_close_withholds_daily_pnl_only() -> None:
     no_previous = HoldingInput(
-        id=3, symbol="NEW", name=None, sector="Tech",
-        quantity=2, avg_buy_price=90, current_price=100,
+        id=3,
+        symbol="NEW",
+        name=None,
+        sector="Tech",
+        quantity=2,
+        avg_buy_price=90,
+        current_price=100,
     )
     a = compute_portfolio_analytics(1, "No previous", [no_previous])
 
@@ -126,8 +155,13 @@ def test_missing_previous_close_withholds_daily_pnl_only() -> None:
 
 def test_single_holding_is_fully_concentrated() -> None:
     single = HoldingInput(
-        id=1, symbol="AAA", name="Alpha", sector="Tech",
-        quantity=10, avg_buy_price=100, current_price=110,
+        id=1,
+        symbol="AAA",
+        name="Alpha",
+        sector="Tech",
+        quantity=10,
+        avg_buy_price=100,
+        current_price=110,
     )
     a = compute_portfolio_analytics(1, "One", [single])
     assert a.concentration_hhi == pytest.approx(1.0)
@@ -137,16 +171,91 @@ def test_single_holding_is_fully_concentrated() -> None:
     assert a.total_return_percent == pytest.approx(10.0)
 
 
+def test_zero_return_and_negative_return_cases() -> None:
+    flat = HoldingInput(
+        id=1,
+        symbol="FLAT",
+        name=None,
+        sector="X",
+        quantity=2,
+        avg_buy_price=100,
+        current_price=100,
+        previous_close=100,
+        atr=2,
+    )
+    loss = HoldingInput(
+        id=2,
+        symbol="LOSS",
+        name=None,
+        sector="Y",
+        quantity=1,
+        avg_buy_price=100,
+        current_price=80,
+        previous_close=100,
+        atr=4,
+    )
+
+    flat_result = compute_portfolio_analytics(1, "Flat", [flat])
+    assert flat_result.total_return_percent == pytest.approx(0.0)
+    assert flat_result.daily_pnl_percent == pytest.approx(0.0)
+
+    loss_result = compute_portfolio_analytics(2, "Loss", [loss])
+    assert loss_result.total_unrealized_pnl == pytest.approx(-20.0)
+    assert loss_result.total_return_percent == pytest.approx(-20.0)
+    assert loss_result.daily_pnl == pytest.approx(-20.0)
+    assert loss_result.daily_pnl_percent == pytest.approx(-20.0)
+
+
+def test_partial_atr_coverage_withholds_portfolio_volatility() -> None:
+    missing_atr = HoldingInput(
+        id=3,
+        symbol="NOATR",
+        name=None,
+        sector="Tech",
+        quantity=1,
+        avg_buy_price=100,
+        current_price=100,
+        previous_close=100,
+        atr=None,
+    )
+
+    result = compute_portfolio_analytics(1, "Partial volatility", [H1, missing_atr])
+
+    assert result.valuation_complete is True
+    assert result.volatility_percent is None
+
+
 def test_medium_risk_threshold() -> None:
     # Two holdings 40/60 → top weight 60 → high; make it 35/65? top 65 high.
     # Construct 3 holdings so top weight is ~40% → medium.
     holdings = [
-        HoldingInput(id=1, symbol="A", name=None, sector="X",
-                     quantity=1, avg_buy_price=100, current_price=100),   # mv 100
-        HoldingInput(id=2, symbol="B", name=None, sector="Y",
-                     quantity=1, avg_buy_price=100, current_price=80),    # mv 80
-        HoldingInput(id=3, symbol="C", name=None, sector="Z",
-                     quantity=1, avg_buy_price=100, current_price=70),    # mv 70
+        HoldingInput(
+            id=1,
+            symbol="A",
+            name=None,
+            sector="X",
+            quantity=1,
+            avg_buy_price=100,
+            current_price=100,
+        ),  # mv 100
+        HoldingInput(
+            id=2,
+            symbol="B",
+            name=None,
+            sector="Y",
+            quantity=1,
+            avg_buy_price=100,
+            current_price=80,
+        ),  # mv 80
+        HoldingInput(
+            id=3,
+            symbol="C",
+            name=None,
+            sector="Z",
+            quantity=1,
+            avg_buy_price=100,
+            current_price=70,
+        ),  # mv 70
     ]
     a = compute_portfolio_analytics(1, "Med", holdings)
     # total 250; top weight = 100/250 = 40% → medium.

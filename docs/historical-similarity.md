@@ -79,14 +79,16 @@ uncommitted corpus.
 
 Each historical session stores separately from its input vector:
 
-- next-session equal-weight return and breadth;
-- compounded return over the next five accepted trading sessions;
+- next-trading-session equal-weight return and breadth;
+- compounded return over the next five contiguous trading sessions;
 - realized peak drawdown and upside over that five-session path; and
 - bullish/bearish/neutral next-session label.
 
-The last session and sessions without a complete five-session horizon retain
-honest `null` outcomes. Outcome fields never enter FAISS. API statistics use
-only known next-session outcomes from retrieved neighbours.
+The last session, a session immediately followed by a rejected candidate date,
+and sessions without a complete contiguous five-session horizon retain honest
+`null` outcomes. The pipeline never skips a rejected date and mislabels a later
+accepted session as “next day.” Outcome fields never enter FAISS. API statistics
+use only known next-session outcomes from retrieved neighbours.
 
 Each analogue also exposes its three closest and two most divergent feature
 groups. Group similarity and its explanation are calculated from the same

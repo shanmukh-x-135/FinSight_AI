@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
 
+from app.history.feature_engineering import FEATURE_NAMES, Normalizer
 from app.history.similarity import (
+    compare_feature_groups,
     compute_statistics,
     distance_to_similarity,
+    normalized_l2_distance,
     outcome_label,
 )
 
@@ -18,6 +22,28 @@ def test_distance_to_similarity_monotonic() -> None:
     assert distance_to_similarity(1.0) == pytest.approx(0.5)
     assert distance_to_similarity(3.0) == pytest.approx(0.25)
     assert distance_to_similarity(0.0) > distance_to_similarity(5.0)
+
+
+def test_normalized_l2_is_root_mean_square_feature_distance() -> None:
+    # Squared L2=100 over four dimensions → sqrt(100/4)=5.
+    assert normalized_l2_distance(100.0, 4) == pytest.approx(5.0)
+
+
+def test_factor_comparison_surfaces_deterministic_macro_divergence() -> None:
+    query = {name: 0.0 for name in FEATURE_NAMES}
+    analogue = dict(query)
+    for name in ("usd_inr_return", "crude_oil_return", "gold_return"):
+        analogue[name] = 1.0
+    normalizer = Normalizer(
+        center=np.zeros(len(FEATURE_NAMES)),
+        scale=np.ones(len(FEATURE_NAMES)),
+    )
+
+    matching, diverging = compare_feature_groups(query, analogue, normalizer)
+
+    assert diverging[0]["factor"] == "macro"
+    assert float(diverging[0]["similarity_score"]) < 1.0
+    assert all(float(item["similarity_score"]) == pytest.approx(1.0) for item in matching)
 
 
 def test_outcome_label() -> None:

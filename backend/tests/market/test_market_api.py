@@ -19,8 +19,13 @@ D1, D2 = date(2024, 1, 1), date(2024, 1, 2)
 
 def _price(stock_id: int, d: date, close: float) -> DailyPrice:
     return DailyPrice(
-        stock_id=stock_id, date=d, open=close, high=close + 1, low=close - 1,
-        close=close, volume=1000,
+        stock_id=stock_id,
+        date=d,
+        open=close,
+        high=close + 1,
+        low=close - 1,
+        close=close,
+        volume=1000,
     )
 
 
@@ -35,9 +40,12 @@ async def seed_market(db_session: AsyncSession) -> None:
 
     db_session.add_all(
         [
-            _price(a.id, D1, 100.0), _price(a.id, D2, 110.0),
-            _price(b.id, D1, 100.0), _price(b.id, D2, 90.0),
-            _price(c.id, D1, 50.0), _price(c.id, D2, 50.0),
+            _price(a.id, D1, 100.0),
+            _price(a.id, D2, 110.0),
+            _price(b.id, D1, 100.0),
+            _price(b.id, D2, 90.0),
+            _price(c.id, D1, 50.0),
+            _price(c.id, D2, 50.0),
         ]
     )
     db_session.add(Fundamentals(stock_id=a.id, market_cap=2000, pe_ratio=25.0, eps=8.0))
@@ -45,12 +53,24 @@ async def seed_market(db_session: AsyncSession) -> None:
         [
             Indicator(stock_id=a.id, date=D1, rsi_14=50.0, ema_20=100.0),
             Indicator(
-                stock_id=a.id, date=D2, rsi_14=60.0, ema_20=105.0,
-                ema_50=100.0, macd=1.2, macd_histogram=0.5, atr_14=2.2,
+                stock_id=a.id,
+                date=D2,
+                rsi_14=60.0,
+                ema_20=105.0,
+                ema_50=100.0,
+                macd=1.2,
+                macd_histogram=0.5,
+                atr_14=2.2,
             ),
             Indicator(
-                stock_id=b.id, date=D2, rsi_14=30.0, ema_20=95.0,
-                ema_50=100.0, macd=-1.0, macd_histogram=-0.5, atr_14=3.0,
+                stock_id=b.id,
+                date=D2,
+                rsi_14=30.0,
+                ema_20=95.0,
+                ema_50=100.0,
+                macd=-1.0,
+                macd_histogram=-0.5,
+                atr_14=3.0,
             ),
         ]
     )
@@ -63,6 +83,7 @@ async def test_gainers(client: AsyncClient, seed_market: None) -> None:
     resp = await client.get("/api/v1/market/gainers")
     assert resp.status_code == 200
     data = resp.json()["data"]
+    assert len(data) == 1
     assert data[0]["symbol"] == "AAA.NS"
     assert data[0]["change_percent"] == pytest.approx(10.0)
 
@@ -70,6 +91,7 @@ async def test_gainers(client: AsyncClient, seed_market: None) -> None:
 @pytest.mark.asyncio
 async def test_losers(client: AsyncClient, seed_market: None) -> None:
     data = (await client.get("/api/v1/market/losers")).json()["data"]
+    assert len(data) == 1
     assert data[0]["symbol"] == "BBB.NS"
     assert data[0]["change_percent"] == pytest.approx(-10.0)
 
@@ -81,6 +103,19 @@ async def test_breadth(client: AsyncClient, seed_market: None) -> None:
     assert data["decliners"] == 1
     assert data["unchanged"] == 1
     assert data["total"] == 3
+    assert data["advance_decline_ratio"] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_empty_breadth_is_explicit(client: AsyncClient) -> None:
+    data = (await client.get("/api/v1/market/breadth")).json()["data"]
+    assert data == {
+        "advancers": 0,
+        "decliners": 0,
+        "unchanged": 0,
+        "total": 0,
+        "advance_decline_ratio": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -133,8 +168,8 @@ class _FailingCalendarClient:
 
 @pytest.mark.asyncio
 async def test_economic_events_uses_provider(client: AsyncClient, test_app) -> None:
-    test_app.dependency_overrides[get_economic_calendar_client] = (
-        lambda: _FakeCalendarClient()
+    test_app.dependency_overrides[get_economic_calendar_client] = lambda: (
+        _FakeCalendarClient()
     )
     response = await client.get("/api/v1/market/economic-events?days=7")
     assert response.status_code == 200
@@ -157,8 +192,8 @@ async def test_economic_events_reports_unconfigured(client: AsyncClient) -> None
 async def test_economic_events_degrades_on_provider_failure(
     client: AsyncClient, test_app
 ) -> None:
-    test_app.dependency_overrides[get_economic_calendar_client] = (
-        lambda: _FailingCalendarClient()
+    test_app.dependency_overrides[get_economic_calendar_client] = lambda: (
+        _FailingCalendarClient()
     )
     response = await client.get("/api/v1/market/economic-events")
     assert response.status_code == 200

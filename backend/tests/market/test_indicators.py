@@ -56,6 +56,11 @@ def test_rsi_too_short_all_none() -> None:
     assert ind.rsi([1, 2, 3], period=14) == [None, None, None]
 
 
+def test_rsi_flat_series_is_neutral() -> None:
+    result = ind.rsi([100.0] * 20, period=14)
+    assert result[-1] == pytest.approx(50.0)
+
+
 # ----- MACD ----------------------------------------------------------------
 def test_macd_reference() -> None:
     # closes [1..5], fast=2, slow=3, signal=2 → constant MACD 0.5, signal 0.5, hist 0.
@@ -73,6 +78,19 @@ def test_macd_equals_ema_difference() -> None:
     for i in range(len(closes)):
         if ef[i] is not None and es[i] is not None:
             assert macd_line[i] == pytest.approx(ef[i] - es[i])
+
+
+def test_constant_price_has_zero_macd_and_zero_width_bands() -> None:
+    closes = [100.0] * 60
+    macd_line, signal_line, histogram = ind.macd(closes)
+    upper, middle, lower = ind.bollinger_bands(closes)
+
+    assert macd_line[-1] == pytest.approx(0.0)
+    assert signal_line[-1] == pytest.approx(0.0)
+    assert histogram[-1] == pytest.approx(0.0)
+    assert upper[-1] == middle[-1] == lower[-1] == pytest.approx(100.0)
+    assert ind.ema(closes, 20)[-1] == pytest.approx(100.0)
+    assert ind.ema(closes, 50)[-1] == pytest.approx(100.0)
 
 
 # ----- Bollinger Bands -----------------------------------------------------
@@ -103,6 +121,12 @@ def test_atr_reference_wilder() -> None:
 def test_atr_length_mismatch_raises() -> None:
     with pytest.raises(ValueError):
         ind.atr([1, 2], [1], [1, 2], period=2)
+
+
+def test_true_range_includes_overnight_gap() -> None:
+    # Day two range is 12-11=1, but the gap from prior close 9 makes TR=3.
+    result = ind.atr([10, 12], [8, 11], [9, 11.5], period=1)
+    assert result == pytest.approx([2.0, 3.0])
 
 
 # ----- latest --------------------------------------------------------------

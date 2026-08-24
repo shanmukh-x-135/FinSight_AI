@@ -403,13 +403,17 @@ class MarketQueryService:
 
     @staticmethod
     def _gainers_from(quotes: list[QuoteOut], limit: int) -> list[QuoteOut]:
-        changed = [q for q in quotes if q.change_percent is not None]
+        changed = [
+            q for q in quotes if q.change_percent is not None and q.change_percent > 0
+        ]
         changed.sort(key=lambda q: q.change_percent, reverse=True)
         return changed[:limit]
 
     @staticmethod
     def _losers_from(quotes: list[QuoteOut], limit: int) -> list[QuoteOut]:
-        changed = [q for q in quotes if q.change_percent is not None]
+        changed = [
+            q for q in quotes if q.change_percent is not None and q.change_percent < 0
+        ]
         changed.sort(key=lambda q: q.change_percent)
         return changed[:limit]
 

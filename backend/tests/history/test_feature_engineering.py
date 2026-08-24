@@ -82,6 +82,12 @@ def test_regime_feature_reference_covers_all_categories() -> None:
     assert result.features["advancing_share"] == pytest.approx(1 / 3)
     assert result.features["declining_share"] == pytest.approx(1 / 3)
     assert result.features["unchanged_share"] == pytest.approx(1 / 3)
+    assert (
+        result.features["advancing_share"]
+        + result.features["declining_share"]
+        + result.features["unchanged_share"]
+    ) == pytest.approx(1.0)
+    assert result.features["advance_decline_ratio"] == pytest.approx(1.0)
     assert result.features["above_ema20_share"] == pytest.approx(2 / 3)
     assert result.features["median_rsi"] == 50
     assert result.features["overbought_share"] == pytest.approx(1 / 3)

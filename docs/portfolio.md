@@ -54,7 +54,7 @@ Portfolio-level:
 - **diversification_score** = `(1 − HHI) × 100` (0–100; higher = more diversified).
 - **top_holding_weight_percent** = the largest single-holding weight.
 - **sector_allocation** = market value grouped by `stock.sector` (sorted desc).
-- **volatility_percent** = market-value-weighted `ATR / price × 100` across holdings (uses Phase 2's ATR-14; `null` if unavailable).
+- **volatility_percent** = market-value-weighted `ATR / price × 100` across holdings (uses Phase 2's ATR-14; `null` unless every holding has both price and ATR, so partial coverage is never presented as a complete portfolio metric).
 - **health_score** (0–100) = a transparent weighted blend:
   `0.4 × diversification_score + 0.3 × (100 − top_holding_weight) + 0.3 × clamp(50 + total_return_percent, 0, 100)`.
 - **risk_level** — from concentration: `high` if top weight ≥ 50%, `medium` if ≥ 30%, else `low`.

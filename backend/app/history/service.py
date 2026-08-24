@@ -191,11 +191,23 @@ class HistoryService:
         sessions: list[EngineeredSession], index: int
     ) -> tuple[float | None, float | None, float | None, float | None, float | None]:
         next_item = sessions[index + 1] if index + 1 < len(sessions) else None
+        if (
+            next_item is None
+            or next_item.candidate_index != sessions[index].candidate_index + 1
+        ):
+            return None, None, None, None, None
         next_features = next_item.quality.features if next_item else None
         next_return = next_features["equal_weight_return"] if next_features else None
         next_breadth = next_features["advancing_share"] if next_features else None
         horizon = sessions[index + 1 : index + 6]
-        if len(horizon) < 5:
+        expected_indices = range(
+            sessions[index].candidate_index + 1,
+            sessions[index].candidate_index + 6,
+        )
+        if len(horizon) < 5 or any(
+            item.candidate_index != expected
+            for item, expected in zip(horizon, expected_indices, strict=True)
+        ):
             return next_return, next_breadth, None, None, None
         wealth = 1.0
         peak = 1.0

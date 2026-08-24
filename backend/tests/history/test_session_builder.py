@@ -201,7 +201,46 @@ def test_forward_outcomes_use_only_subsequent_sessions() -> None:
         assert item.quality.features is not None
         expected_wealth *= 1 + item.quality.features["equal_weight_return"]
     assert outcome[2] == pytest.approx(expected_wealth - 1)
+    wealth_path = []
+    running = 1.0
+    for item in sessions[1:6]:
+        assert item.quality.features is not None
+        running *= 1 + item.quality.features["equal_weight_return"]
+        wealth_path.append(running)
+    peaks = [1.0]
+    drawdowns = []
+    for wealth in wealth_path:
+        peaks.append(max(peaks[-1], wealth))
+        drawdowns.append(wealth / peaks[-1] - 1.0)
+    assert outcome[3] == pytest.approx(min(0.0, *drawdowns))
+    assert outcome[4] == pytest.approx(max(0.0, *(value - 1 for value in wealth_path)))
     assert HistoryService._forward_outcome(sessions, len(sessions) - 1) == (
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_forward_outcome_does_not_jump_over_a_rejected_candidate_session() -> None:
+    dates, stocks, prices, indicators, macro_prices = _inputs()
+    indicators = [item for item in indicators if item.date != dates[25]]
+    sessions = list(
+        RegimeSessionBuilder()
+        .build(
+            stocks=stocks,
+            memberships=[],
+            prices=prices,
+            indicators=indicators,
+            macro_prices=macro_prices,
+        )
+        .sessions
+    )
+    index = next(i for i, item in enumerate(sessions) if item.date == dates[24])
+
+    assert sessions[index + 1].date == dates[26]
+    assert HistoryService._forward_outcome(sessions, index) == (
         None,
         None,
         None,

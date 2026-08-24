@@ -52,6 +52,7 @@ class EquityIndicatorRow:
 class EngineeredSession:
     date: date
     quality: SessionFeatureResult
+    candidate_index: int
 
 
 @dataclass(frozen=True)
@@ -181,7 +182,7 @@ class RegimeSessionBuilder:
         accepted: list[EngineeredSession] = []
         rejected: Counter[str] = Counter()
 
-        for session_date in dates:
+        for candidate_index, session_date in enumerate(dates):
             expected_ids, membership_mode = resolver.for_date(session_date)
             stock_days: list[StockDay] = []
             for stock_id in sorted(expected_ids):
@@ -231,7 +232,7 @@ class RegimeSessionBuilder:
                 membership_mode=membership_mode,
             )
             if quality.accepted:
-                accepted.append(EngineeredSession(session_date, quality))
+                accepted.append(EngineeredSession(session_date, quality, candidate_index))
             else:
                 assert quality.rejection_reason is not None
                 rejected[quality.rejection_reason.value] += 1

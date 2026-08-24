@@ -118,9 +118,7 @@ def compute_portfolio_analytics(
             }
         )
 
-    total_value = (
-        sum(p["market_value"] for p in priced) if valuation_complete else None
-    )
+    total_value = sum(p["market_value"] for p in priced) if valuation_complete else None
     total_cost = sum(p["cost_basis"] for p in priced)
     total_unrealized = total_value - total_cost if total_value is not None else None
     total_daily = sum(p["daily"] for p in priced) if daily_complete else None
@@ -155,13 +153,21 @@ def compute_portfolio_analytics(
     ]
 
     # --- Volatility (market-value-weighted ATR%) -----------------------------
-    vol_num = vol_den = 0.0
-    for p in priced if valuation_complete else []:
-        h = p["h"]
-        if h.atr is not None and p["price"]:
+    volatility_complete = valuation_complete and all(
+        p["h"].atr is not None and p["price"] is not None and p["price"] > 0
+        for p in priced
+    )
+    vol_num = 0.0
+    if volatility_complete and total_value is not None and total_value > 0:
+        for p in priced:
+            h = p["h"]
+            assert h.atr is not None and p["price"] is not None
             vol_num += (h.atr / p["price"] * 100.0) * p["market_value"]
-            vol_den += p["market_value"]
-    volatility_pct = round(vol_num / vol_den, 4) if vol_den > 0 else None
+    volatility_pct = (
+        round(vol_num / total_value, 4)
+        if volatility_complete and total_value is not None and total_value > 0
+        else None
+    )
 
     # --- Aggregate returns ---------------------------------------------------
     total_return_pct = (
@@ -203,9 +209,13 @@ def compute_portfolio_analytics(
             avg_buy_price=p["h"].avg_buy_price,
             current_price=p["price"],
             previous_close=p["h"].previous_close,
-            market_value=round(p["market_value"], 4) if p["market_value"] is not None else None,
+            market_value=round(p["market_value"], 4)
+            if p["market_value"] is not None
+            else None,
             cost_basis=round(p["cost_basis"], 4),
-            unrealized_pnl=round(p["unrealized"], 4) if p["unrealized"] is not None else None,
+            unrealized_pnl=round(p["unrealized"], 4)
+            if p["unrealized"] is not None
+            else None,
             return_percent=round(p["ret_pct"], 4) if p["ret_pct"] is not None else None,
             daily_pnl=round(p["daily"], 4) if p["daily"] is not None else None,
             weight_percent=(
@@ -230,7 +240,9 @@ def compute_portfolio_analytics(
         daily_pnl_percent=daily_pnl_pct,
         number_of_holdings=len(holdings),
         number_of_sectors=len({p["h"].sector or UNKNOWN_SECTOR for p in priced}),
-        top_holding_weight_percent=(round(top_weight, 4) if top_weight is not None else None),
+        top_holding_weight_percent=(
+            round(top_weight, 4) if top_weight is not None else None
+        ),
         concentration_hhi=round(hhi, 6) if hhi is not None else None,
         diversification_score=diversification_score,
         volatility_percent=volatility_pct,
