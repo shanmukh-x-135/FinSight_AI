@@ -93,6 +93,16 @@ def test_shared_brand_requires_the_company_phrase() -> None:
     assert tag_article("HDFC Life reports premium growth", "", aliases) == {2}
 
 
+def test_sbi_life_does_not_also_tag_state_bank() -> None:
+    bank = build_aliases("SBIN.NS", "STATE BANK OF INDIA")
+    life = build_aliases("SBILIFE.NS", "SBI LIFE INSURANCE CO LTD")
+    aliases = {1: bank, 2: life}
+
+    assert "SBI" not in bank
+    assert tag_article("SBI Life reports premium growth", "", aliases) == {2}
+    assert tag_article("State Bank of India raises deposits", "", aliases) == {1}
+
+
 def test_hyphenated_ticker_uses_reviewed_readable_alias() -> None:
     aliases = build_aliases("BAJAJ-AUTO.NS", "BAJAJ AUTO LIMITED")
     assert "BAJAJ AUTO" in aliases

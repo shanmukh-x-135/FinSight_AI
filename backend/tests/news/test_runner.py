@@ -39,6 +39,16 @@ async def test_news_runner_executes_pipeline_and_disposes_engine(monkeypatch) ->
                 }
             )
 
+        async def get_diagnostics(self):
+            return SimpleNamespace(
+                model_dump=lambda **_kwargs: {
+                    "total_articles": 20,
+                    "recent_articles": 10,
+                    "latest_news_ingestion_at": "2026-08-24T15:14:37Z",
+                    "latest_sentiment_at": "2026-08-24T15:14:37Z",
+                }
+            )
+
     async def _dispose() -> None:
         nonlocal disposed
         disposed += 1
@@ -63,6 +73,9 @@ async def test_news_runner_fails_closed_and_disposes_engine(monkeypatch) -> None
 
         async def ingest(self):
             raise RuntimeError("provider response containing sensitive text")
+
+        async def get_diagnostics(self):  # pragma: no cover - ingest fails first
+            raise AssertionError("diagnostics must not run after failed ingestion")
 
     async def _dispose() -> None:
         nonlocal disposed

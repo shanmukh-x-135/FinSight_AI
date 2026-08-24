@@ -69,8 +69,9 @@ stocks that made generic words such as `OIL`, `LIFE`, `INSURANCE`, `PASS`, and
 as `ONGC`, `HDFC LIFE`, or `TECH MAHINDRA`; shared group names such as `HDFC` and
 `TATA` do not identify a company by themselves. The ordinary English noun
 `reliance` is also excluded; the company requires `RELIANCE INDUSTRIES` or its
-ticker. Aliases shorter than three characters and legal suffix-only names
-remain excluded.
+ticker. Likewise, `SBI LIFE` does not imply State Bank: the bank requires
+`STATE BANK OF INDIA`, `SBI BANK`, or `SBIN`. Aliases shorter than three
+characters and legal suffix-only names remain excluded.
 
 Publisher feeds occasionally replay old stories. Recently fetched rows are
 retagged even when their `published_at` date is old, while the public recent-news

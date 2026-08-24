@@ -23,10 +23,15 @@ async def execute_once() -> int:
     """Run one idempotent news refresh and return a process exit code."""
     try:
         async with SessionFactory() as db:
-            result = await NewsService(db).ingest()
+            service = NewsService(db)
+            result = await service.ingest()
+            diagnostics = await service.get_diagnostics()
         logger.info(
             "news_refresh_completed",
-            extra=result.model_dump(),
+            extra={
+                **result.model_dump(),
+                **diagnostics.model_dump(mode="json"),
+            },
         )
         return EXIT_SUCCESS
     except Exception as exc:  # noqa: BLE001 - process boundary logs safe class only
