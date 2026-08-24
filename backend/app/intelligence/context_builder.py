@@ -21,6 +21,7 @@ from app.intelligence.recommendation_engine import CandidateInput
 from app.market.repository import MarketRepository
 from app.market.service import MarketQueryService
 from app.news.repository import NewsRepository
+from app.news.service import NewsService
 from app.portfolio.repository import PortfolioRepository
 from app.portfolio.service import PortfolioService
 from config.settings import settings
@@ -42,6 +43,7 @@ class ContextBuilder:
         self.market_repo = MarketRepository(db)
         self.market_q = MarketQueryService(db)
         self.news_repo = NewsRepository(db)
+        self.news = NewsService(db)
 
     # ----- Slices ----------------------------------------------------------
     async def build_market_slice(self) -> dict:
@@ -78,14 +80,13 @@ class ContextBuilder:
         return analytics.model_dump(mode="json")
 
     async def build_news_slice(self) -> dict:
-        articles = await self.news_repo.list_recent_articles(10)
-        symbols = {s.id: s.symbol for s in await self.market_repo.list_active_stocks()}
+        articles = await self.news.list_recent(10)
         notable = [
             {
                 "title": a.title,
                 "sentiment_label": a.sentiment_label,
                 "sentiment_score": a.sentiment_score,
-                "tags": [symbols[t.stock_id] for t in a.tags if t.stock_id in symbols],
+                "tags": a.tags,
             }
             for a in articles
             if a.tags  # only company-tagged articles are "notable"

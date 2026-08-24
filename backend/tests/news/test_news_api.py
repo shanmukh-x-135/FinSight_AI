@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from app.news.dependencies import get_news_client
 from tests.news.conftest import FakeNewsClient, make_item
 
-BAD = "Reliance shares plunge as company reports massive loss and cuts dividend"
+BAD = "Reliance Industries shares plunge after massive loss and dividend cut"
 GOOD = "TCS profit surges and beats estimates"
 
 

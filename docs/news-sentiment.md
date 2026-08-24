@@ -67,8 +67,15 @@ The earlier 15-stock linker treated every company-name token as an alias. At 50
 stocks that made generic words such as `OIL`, `LIFE`, `INSURANCE`, `PASS`, and
 `TECH` produce false associations. Phrase matching now requires identities such
 as `ONGC`, `HDFC LIFE`, or `TECH MAHINDRA`; shared group names such as `HDFC` and
-`TATA` do not identify a company by themselves. Aliases shorter than three
-characters and legal suffix-only names remain excluded.
+`TATA` do not identify a company by themselves. The ordinary English noun
+`reliance` is also excluded; the company requires `RELIANCE INDUSTRIES` or its
+ticker. Aliases shorter than three characters and legal suffix-only names
+remain excluded.
+
+Publisher feeds occasionally replay old stories. Recently fetched rows are
+retagged even when their `published_at` date is old, while the public recent-news
+surface remains bounded by publication date. This prevents stale articles and
+their legacy associations from masquerading as current coverage.
 
 Tagging is best-effort and imperfect by nature (documented limitation).
 

@@ -7,7 +7,8 @@ from app.news.tagging import build_aliases, tag_article
 
 def test_aliases_drop_generic_and_short_tokens() -> None:
     reliance = build_aliases("RELIANCE.NS", "RELIANCE INDUSTRIES LTD")
-    assert {"RELIANCE", "RELIANCE INDUSTRIES"} <= reliance
+    assert "RELIANCE" not in reliance
+    assert "RELIANCE INDUSTRIES" in reliance
     hdfc = build_aliases("HDFCBANK.NS", "HDFC BANK LTD")
     assert {"HDFCBANK", "HDFC BANK"} <= hdfc
     assert "HDFC" not in hdfc
@@ -65,6 +66,22 @@ def test_generic_name_tokens_do_not_create_false_positive_tags() -> None:
         tag_article("Insurer reports stronger life premium growth", "", aliases) == set()
     )
     assert tag_article("Technology IPO calendar expands", "", aliases) == set()
+
+
+def test_ordinary_reliance_word_does_not_tag_reliance_industries() -> None:
+    aliases = build_aliases("RELIANCE.NS", "RELIANCE INDUSTRIES LTD")
+
+    assert (
+        tag_article(
+            "Rupee steady as traders assess oil prices",
+            "The conflict raises risks for India's import reliance.",
+            {1: aliases},
+        )
+        == set()
+    )
+    assert tag_article(
+        "Reliance Industries expands retail network", "", {1: aliases}
+    ) == {1}
 
 
 def test_shared_brand_requires_the_company_phrase() -> None:

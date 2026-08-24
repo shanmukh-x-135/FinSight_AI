@@ -181,7 +181,12 @@ class NewsService:
 
     # ----- Reads -----------------------------------------------------------
     async def list_recent(self, limit: int = 50) -> list[NewsArticleOut]:
-        articles = await self.repo.list_recent_articles(limit)
+        as_of = await self.market.get_latest_active_price_date() or date.today()
+        recent_day = as_of - timedelta(days=settings.news_recent_window_days - 1)
+        recent_since = datetime.combine(
+            recent_day, datetime.min.time(), tzinfo=timezone.utc
+        )
+        articles = await self.repo.list_recent_articles(limit, recent_since=recent_since)
         symbols = {s.id: s.symbol for s in await self.market.list_active_stocks()}
         return [
             NewsArticleOut(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -55,7 +55,10 @@ class NewsRepository:
             select(NewsArticle)
             .options(selectinload(NewsArticle.tags))
             .where(
-                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at) >= since
+                or_(
+                    NewsArticle.published_at >= since,
+                    NewsArticle.fetched_at >= since,
+                )
             )
             .order_by(NewsArticle.id)
         )
@@ -81,11 +84,20 @@ class NewsRepository:
             await self.add_tag(article.id, stock_id)
         return len(to_add), len(to_remove)
 
-    async def list_recent_articles(self, limit: int = 50) -> list[NewsArticle]:
+    async def list_recent_articles(
+        self, limit: int = 50, *, recent_since: datetime
+    ) -> list[NewsArticle]:
         result = await self.db.execute(
             select(NewsArticle)
             .options(selectinload(NewsArticle.tags))
-            .order_by(NewsArticle.fetched_at.desc(), NewsArticle.id.desc())
+            .where(
+                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at)
+                >= recent_since
+            )
+            .order_by(
+                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at).desc(),
+                NewsArticle.id.desc(),
+            )
             .limit(limit)
         )
         return list(result.scalars().all())

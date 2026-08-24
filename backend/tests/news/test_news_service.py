@@ -15,7 +15,7 @@ from app.news.service import NewsService
 from app.shared.ml.sentiment import LexiconScorer
 from tests.news.conftest import FakeNewsClient, make_item
 
-BAD = "Reliance shares plunge as company reports massive loss and cuts dividend"
+BAD = "Reliance Industries shares plunge after massive loss and dividend cut"
 GOOD = "TCS profit surges, beats estimates and rallies to record high"
 NEUTRAL = "Markets closed for a public holiday on Monday"
 
@@ -119,8 +119,12 @@ async def test_aggregate_averages_multiple_articles(
 ) -> None:
     # Two Reliance articles on the same day: one positive, one negative → averaged.
     items = [
-        make_item("http://x/1", "Reliance surges on strong profit and record growth"),
-        make_item("http://x/2", "Reliance falls on weak results and rising losses"),
+        make_item(
+            "http://x/1", "Reliance Industries surges on strong profit and record growth"
+        ),
+        make_item(
+            "http://x/2", "Reliance Industries falls on weak results and rising losses"
+        ),
     ]
     await _service(db_session, items).ingest()
 
@@ -139,7 +143,12 @@ async def test_latest_universe_sentiment_excludes_stale_rows(
 ) -> None:
     await _service(
         db_session,
-        [make_item("http://x/stale", "Reliance profit surges to a record high")],
+        [
+            make_item(
+                "http://x/stale",
+                "Reliance Industries profit surges to a record high",
+            )
+        ],
     ).ingest()
     reliance = await MarketRepository(db_session).get_stock_by_symbol("RELIANCE.NS")
     db_session.add(
@@ -177,13 +186,15 @@ def _persisted_article(url: str, title: str, published_at: datetime) -> NewsArti
 
 
 @pytest.mark.asyncio
-async def test_ingest_repairs_legacy_false_tags_and_orphaned_sentiment(
+async def test_ingest_repairs_recently_fetched_stale_story_tags_and_sentiment(
     db_session: AsyncSession, seed_stocks: None
 ) -> None:
     now = datetime.now(tz=timezone.utc)
     ongc = Stock(symbol="ONGC.NS", name="OIL AND NATURAL GAS CORP.", is_active=True)
     article = _persisted_article(
-        "http://legacy/false-oil", "Crude oil rises on global tensions", now
+        "http://legacy/false-oil",
+        "Crude oil rises on global tensions",
+        datetime(2024, 4, 23, tzinfo=timezone.utc),
     )
     db_session.add_all([ongc, article])
     await db_session.flush()
@@ -220,7 +231,9 @@ async def test_ingest_adds_missing_tag_to_deduped_recent_article(
 ) -> None:
     now = datetime.now(tz=timezone.utc)
     article = _persisted_article(
-        "http://legacy/missing-reliance", "Reliance profit rises strongly", now
+        "http://legacy/missing-reliance",
+        "Reliance Industries profit rises strongly",
+        now,
     )
     db_session.add(article)
     await db_session.commit()
@@ -246,3 +259,25 @@ async def test_ingest_adds_missing_tag_to_deduped_recent_article(
     assert link is not None
     assert sentiment is not None
     assert sentiment.article_count == 1
+
+
+@pytest.mark.asyncio
+async def test_recent_news_excludes_stale_feed_entries_fetched_today(
+    db_session: AsyncSession, seed_stocks: None
+) -> None:
+    stale = _persisted_article(
+        "http://feed/stale",
+        "Old quarterly result",
+        datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    current = _persisted_article(
+        "http://feed/current",
+        "Current market session",
+        datetime(2024, 3, 1, tzinfo=timezone.utc),
+    )
+    db_session.add_all([stale, current])
+    await db_session.commit()
+
+    result = await _service(db_session, []).list_recent(limit=50)
+
+    assert [article.url for article in result] == ["http://feed/current"]
