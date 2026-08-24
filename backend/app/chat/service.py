@@ -366,7 +366,16 @@ def _build_draft(
             ),
             {},
         )
-        session = f" on {market_quote['date']}" if market_quote.get("date") else ""
+        session_date = market_quote.get("date") or next(
+            (
+                item.get("date")
+                for group in ("gainers", "losers")
+                for item in (context.market.get(group) or [])
+                if item.get("date")
+            ),
+            None,
+        )
+        session = f" on {session_date}" if session_date else ""
         evidence.append(
             f"{rec.symbol} closed at {_money(candidate.price)} and moved "
             f"{candidate.change_percent:+.2f}%{session}."

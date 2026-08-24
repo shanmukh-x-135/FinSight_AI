@@ -181,6 +181,19 @@ def test_unknown_company_question_does_not_invent_company_facts(
     assert all("UNKNOWNCO" not in item for item in draft.evidence)
 
 
+def test_company_uses_current_market_date_when_not_a_top_mover(
+    golden_context: RagContext,
+) -> None:
+    golden_context.market["gainers"][0]["symbol"] = "OTHER.NS"
+
+    draft = _build_draft("Why is RELIANCE moving?", [], golden_context)
+
+    assert any(
+        "RELIANCE.NS closed at ₹1,400 and moved +2.50% on 2026-08-21" in item
+        for item in draft.evidence
+    )
+
+
 def test_unsafe_news_reference_is_not_exposed(
     golden_context: RagContext,
 ) -> None:
