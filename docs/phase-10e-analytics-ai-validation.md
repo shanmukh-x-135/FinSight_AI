@@ -1,6 +1,6 @@
 # Phase 10E — Analytics and AI Validation
 
-Status: local validation complete; production representative-query verification pending deployment authorization.
+Status: deterministic production evaluation passed; live Gemini narration is blocked by an upstream provider request failure and Phase 10E is not signed off.
 
 ## Deterministic analytics audit
 
@@ -68,6 +68,48 @@ Run on 24 August 2026:
 
 PostgreSQL integration and production checks are separate gates.
 
-## Remaining Phase 10E gate
+## Production evaluation
 
-Phase 10F must not begin until these local changes are deployed with explicit authorization and the ten representative queries are exercised against production market/news/history data and a production-scoped test account. That run must confirm Gemini metadata, real source URLs, current dates/prices, graceful fallback, and no unsupported claims.
+The final application revision `764cf2c` passed GitHub Actions CI run
+`32765606289`, including fresh PostgreSQL migrations, the full backend suite,
+frontend lint/tests/build, and both container builds. Render and Vercel each
+reported successful deployments for that exact revision.
+
+An isolated production evaluator account was created without retaining or
+printing its credentials. Its portfolio contains one RELIANCE and one TCS
+holding whose cost bases were copied from their live production closes; its
+watchlist contains RELIANCE. The account and chat history were intentionally
+left intact because production user data must not be deleted.
+
+All ten required questions returned HTTP 200 against the Render API on 24
+August 2026. The evaluator confirmed:
+
+- all 50 active stocks and a current market date of 24 August 2026;
+- the expected retrieval source kinds for every question;
+- non-empty evidence and risk metadata with confidence bounded to 85%;
+- the exact live RELIANCE close and current-session date in company evidence;
+- exactly the two evaluator holdings in portfolio evidence;
+- an HTTP(S) news source URL;
+- identical five-slice retrieval for the EOD brief and its evidence follow-up;
+- explicit unavailable/uncertain-data language; and
+- a streaming response with the correct event-stream content type, a terminal
+  `complete` event, and no error event.
+
+Observed full-response latency ranged from 996 ms to 12,561 ms, with a median
+of 1,306.5 ms. No unsupported guarantee or price-target language was present.
+
+## Remaining Phase 10E blocker
+
+Every production query used the safe deterministic fallback. A separate
+sanitized diagnostic request reported `GeminiClient` as configured with model
+`gemini-3.6-flash`, two bounded attempts, zero provider responses, no token
+usage/model version, and a deterministic fallback after 197 ms. This is an
+upstream request failure, not a grounding rejection. Official Google Gen AI SDK
+documentation confirms that `gemini-3.6-flash` is a valid model identifier.
+
+The Render `GEMINI_API_KEY` and its Google project model access/quota must be
+verified in their respective control planes without exposing the key. After the
+external issue is corrected, at least one production request must return
+`backend=gemini`, a provider response count of one or more, a model version, and
+grounded prose before Phase 10E can be signed off. Phase 10F must not begin
+before that gate passes.
