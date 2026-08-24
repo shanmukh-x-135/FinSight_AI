@@ -113,4 +113,26 @@ describe("ChatPage", () => {
     expect(chatApi.clear).toHaveBeenCalledOnce();
     expect(await screen.findByText("Ask about the evidence")).toBeInTheDocument();
   });
+
+  it("opens external evidence sources without sharing the opener", async () => {
+    vi.mocked(chatApi.history).mockResolvedValue([
+      {
+        ...assistantMessage,
+        sources: [
+          {
+            kind: "news",
+            label: "Tagged news: Exchange RSS",
+            reference: "https://example.test/article",
+          },
+        ],
+      },
+    ]);
+    render(<ChatPage />);
+
+    const source = await screen.findByRole("link", {
+      name: "Tagged news: Exchange RSS",
+    });
+    expect(source).toHaveAttribute("target", "_blank");
+    expect(source).toHaveAttribute("rel", "noopener noreferrer");
+  });
 });

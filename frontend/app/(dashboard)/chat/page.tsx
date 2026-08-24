@@ -88,6 +88,8 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
                   <Link
                     key={`${source.kind}-${source.label}`}
                     href={source.reference}
+                    target={source.reference.startsWith("http") ? "_blank" : undefined}
+                    rel={source.reference.startsWith("http") ? "noopener noreferrer" : undefined}
                     className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
                   >
                     {source.label}

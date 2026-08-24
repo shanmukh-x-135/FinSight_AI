@@ -84,6 +84,11 @@ class ContextBuilder:
         notable = [
             {
                 "title": a.title,
+                "source": a.source,
+                "url": a.url,
+                "published_at": (
+                    a.published_at.isoformat() if a.published_at is not None else None
+                ),
                 "sentiment_label": a.sentiment_label,
                 "sentiment_score": a.sentiment_score,
                 "tags": a.tags,
@@ -187,4 +192,5 @@ class ContextBuilder:
             history=history,
             news=await self.build_news_slice(),
             watchlist=await self.build_watchlist_slice(user_id),
+            candidates=await self.build_candidates(history),
         )

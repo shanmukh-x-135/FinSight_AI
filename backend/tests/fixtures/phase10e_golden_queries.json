@@ -1,0 +1,78 @@
+{
+  "benchmark_version": "1.0",
+  "queries": [
+    {
+      "id": "market_move",
+      "question": "What moved the market today?",
+      "recent_questions": [],
+      "source_kinds": ["market"],
+      "evidence_contains": ["Market breadth", "Top gainer", "Top decliner", "close ₹1,400", "2026-08-21"]
+    },
+    {
+      "id": "portfolio_analysis",
+      "question": "Analyse my portfolio.",
+      "recent_questions": [],
+      "source_kinds": ["portfolio"],
+      "evidence_contains": ["Portfolio value", "Largest holding weight", "Portfolio holdings"]
+    },
+    {
+      "id": "portfolio_risks",
+      "question": "What are the main risks in my portfolio?",
+      "recent_questions": [],
+      "source_kinds": ["portfolio"],
+      "evidence_contains": ["Largest holding weight", "diversification"],
+      "risk_contains": ["Largest sector exposure"]
+    },
+    {
+      "id": "company_move",
+      "question": "Why is RELIANCE moving?",
+      "recent_questions": [],
+      "source_kinds": ["market", "news"],
+      "evidence_contains": ["RELIANCE.NS closed at ₹1,400", "moved +2.50% on 2026-08-21", "RELIANCE.NS: RSI"],
+      "risk_contains": ["No tagged headline establishes a news cause"]
+    },
+    {
+      "id": "historical_sessions",
+      "question": "Find historically similar market sessions.",
+      "recent_questions": [],
+      "source_kinds": ["market", "history"],
+      "evidence_contains": ["For 2026-08-21", "similar sessions closed higher"]
+    },
+    {
+      "id": "historical_regime",
+      "question": "Compare today with a similar historical regime.",
+      "recent_questions": [],
+      "source_kinds": ["market", "history"],
+      "evidence_contains": ["Market breadth", "similar sessions closed higher"],
+      "risk_contains": ["Historical analogues are scenarios"]
+    },
+    {
+      "id": "signals",
+      "question": "Summarise the strongest bullish and bearish signals.",
+      "recent_questions": [],
+      "source_kinds": ["market", "history", "news"],
+      "evidence_contains": ["Strongest bullish signal", "Strongest bearish signal"]
+    },
+    {
+      "id": "research_brief",
+      "question": "Generate today’s EOD research brief.",
+      "recent_questions": [],
+      "source_kinds": ["portfolio", "watchlist", "market", "history", "news"],
+      "evidence_contains": ["Portfolio value", "Market breadth", "similar sessions", "Strongest bullish signal"]
+    },
+    {
+      "id": "follow_up_evidence",
+      "question": "What evidence supports this conclusion?",
+      "recent_questions": ["Find historically similar market sessions."],
+      "source_kinds": ["market", "history"],
+      "evidence_contains": ["similar sessions closed higher"]
+    },
+    {
+      "id": "uncertainty",
+      "question": "What data is unavailable or uncertain?",
+      "recent_questions": [],
+      "source_kinds": ["portfolio", "watchlist", "market", "history", "news"],
+      "evidence_contains": ["Unavailable data", "complete indicators"]
+    }
+  ]
+}
