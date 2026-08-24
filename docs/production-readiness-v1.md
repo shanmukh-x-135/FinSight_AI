@@ -53,10 +53,30 @@ continues to collapse cross-feed copies during ingestion.
 - Overview unavailable state and separate mixed-coverage count;
 - targeted news, dashboard API, intelligence, and frontend component tests.
 
+### Scheduled refresh observation (2026-08-24)
+
+Both regular GitHub Actions EOD attempts completed successfully on deployed
+commit `fcc0ff2` (runs `32723382503` and `32736400811`). The later run completed
+all automatic EOD steps in 36 seconds. Public read endpoints subsequently
+reported:
+
+- 98 real persisted articles: 85 dated 2026-08-24 and 13 older feed entries;
+- article sentiment distribution: 51 positive, 34 neutral, 13 negative;
+- 35 tagged articles, 63 untagged articles, and 59 stock associations;
+- 24 of 50 active equities with a latest sentiment value and 26 unavailable;
+- stock-level distribution among the 24 observed values: 14 positive,
+  6 neutral, and 4 negative.
+
+This proves that the normal scheduled path can fetch, score, persist, and
+aggregate current news after the retired-symbol blocker was removed. It does
+**not** sign off tagging correctness: `fcc0ff2` predates the phrase-linker and
+reconciliation fixes, and the live associations still contain the audited
+generic-token false positives. A deployment and one normal post-deployment EOD
+run are required to reconcile those persisted links before Part 1 passes.
+
 ### Remaining exit evidence
 
 The normal production news/sentiment path must still be invoked and its
 post-run counts verified after these changes are deployed. This is an operator
-action: repository policy forbids an automatic push, and the local GitHub CLI
-credential is currently invalid. Part 1 is not signed off and Phase 10E has not
-started.
+action: repository policy forbids an automatic push. Part 1 is not signed off
+and Phase 10E has not started.
