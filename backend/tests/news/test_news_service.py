@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.market.models import DailyPrice
 from app.market.repository import MarketRepository
 from app.news.models import NewsArticle, SentimentDaily
 from app.news.service import NewsService
@@ -42,7 +43,8 @@ async def test_ingest_scores_tags_and_aggregates(
     reliance = await MarketRepository(db_session).get_stock_by_symbol("RELIANCE.NS")
     row = await db_session.scalar(
         select(SentimentDaily).where(
-            SentimentDaily.stock_id == reliance.id, SentimentDaily.date == date(2024, 3, 1)
+            SentimentDaily.stock_id == reliance.id,
+            SentimentDaily.date == date(2024, 3, 1),
         )
     )
     assert row is not None
@@ -57,9 +59,7 @@ async def test_ingest_scores_tags_and_aggregates(
 
 
 @pytest.mark.asyncio
-async def test_reingest_deduplicates(
-    db_session: AsyncSession, seed_stocks: None
-) -> None:
+async def test_reingest_deduplicates(db_session: AsyncSession, seed_stocks: None) -> None:
     items = [make_item("http://x/1", BAD), make_item("http://x/2", GOOD)]
     await _service(db_session, items).ingest()
     second = await _service(db_session, items).ingest()  # same URLs
@@ -131,3 +131,30 @@ async def test_aggregate_averages_multiple_articles(
     assert row.article_count == 2
     assert row.positive_count == 1
     assert row.negative_count == 1
+
+
+@pytest.mark.asyncio
+async def test_latest_universe_sentiment_excludes_stale_rows(
+    db_session: AsyncSession, seed_stocks: None
+) -> None:
+    await _service(
+        db_session,
+        [make_item("http://x/stale", "Reliance profit surges to a record high")],
+    ).ingest()
+    reliance = await MarketRepository(db_session).get_stock_by_symbol("RELIANCE.NS")
+    db_session.add(
+        DailyPrice(
+            stock_id=reliance.id,
+            date=date(2024, 3, 20),
+            open=100,
+            high=101,
+            low=99,
+            close=100,
+            volume=1000,
+        )
+    )
+    await db_session.commit()
+
+    latest = await _service(db_session, []).list_latest_sentiment()
+    by_symbol = {row.symbol: row.latest_sentiment for row in latest}
+    assert by_symbol["RELIANCE.NS"] is None

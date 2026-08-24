@@ -93,6 +93,7 @@ class Settings(BaseSettings):
     # FinBERT auto-falls back to lexicon if transformers/torch are unavailable.
     sentiment_backend: str = "lexicon"
     news_max_articles_per_feed: int = 50
+    news_recent_window_days: int = Field(default=7, ge=1, le=30)
 
     # ----- AI intelligence / RAG (Phase 6) ---------------------------------
     # LLM produces prose only; evidence/confidence/risks/rankings are deterministic.

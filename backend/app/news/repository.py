@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -102,11 +102,17 @@ class NewsRepository:
         )
         result.scalars().all()
 
-    async def get_latest_sentiment_map(self) -> dict[int, float]:
-        """Most-recent avg_sentiment per stock (for context building)."""
+    async def get_latest_sentiment_map(
+        self, *, recent_since: date | None = None
+    ) -> dict[int, float]:
+        """Most-recent average per stock, optionally bounded to recent sessions."""
+        statement = select(
+            SentimentDaily.stock_id, SentimentDaily.date, SentimentDaily.avg_sentiment
+        )
+        if recent_since is not None:
+            statement = statement.where(SentimentDaily.date >= recent_since)
         result = await self.db.execute(
-            select(SentimentDaily.stock_id, SentimentDaily.date, SentimentDaily.avg_sentiment)
-            .order_by(SentimentDaily.stock_id, SentimentDaily.date.asc())
+            statement.order_by(SentimentDaily.stock_id, SentimentDaily.date.asc())
         )
         latest: dict[int, float] = {}
         for stock_id, _day, value in result.all():
@@ -127,9 +133,7 @@ class NewsRepository:
         result = await self.db.execute(
             select(
                 SentimentDaily.date,
-                func.sum(
-                    SentimentDaily.avg_sentiment * SentimentDaily.article_count
-                )
+                func.sum(SentimentDaily.avg_sentiment * SentimentDaily.article_count)
                 / count,
                 count,
                 func.sum(SentimentDaily.positive_count),
@@ -142,3 +146,72 @@ class NewsRepository:
             .order_by(SentimentDaily.date.asc())
         )
         return list(result.all())
+
+    async def diagnostics(
+        self, *, recent_since: datetime
+    ) -> dict[str, int | datetime | None]:
+        """Return aggregate-only operational facts; never load article bodies."""
+        article_row = (
+            await self.db.execute(
+                select(
+                    func.count(NewsArticle.id),
+                    func.sum(
+                        case(
+                            (
+                                func.coalesce(
+                                    NewsArticle.published_at, NewsArticle.fetched_at
+                                )
+                                >= recent_since,
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    func.sum(
+                        case((NewsArticle.sentiment_label == "positive", 1), else_=0)
+                    ),
+                    func.sum(
+                        case((NewsArticle.sentiment_label == "neutral", 1), else_=0)
+                    ),
+                    func.sum(
+                        case((NewsArticle.sentiment_label == "negative", 1), else_=0)
+                    ),
+                    func.max(NewsArticle.fetched_at),
+                )
+            )
+        ).one()
+        linked_articles = await self.db.scalar(
+            select(func.count(func.distinct(NewsArticleStock.article_id)))
+        )
+        associations = await self.db.scalar(select(func.count(NewsArticleStock.id)))
+        active_linked = await self.db.scalar(
+            select(func.count(func.distinct(NewsArticleStock.stock_id)))
+            .join(Stock, Stock.id == NewsArticleStock.stock_id)
+            .where(Stock.is_active.is_(True))
+        )
+        sentiment_rows = await self.db.scalar(select(func.count(SentimentDaily.id)))
+        active_recent_sentiment = await self.db.scalar(
+            select(func.count(func.distinct(SentimentDaily.stock_id)))
+            .join(Stock, Stock.id == SentimentDaily.stock_id)
+            .where(
+                Stock.is_active.is_(True),
+                SentimentDaily.date >= recent_since.date(),
+            )
+        )
+        latest_sentiment_at = await self.db.scalar(
+            select(func.max(SentimentDaily.updated_at))
+        )
+        return {
+            "total_articles": article_row[0] or 0,
+            "recent_articles": article_row[1] or 0,
+            "positive_articles": article_row[2] or 0,
+            "neutral_articles": article_row[3] or 0,
+            "negative_articles": article_row[4] or 0,
+            "latest_news_ingestion_at": article_row[5],
+            "linked_articles": linked_articles or 0,
+            "article_stock_associations": associations or 0,
+            "distinct_active_stocks_with_links": active_linked or 0,
+            "sentiment_rows": sentiment_rows or 0,
+            "active_stocks_with_recent_sentiment": active_recent_sentiment or 0,
+            "latest_sentiment_at": latest_sentiment_at,
+        }

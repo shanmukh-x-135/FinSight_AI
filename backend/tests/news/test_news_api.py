@@ -24,6 +24,9 @@ async def test_ingest_requires_auth(client: AsyncClient) -> None:
     resp = await client.post("/api/v1/admin/jobs/news-ingestion/run")
     assert resp.status_code == 401
 
+    status = await client.get("/api/v1/admin/jobs/news-ingestion/status")
+    assert status.status_code == 401
+
 
 @pytest.mark.asyncio
 async def test_ingest_then_read(
@@ -63,6 +66,47 @@ async def test_ingest_then_read(
     assert sector_data["sector"] == "Energy"
     assert sector_data["latest_sentiment"] < 0
     assert sector_data["series"][-1]["article_count"] == 1
+
+    status = await client.get(
+        "/api/v1/admin/jobs/news-ingestion/status?recent_window_days=30",
+        headers=admin_headers,
+    )
+    assert status.status_code == 200
+    diagnostics = status.json()["data"]
+    assert diagnostics == {
+        "recent_window_days": 30,
+        "total_articles": 2,
+        "recent_articles": 0,
+        "linked_articles": 2,
+        "article_stock_associations": 2,
+        "distinct_active_stocks_with_links": 2,
+        "sentiment_rows": 2,
+        "positive_articles": 1,
+        "neutral_articles": 0,
+        "negative_articles": 1,
+        "active_stocks_with_recent_sentiment": 0,
+        "latest_news_ingestion_at": diagnostics["latest_news_ingestion_at"],
+        "latest_sentiment_at": diagnostics["latest_sentiment_at"],
+    }
+    assert diagnostics["latest_news_ingestion_at"] is not None
+    assert diagnostics["latest_sentiment_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_news_diagnostics_empty(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    response = await client.get(
+        "/api/v1/admin/jobs/news-ingestion/status", headers=admin_headers
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["total_articles"] == 0
+    assert data["recent_articles"] == 0
+    assert data["linked_articles"] == 0
+    assert data["sentiment_rows"] == 0
+    assert data["latest_news_ingestion_at"] is None
+    assert data["latest_sentiment_at"] is None
 
 
 @pytest.mark.asyncio

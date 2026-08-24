@@ -6,18 +6,20 @@ from app.news.tagging import build_aliases, tag_article
 
 
 def test_aliases_drop_generic_and_short_tokens() -> None:
-    assert build_aliases("RELIANCE.NS", "RELIANCE INDUSTRIES LTD") == {"RELIANCE"}
-    # "HDFC" survives (BANK/LTD are stopwords); the ticker base is kept too.
-    assert build_aliases("HDFCBANK.NS", "HDFC BANK LTD") == {"HDFCBANK", "HDFC"}
+    reliance = build_aliases("RELIANCE.NS", "RELIANCE INDUSTRIES LTD")
+    assert {"RELIANCE", "RELIANCE INDUSTRIES"} <= reliance
+    hdfc = build_aliases("HDFCBANK.NS", "HDFC BANK LTD")
+    assert {"HDFCBANK", "HDFC BANK"} <= hdfc
+    assert "HDFC" not in hdfc
 
 
 def test_aliases_all_filtered_out_is_empty() -> None:
-    # Short ticker + only stopwords → no aliases → this stock can never be tagged.
-    assert build_aliases("IT.NS", "IT LTD") == set()
+    # Short ticker + only a legal suffix leaves no safe match phrase.
+    assert build_aliases("IT.NS", "LTD") == set()
 
 
 def test_tag_matches_by_name_token() -> None:
-    aliases = {1: {"RELIANCE"}, 2: {"HDFCBANK", "HDFC"}}
+    aliases = {1: {"RELIANCE"}, 2: {"HDFCBANK", "HDFC BANK"}}
     assert tag_article("Reliance shares surge today", "", aliases) == {1}
     assert tag_article("HDFC Bank posts record profit", "", aliases) == {2}
 
@@ -42,6 +44,39 @@ def test_conglomerate_group_prefix_is_not_an_alias() -> None:
     # "TATA" spans many companies → must be dropped so "Tata Power" doesn't tag TCS.
     aliases = build_aliases("TCS.NS", "TATA CONSULTANCY SERVICES")
     assert "TATA" not in aliases
-    assert {"TCS", "CONSULTANCY"} <= aliases
+    assert {"TCS", "TATA CONSULTANCY SERVICES"} <= aliases
     assert tag_article("Tata Power signs a new deal", "", {2: aliases}) == set()
     assert tag_article("TCS wins a large contract", "", {2: aliases}) == {2}
+
+
+def test_generic_name_tokens_do_not_create_false_positive_tags() -> None:
+    ongc = build_aliases("ONGC.NS", "OIL AND NATURAL GAS CORP.")
+    hdfc_life = build_aliases("HDFCLIFE.NS", "HDFC LIFE INS CO LTD")
+    techm = build_aliases("TECHM.NS", "TECH MAHINDRA LIMITED")
+
+    assert "OIL" not in ongc
+    assert "LIFE" not in hdfc_life
+    assert "TECH" not in techm
+    aliases = {1: ongc, 2: hdfc_life, 3: techm}
+    assert (
+        tag_article("Crude oil rises as global tensions increase", "", aliases) == set()
+    )
+    assert (
+        tag_article("Insurer reports stronger life premium growth", "", aliases) == set()
+    )
+    assert tag_article("Technology IPO calendar expands", "", aliases) == set()
+
+
+def test_shared_brand_requires_the_company_phrase() -> None:
+    bank = build_aliases("HDFCBANK.NS", "HDFC BANK LTD")
+    life = build_aliases("HDFCLIFE.NS", "HDFC LIFE INS CO LTD")
+    aliases = {1: bank, 2: life}
+
+    assert tag_article("HDFC Bank raises deposit rates", "", aliases) == {1}
+    assert tag_article("HDFC Life reports premium growth", "", aliases) == {2}
+
+
+def test_hyphenated_ticker_uses_reviewed_readable_alias() -> None:
+    aliases = build_aliases("BAJAJ-AUTO.NS", "BAJAJ AUTO LIMITED")
+    assert "BAJAJ AUTO" in aliases
+    assert tag_article("Bajaj Auto motorcycle exports rise", "", {1: aliases}) == {1}

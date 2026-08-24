@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import statistics
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ from app.news.schemas import (
     IngestNewsResult,
     LatestSentimentOut,
     NewsArticleOut,
+    NewsDiagnosticsOut,
     SectorSentimentOut,
     SentimentDailyOut,
     StockSentimentOut,
@@ -57,7 +58,9 @@ class NewsService:
     async def ingest(self) -> IngestNewsResult:
         items = await asyncio.to_thread(self.client.fetch)
 
-        item_keys = [(item, article_fingerprint(item.title, item.published_at)) for item in items]
+        item_keys = [
+            (item, article_fingerprint(item.title, item.published_at)) for item in items
+        ]
         existing_urls, existing_fingerprints = await self.repo.existing_article_keys(
             [item.url for item, _ in item_keys], [key for _, key in item_keys]
         )
@@ -131,7 +134,7 @@ class NewsService:
         rows = await self.repo.all_tagged_rows()
         buckets: dict[tuple[int, date], list[tuple[float, str]]] = defaultdict(list)
         for stock_id, published_at, fetched_at, score, label in rows:
-            when = (published_at or fetched_at)
+            when = published_at or fetched_at
             buckets[(stock_id, when.date())].append((score, label))
 
         for (stock_id, day), scored in buckets.items():
@@ -188,7 +191,9 @@ class NewsService:
 
     async def list_latest_sentiment(self) -> list[LatestSentimentOut]:
         stocks = await self.market.list_active_stocks()
-        latest = await self.repo.get_latest_sentiment_map()
+        as_of = await self.market.get_latest_active_price_date() or date.today()
+        recent_since = as_of - timedelta(days=settings.news_recent_window_days - 1)
+        latest = await self.repo.get_latest_sentiment_map(recent_since=recent_since)
         return [
             LatestSentimentOut(
                 symbol=stock.symbol,
@@ -217,3 +222,8 @@ class NewsService:
             latest_sentiment=series[-1].avg_sentiment if series else None,
             series=series,
         )
+
+    async def get_diagnostics(self, recent_window_days: int = 7) -> NewsDiagnosticsOut:
+        recent_since = datetime.now(tz=timezone.utc) - timedelta(days=recent_window_days)
+        values = await self.repo.diagnostics(recent_since=recent_since)
+        return NewsDiagnosticsOut(recent_window_days=recent_window_days, **values)

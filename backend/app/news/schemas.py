@@ -51,3 +51,19 @@ class IngestNewsResult(BaseModel):
     new_articles: int
     tagged_articles: int
     sentiment_days_updated: int
+
+
+class NewsDiagnosticsOut(BaseModel):
+    recent_window_days: int
+    total_articles: int
+    recent_articles: int
+    linked_articles: int
+    article_stock_associations: int
+    distinct_active_stocks_with_links: int
+    sentiment_rows: int
+    positive_articles: int
+    neutral_articles: int
+    negative_articles: int
+    active_stocks_with_recent_sentiment: int
+    latest_news_ingestion_at: datetime | None
+    latest_sentiment_at: datetime | None

@@ -29,16 +29,12 @@ async def recent_news(
     return envelope(data=await NewsService(db).list_recent(limit))
 
 
-@news_router.get(
-    "/sentiment", summary="Latest sentiment for the active stock universe"
-)
+@news_router.get("/sentiment", summary="Latest sentiment for the active stock universe")
 async def latest_sentiment(db: AsyncSession = Depends(get_db)) -> dict:
     return envelope(data=await NewsService(db).list_latest_sentiment())
 
 
-@news_router.get(
-    "/sentiment/{symbol}", summary="Daily sentiment series for a stock"
-)
+@news_router.get("/sentiment/{symbol}", summary="Daily sentiment series for a stock")
 async def stock_sentiment(symbol: str, db: AsyncSession = Depends(get_db)) -> dict:
     return envelope(data=await NewsService(db).get_stock_sentiment(symbol))
 
@@ -64,3 +60,17 @@ async def run_news_ingestion(
 ) -> dict:
     result = await NewsService(db, scorer=scorer, client=client).ingest()
     return envelope(data=result, message="News ingestion complete.")
+
+
+@news_admin_router.get(
+    "/jobs/news-ingestion/status",
+    summary="Inspect aggregate news-ingestion and sentiment health",
+    description="Returns counts and timestamps only; article content is never included.",
+)
+async def news_ingestion_status(
+    _user: User = Depends(get_admin_user),
+    recent_window_days: int = Query(7, ge=1, le=30),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await NewsService(db).get_diagnostics(recent_window_days)
+    return envelope(data=result, message="News ingestion status loaded.")

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from app.market.service import MarketQueryService
 from app.news.repository import NewsRepository
 from app.portfolio.repository import PortfolioRepository
 from app.portfolio.service import PortfolioService
+from config.settings import settings
 
 
 @dataclass
@@ -58,7 +60,9 @@ class ContextBuilder:
         return {
             "query_date": result.query_date.isoformat(),
             "query_summary": result.query_summary.model_dump(mode="json"),
-            "similar_sessions": [s.model_dump(mode="json") for s in result.similar_sessions],
+            "similar_sessions": [
+                s.model_dump(mode="json") for s in result.similar_sessions
+            ],
             "statistics": result.statistics.model_dump(mode="json"),
         }
 
@@ -68,7 +72,9 @@ class ContextBuilder:
         portfolios = await PortfolioRepository(self.db).list_portfolios(user_id)
         if not portfolios:
             return None
-        analytics = await PortfolioService(self.db).get_analytics(user_id, portfolios[0].id)
+        analytics = await PortfolioService(self.db).get_analytics(
+            user_id, portfolios[0].id
+        )
         return analytics.model_dump(mode="json")
 
     async def build_news_slice(self) -> dict:
@@ -93,7 +99,11 @@ class ContextBuilder:
 
     async def build_candidates(self, history_slice: dict | None) -> list[CandidateInput]:
         stocks = await self.market_repo.list_active_stocks()
-        sentiment_map = await self.news_repo.get_latest_sentiment_map()
+        as_of = await self.market_repo.get_latest_active_price_date() or date.today()
+        recent_since = as_of - timedelta(days=settings.news_recent_window_days - 1)
+        sentiment_map = await self.news_repo.get_latest_sentiment_map(
+            recent_since=recent_since
+        )
         snapshots = await self.market_repo.get_market_snapshots(
             (stock.id for stock in stocks), known_stocks=stocks
         )
@@ -130,12 +140,10 @@ class ContextBuilder:
         for stock_id, (s, price, change) in quotes.items():
             ind = snapshots[stock_id].indicator
             ema20_dist = (
-                (price - ind.ema_20) / ind.ema_20 * 100
-                if ind and ind.ema_20 else None
+                (price - ind.ema_20) / ind.ema_20 * 100 if ind and ind.ema_20 else None
             )
             ema50_dist = (
-                (price - ind.ema_50) / ind.ema_50 * 100
-                if ind and ind.ema_50 else None
+                (price - ind.ema_50) / ind.ema_50 * 100 if ind and ind.ema_50 else None
             )
             atr_pct = (ind.atr_14 / price * 100) if ind and ind.atr_14 and price else None
             candidates.append(

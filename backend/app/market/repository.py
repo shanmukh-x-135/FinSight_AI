@@ -109,6 +109,14 @@ class MarketRepository:
         )
         return list(result.scalars().all())
 
+    async def get_latest_active_price_date(self) -> date | None:
+        """Latest canonical market session represented by any active stock."""
+        return await self.db.scalar(
+            select(func.max(DailyPrice.date))
+            .join(Stock, Stock.id == DailyPrice.stock_id)
+            .where(Stock.is_active.is_(True))
+        )
+
     async def list_approved_equities(self, index_code: str) -> list[Stock]:
         """Return the deterministic provider-ticker universe approved in the DB."""
         result = await self.db.execute(

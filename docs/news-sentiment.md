@@ -44,14 +44,17 @@ FinBERT with `pip install -r requirements-ml.txt` and `SENTIMENT_BACKEND=finbert
 
 ### 3. Company tagging (`news/tagging.py`)
 
-Pure, whole-word (token) matching of stock aliases (ticker base + name tokens)
-against the article. False-positive guards (the roadmap's noted risk):
-- aliases shorter than 3 chars are dropped (short tickers colliding with words);
-- generic tokens (`LTD`, `BANK`, `SERVICES`, …) are dropped;
-- **conglomerate group prefixes** (`TATA`, `ADANI`, `BAJAJ`, …) are dropped — they
-  span many listed entities, so matching on them over-tags (e.g. "Tata Power"
-  would wrongly tag TCS). Match on the company-specific token instead
-  (`CONSULTANCY` for TCS). *This exact bug was caught in live testing and fixed.*
+Pure, ordered whole-phrase matching uses the ticker, cleaned official company
+name, and a reviewed set of common publisher names for current NIFTY 50
+constituents. The official-name/ticker fallback continues to support future
+dynamic-universe changes even before a shortened publisher name is reviewed.
+
+The earlier 15-stock linker treated every company-name token as an alias. At 50
+stocks that made generic words such as `OIL`, `LIFE`, `INSURANCE`, `PASS`, and
+`TECH` produce false associations. Phrase matching now requires identities such
+as `ONGC`, `HDFC LIFE`, or `TECH MAHINDRA`; shared group names such as `HDFC` and
+`TATA` do not identify a company by themselves. Aliases shorter than three
+characters and legal suffix-only names remain excluded.
 
 Tagging is best-effort and imperfect by nature (documented limitation).
 
@@ -60,6 +63,12 @@ Tagging is best-effort and imperfect by nature (documented limitation).
 `sentiment_daily` = per stock, per day: average article sentiment + positive/
 negative/neutral counts, recomputed idempotently from all tagged articles. This
 is the read surface consumed by the history module.
+
+Universe-wide “latest sentiment” and RAG candidate sentiment are restricted to
+`NEWS_RECENT_WINDOW_DAYS` (seven calendar days by default), anchored to the
+latest canonical market session. A stock without a row in that window returns
+`null`; it is not converted to neutral. Full historical series remain available
+on the stock sentiment endpoint.
 
 ## Closing the Phase 4 loop
 
@@ -86,6 +95,7 @@ added for that date and the index rebuilt.
 | `GET /api/v1/news?limit=` | Recent articles with sentiment + tags |
 | `GET /api/v1/news/sentiment/{symbol}` | Daily sentiment series for a stock |
 | `GET /api/v1/news/sentiment/sector/{sector}` | Article-weighted daily sentiment for a sector |
+| `GET /api/v1/admin/jobs/news-ingestion/status?recent_window_days=` | Aggregate counts and latest ingestion/sentiment timestamps, with no article content (administrator only) |
 | `POST /api/v1/admin/jobs/news-ingestion/run` | Ingest + score + tag + aggregate (administrator only) |
 
 ## Verification
@@ -96,8 +106,15 @@ added for that date and the index rebuilt.
 - **Integration**: fake feed → ingest → score → tag → aggregate; **a bad-news day
   yields negative aggregate sentiment** (DoD); re-ingest dedupes; multi-article
   averaging.
-- **Live**: 100 real RSS articles ingested; correct tags after the group-prefix
-  fix (only genuine mentions tag); FinBERT verified; Phase 4 loop closure proven.
+- **Production-readiness feed audit (2026-08-23)**: configured sources returned
+  100 real current articles. The corrected linker found 12 relevant articles,
+  20 plausible stock associations across 13 active equities; deterministic
+  classification of the tagged set produced 8 positive, 2 neutral, and 2
+  negative articles. These are provider-input audit numbers, not claims that the
+  rows had already been persisted to production.
+- **Missing-data UI**: the Overview renders a compact unavailable state when no
+  active stock has recent sentiment. Mixed coverage reports the unavailable
+  stock count separately from observed neutral scores.
 
 ~94% coverage across news modules (FinBERT internals excluded — verified live,
 not loaded in unit tests).
@@ -106,5 +123,8 @@ not loaded in unit tests).
 
 - Company-specific news for a small universe is sparse in general market feeds;
   tagging yields few hits per fetch (expected).
+- Publisher aliases are deterministic and reviewed. A newly added constituent
+  can match by ticker or full official name immediately, but a publisher-specific
+  shortened brand may require an alias addition with a regression test.
 - Fingerprinting intentionally uses exact normalized headlines rather than fuzzy
   semantic matching; materially rewritten headlines can remain distinct.
