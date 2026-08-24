@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -50,6 +50,37 @@ class NewsRepository:
         )
         await self.db.execute(stmt.on_conflict_do_nothing())
 
+    async def list_articles_since(self, since: datetime) -> list[NewsArticle]:
+        result = await self.db.execute(
+            select(NewsArticle)
+            .options(selectinload(NewsArticle.tags))
+            .where(
+                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at) >= since
+            )
+            .order_by(NewsArticle.id)
+        )
+        return list(result.scalars().all())
+
+    async def reconcile_tags(
+        self, article: NewsArticle, desired_stock_ids: set[int]
+    ) -> tuple[int, int]:
+        """Make one article's associations exactly match deterministic tagging."""
+        current = {tag.stock_id for tag in article.tags}
+        to_add = desired_stock_ids - current
+        to_remove = current - desired_stock_ids
+        if to_remove:
+            await self.db.execute(
+                delete(NewsArticleStock)
+                .where(
+                    NewsArticleStock.article_id == article.id,
+                    NewsArticleStock.stock_id.in_(to_remove),
+                )
+                .execution_options(synchronize_session=False)
+            )
+        for stock_id in to_add:
+            await self.add_tag(article.id, stock_id)
+        return len(to_add), len(to_remove)
+
     async def list_recent_articles(self, limit: int = 50) -> list[NewsArticle]:
         result = await self.db.execute(
             select(NewsArticle)
@@ -71,6 +102,21 @@ class NewsRepository:
             ).join(NewsArticle, NewsArticle.id == NewsArticleStock.article_id)
         )
         return list(result.all())
+
+    async def sentiment_row_keys(self) -> list[tuple[int, int, date]]:
+        result = await self.db.execute(
+            select(SentimentDaily.id, SentimentDaily.stock_id, SentimentDaily.date)
+        )
+        return list(result.all())
+
+    async def delete_sentiment_rows(self, row_ids: list[int]) -> None:
+        if not row_ids:
+            return
+        await self.db.execute(
+            delete(SentimentDaily)
+            .where(SentimentDaily.id.in_(row_ids))
+            .execution_options(synchronize_session=False)
+        )
 
     # ----- Daily sentiment aggregate --------------------------------------
     async def upsert_sentiment_daily(

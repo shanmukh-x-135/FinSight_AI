@@ -50,6 +50,9 @@ class IngestNewsResult(BaseModel):
     fetched: int
     new_articles: int
     tagged_articles: int
+    articles_reconciled: int
+    tags_added: int
+    tags_removed: int
     sentiment_days_updated: int
 
 

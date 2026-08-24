@@ -115,17 +115,40 @@ class NewsService:
                 await self.repo.add_tag(article_id, sid)
             if stock_ids:
                 tagged += 1
+        retag_since = datetime.now(tz=timezone.utc) - timedelta(
+            days=settings.news_retag_window_days
+        )
+        articles_reconciled = 0
+        tags_added = 0
+        tags_removed = 0
+        for article in await self.repo.list_articles_since(retag_since):
+            desired = tag_article(article.title, article.summary, aliases)
+            added, removed = await self.repo.reconcile_tags(article, desired)
+            if added or removed:
+                articles_reconciled += 1
+                tags_added += added
+                tags_removed += removed
         await self.db.commit()
 
         days = await self.aggregate()
         logger.info(
             "news_ingest_done",
-            extra={"fetched": len(items), "new": inserted, "tagged": tagged},
+            extra={
+                "fetched": len(items),
+                "new": inserted,
+                "tagged": tagged,
+                "articles_reconciled": articles_reconciled,
+                "tags_added": tags_added,
+                "tags_removed": tags_removed,
+            },
         )
         return IngestNewsResult(
             fetched=len(items),
             new_articles=inserted,
             tagged_articles=tagged,
+            articles_reconciled=articles_reconciled,
+            tags_added=tags_added,
+            tags_removed=tags_removed,
             sentiment_days_updated=days,
         )
 
@@ -136,6 +159,14 @@ class NewsService:
         for stock_id, published_at, fetched_at, score, label in rows:
             when = published_at or fetched_at
             buckets[(stock_id, when.date())].append((score, label))
+
+        canonical_keys = set(buckets)
+        orphan_ids = [
+            row_id
+            for row_id, stock_id, day in await self.repo.sentiment_row_keys()
+            if (stock_id, day) not in canonical_keys
+        ]
+        await self.repo.delete_sentiment_rows(orphan_ids)
 
         for (stock_id, day), scored in buckets.items():
             avg = statistics.fmean(s for s, _ in scored)

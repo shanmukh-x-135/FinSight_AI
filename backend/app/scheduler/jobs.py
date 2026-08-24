@@ -63,6 +63,9 @@ async def _run_news_step(_target_trading_date: date) -> dict[str, int]:
         "fetched": result.fetched,
         "new_articles": result.new_articles,
         "tagged_articles": result.tagged_articles,
+        "articles_reconciled": result.articles_reconciled,
+        "tags_added": result.tags_added,
+        "tags_removed": result.tags_removed,
         "sentiment_days_updated": result.sentiment_days_updated,
     }
 

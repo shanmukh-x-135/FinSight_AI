@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     sentiment_backend: str = "lexicon"
     news_max_articles_per_feed: int = 50
     news_recent_window_days: int = Field(default=7, ge=1, le=30)
+    news_retag_window_days: int = Field(default=30, ge=1, le=90)
 
     # ----- AI intelligence / RAG (Phase 6) ---------------------------------
     # LLM produces prose only; evidence/confidence/risks/rankings are deterministic.

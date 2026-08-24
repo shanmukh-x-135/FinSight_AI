@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice
+from app.market.models import DailyPrice, Stock
 from app.market.repository import MarketRepository
-from app.news.models import NewsArticle, SentimentDaily
+from app.news.models import NewsArticle, NewsArticleStock, SentimentDaily
 from app.news.service import NewsService
 from app.shared.ml.sentiment import LexiconScorer
 from tests.news.conftest import FakeNewsClient, make_item
@@ -158,3 +158,91 @@ async def test_latest_universe_sentiment_excludes_stale_rows(
     latest = await _service(db_session, []).list_latest_sentiment()
     by_symbol = {row.symbol: row.latest_sentiment for row in latest}
     assert by_symbol["RELIANCE.NS"] is None
+
+
+def _persisted_article(url: str, title: str, published_at: datetime) -> NewsArticle:
+    return NewsArticle(
+        source="Legacy Feed",
+        url=url,
+        fingerprint=(url.encode().hex() + "0" * 64)[:64],
+        title=title,
+        summary="",
+        published_at=published_at,
+        sentiment_label="positive",
+        sentiment_score=0.5,
+        sentiment_positive=0.75,
+        sentiment_negative=0.1,
+        sentiment_neutral=0.15,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ingest_repairs_legacy_false_tags_and_orphaned_sentiment(
+    db_session: AsyncSession, seed_stocks: None
+) -> None:
+    now = datetime.now(tz=timezone.utc)
+    ongc = Stock(symbol="ONGC.NS", name="OIL AND NATURAL GAS CORP.", is_active=True)
+    article = _persisted_article(
+        "http://legacy/false-oil", "Crude oil rises on global tensions", now
+    )
+    db_session.add_all([ongc, article])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            NewsArticleStock(article_id=article.id, stock_id=ongc.id),
+            SentimentDaily(
+                stock_id=ongc.id,
+                date=now.date(),
+                avg_sentiment=0.5,
+                article_count=1,
+                positive_count=1,
+                negative_count=0,
+                neutral_count=0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    result = await _service(db_session, []).ingest()
+
+    assert result.new_articles == 0
+    assert result.articles_reconciled == 1
+    assert result.tags_added == 0
+    assert result.tags_removed == 1
+    assert await db_session.scalar(select(func.count(NewsArticleStock.id))) == 0
+    assert await db_session.scalar(select(func.count(SentimentDaily.id))) == 0
+    assert await db_session.scalar(select(func.count(NewsArticle.id))) == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_adds_missing_tag_to_deduped_recent_article(
+    db_session: AsyncSession, seed_stocks: None
+) -> None:
+    now = datetime.now(tz=timezone.utc)
+    article = _persisted_article(
+        "http://legacy/missing-reliance", "Reliance profit rises strongly", now
+    )
+    db_session.add(article)
+    await db_session.commit()
+
+    result = await _service(db_session, []).ingest()
+
+    reliance = await MarketRepository(db_session).get_stock_by_symbol("RELIANCE.NS")
+    link = await db_session.scalar(
+        select(NewsArticleStock).where(
+            NewsArticleStock.article_id == article.id,
+            NewsArticleStock.stock_id == reliance.id,
+        )
+    )
+    sentiment = await db_session.scalar(
+        select(SentimentDaily).where(
+            SentimentDaily.stock_id == reliance.id,
+            SentimentDaily.date == now.date(),
+        )
+    )
+    assert result.articles_reconciled == 1
+    assert result.tags_added == 1
+    assert result.tags_removed == 0
+    assert link is not None
+    assert sentiment is not None
+    assert sentiment.article_count == 1

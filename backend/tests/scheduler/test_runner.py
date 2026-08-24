@@ -85,6 +85,9 @@ async def test_domain_step_adapters_return_only_numeric_counters(monkeypatch) ->
                 fetched=5,
                 new_articles=3,
                 tagged_articles=2,
+                articles_reconciled=1,
+                tags_added=2,
+                tags_removed=1,
                 sentiment_days_updated=4,
             )
 
@@ -113,6 +116,9 @@ async def test_domain_step_adapters_return_only_numeric_counters(monkeypatch) ->
         "fetched": 5,
         "new_articles": 3,
         "tagged_articles": 2,
+        "articles_reconciled": 1,
+        "tags_added": 2,
+        "tags_removed": 1,
         "sentiment_days_updated": 4,
     }
     assert await jobs._run_history_step(TARGET) == {

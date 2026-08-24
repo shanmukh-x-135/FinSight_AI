@@ -22,6 +22,13 @@ The displayed `0 positive / 50 neutral / 0 negative` was therefore not evidence
 of neutral coverage. It combined an empty production news store with a frontend
 reducer that counted `null` as neutral.
 
+Authenticated GitHub Actions logs later established why the news store remained
+empty: on 2026-08-21 the market step successfully ingested 18 of 19 configured
+symbols, but Yahoo returned 404 for retired `TATAMOTORS.NS`. Strict market-step
+semantics correctly stopped the pipeline before news. Phase 10C subsequently
+deployed the validated replacement `TMPV.NS`; a read-only readiness probe for
+the 2026-08-21 session now returns `ready`.
+
 ### Source and linker audit
 
 On the same date, the four configured public RSS sources returned 100 real
@@ -38,6 +45,8 @@ continues to collapse cross-feed copies during ingestion.
 ### Changes and regression evidence
 
 - reviewed phrase aliases plus dynamic ticker/full-name fallbacks;
+- normal-ingestion reconciliation of recent deduped article tags, including
+  removal of orphaned derived sentiment without deleting source articles;
 - generic-token and shared-brand regression tests;
 - recent sentiment bounded to the latest market session window;
 - admin-only aggregate diagnostics with counts and timestamps;

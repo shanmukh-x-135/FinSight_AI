@@ -27,6 +27,13 @@ normalized title and publication date. It works across batches, process retries,
 different feed URLs, and concurrent workers; the database atomically chooses the
 winner. See [Write Idempotency](write-idempotency.md).
 
+Deduplication does not freeze old company associations. Every normal ingestion
+reconciles tags on articles from the last `NEWS_RETAG_WINDOW_DAYS` (30 by
+default) against the current active universe and reviewed aliases. Incorrect
+legacy links are removed, missing links are added, and derived daily sentiment
+rows with no remaining source article are deleted. Articles and source URLs are
+never removed by this repair path.
+
 ### 2. Sentiment scoring (`shared/ml/sentiment.py`)
 
 One interface, two backends (compound score in [-1, 1] + per-class proportions):
@@ -105,7 +112,8 @@ added for that date and the index rebuilt.
   feedparser: extraction, dedupe, bad-feed).
 - **Integration**: fake feed → ingest → score → tag → aggregate; **a bad-news day
   yields negative aggregate sentiment** (DoD); re-ingest dedupes; multi-article
-  averaging.
+  averaging; recent deduped articles are retagged after alias corrections and
+  orphaned derived sentiment is removed.
 - **Production-readiness feed audit (2026-08-23)**: configured sources returned
   100 real current articles. The corrected linker found 12 relevant articles,
   20 plausible stock associations across 13 active equities; deterministic
