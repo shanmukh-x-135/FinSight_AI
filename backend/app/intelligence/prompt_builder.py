@@ -22,8 +22,13 @@ def system_instruction() -> str:
 def _prompt(section: str, facts: dict) -> str:
     return (
         f"{SECTION_INSTRUCTIONS[section]}\n\nFacts (JSON):\n"
-        f"{json.dumps(facts, default=str, indent=2)}"
+        f"{_facts_json(facts)}"
     )
+
+
+def _facts_json(facts: dict) -> str:
+    """Serialize provider facts compactly without changing their data contract."""
+    return json.dumps(facts, default=str, ensure_ascii=False, separators=(",", ":"))
 
 
 def _pct(x: float | None) -> str:
@@ -142,6 +147,6 @@ def chat_response(
         f"{SECTION_INSTRUCTIONS['chat']}\n\n"
         f"Current user question (untrusted): {question}\n"
         f"Recent user questions (untrusted): {recent}\n\n"
-        f"Facts (JSON):\n{json.dumps(facts, default=str, indent=2)}"
+        f"Facts (JSON):\n{_facts_json(facts)}"
     )
     return prompt, fallback

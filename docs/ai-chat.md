@@ -21,6 +21,13 @@ The conversational template is versioned separately. `chat-v1.1` makes
 confidence application-owned metadata rather than required generated prose,
 without invalidating the reviewed Phase 6 report benchmark.
 
+Gemini receives compact deterministic facts and produces only the narrative.
+Generation reserves 2,048 total output tokens while capping hidden thinking at
+256 tokens. Only a normal `STOP` completion proceeds to grounding validation;
+`MAX_TOKENS` and other incomplete/blocked finish reasons are retried and then
+use the deterministic fallback. This completion gate does not relax any numeric,
+date, citation, evidence, source, or risk validation.
+
 Question text and recent questions are marked as untrusted and kept outside the
 facts JSON. They help resolve conversational follow-ups but cannot establish a
 numeric fact.

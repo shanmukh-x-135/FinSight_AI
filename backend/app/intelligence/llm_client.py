@@ -98,6 +98,7 @@ class GeminiClient:
         self._model = settings.llm_model
         self._retries = settings.llm_max_retries
         self._max_output_tokens = settings.llm_max_output_tokens
+        self._thinking_budget = settings.llm_thinking_budget
         self._types = types
 
     async def generate(
@@ -137,11 +138,26 @@ class GeminiClient:
                             system_instruction=system,
                             candidate_count=1,
                             max_output_tokens=self._max_output_tokens,
+                            thinking_config=self._types.ThinkingConfig(
+                                thinking_budget=self._thinking_budget,
+                                include_thoughts=False,
+                            ),
                         ),
                     )
                 last_response = resp
                 response_count += 1
                 usage = usage.add(TokenUsage.from_response(resp))
+                finish_reason = _finish_reason(resp)
+                if finish_reason and finish_reason != "STOP":
+                    logger.warning(
+                        "gemini_generate_rejected",
+                        extra={
+                            "attempt": attempt,
+                            "reason": "incomplete_provider_response",
+                            "finish_reason": finish_reason,
+                        },
+                    )
+                    continue
                 text = (getattr(resp, "text", None) or "").strip()
                 if text:
                     result = validator(text) if validator else GroundingResult(True)
@@ -259,6 +275,18 @@ def _elapsed_ms(started: float) -> int:
 def _reason_code(reason: str) -> str:
     """Keep validation categories while dropping provider-derived claim values."""
     return reason.partition(":")[0]
+
+
+def _finish_reason(response: object) -> str | None:
+    """Return the first candidate's normalized provider finish reason."""
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return None
+    raw = getattr(candidates[0], "finish_reason", None)
+    value = getattr(raw, "value", raw)
+    if value is None:
+        return None
+    return str(value).rsplit(".", 1)[-1].upper()
 
 
 _client: LLMClient | None = None

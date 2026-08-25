@@ -211,7 +211,7 @@ async def test_successful_gemini_chat_stream_completes_with_metadata(
 
     response = await client.post(
         "/api/v1/chat?stream=true",
-        json={"message": "What moved the market today?"},
+        json={"message": "Summarise today's market using the available evidence."},
         headers=headers,
     )
 

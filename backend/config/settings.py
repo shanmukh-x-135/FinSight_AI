@@ -103,7 +103,8 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gemini-3.6-flash", min_length=1)
     llm_max_retries: int = Field(default=2, ge=1, le=5)
     llm_timeout_seconds: float = Field(default=30, gt=0, le=120)
-    llm_max_output_tokens: int = Field(default=1024, ge=64, le=8192)
+    llm_max_output_tokens: int = Field(default=2048, ge=64, le=8192)
+    llm_thinking_budget: int = Field(default=256, ge=0, le=4096)
     llm_request_budget_seconds: float = Field(default=45, gt=0, le=180)
     llm_max_provider_calls: int = Field(default=20, ge=1, le=100)
     top_n_recommendations: int = 5

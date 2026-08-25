@@ -1,6 +1,8 @@
 # Phase 10E — Analytics and AI Validation
 
-Status: confidence-validation correction complete locally; production deployment and live Gemini re-verification remain pending, so Phase 10E is not signed off.
+Status: Gemini confidence and completion-limit corrections are implemented;
+production deployment and live Gemini re-verification remain the Phase 10E
+sign-off gate.
 
 ## Deterministic analytics audit
 
@@ -124,3 +126,20 @@ the full backend suite: 446 passed and four PostgreSQL-only tests skipped becaus
 `TEST_POSTGRES_URL` was not set. Production deployment and at least one live
 response with `backend=gemini` and `fallback_used=false` remain required before
 Phase 10E can be signed off. Phase 10F must not begin before that gate passes.
+
+### Gemini completion-limit correction
+
+A subsequent production SSE request (`47cc93a1eeb0475bb208c3ac5d702187`)
+returned two provider responses but fell back with `finish_reason=MAX_TOKENS`.
+Aggregated usage was 1,955 hidden thinking tokens and only 85 visible candidate
+tokens. With the former 1,024-token per-attempt output limit, each attempt spent
+roughly 977 tokens thinking and had room for only about 42 narrative tokens, so
+the response ended before its required evidence/source/risk structure completed.
+
+The client now uses a 2,048-token output limit and a 256-token thinking budget,
+and sends compact rather than indented facts JSON. It explicitly rejects every
+non-`STOP` completion before grounding validation, logging the attempt and
+finish reason, then retains the existing two-attempt deterministic fallback.
+Gemini still returns narration only; the application continues to own facts,
+prices, dates, sources, calculations, risks, and confidence. All existing strict
+grounding validation remains in place.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from app.intelligence import prompt_builder as pb
 
 
@@ -61,5 +63,6 @@ def test_executive_summary_combines_sections() -> None:
     prompt, fb = pb.executive_summary(sections)
     assert "Market was mixed." in fb
     assert "Watchlist: AAA.NS" in fb
-    assert '"market": "Market was mixed."' in prompt
-    assert '"watchlist": [' in prompt and '"AAA.NS"' in prompt
+    facts = json.loads(prompt.partition("Facts (JSON):\n")[2])
+    assert facts["source_narratives"]["market"] == "Market was mixed."
+    assert facts["watchlist"] == ["AAA.NS"]

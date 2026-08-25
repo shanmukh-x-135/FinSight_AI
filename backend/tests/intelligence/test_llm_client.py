@@ -26,7 +26,8 @@ def test_production_default_uses_current_stable_gemini_model() -> None:
         _env_file=None,
     )
     assert configured.llm_model == "gemini-3.6-flash"
-    assert configured.llm_max_output_tokens == 1024
+    assert configured.llm_max_output_tokens == 2048
+    assert configured.llm_thinking_budget == 256
     assert configured.llm_request_budget_seconds == 45
     assert configured.llm_max_provider_calls == 20
 
@@ -94,6 +95,13 @@ async def test_gemini_client_success_and_failure_paths() -> None:
     assert request["config"].system_instruction == "sys"
     assert request["config"].candidate_count == 1
     assert request["config"].max_output_tokens == settings.llm_max_output_tokens
+    assert (
+        request["config"].thinking_config.thinking_budget
+        == settings.llm_thinking_budget
+    )
+    assert request["config"].thinking_config.include_thoughts is False
+    assert request["config"].response_schema is None
+    assert request["config"].response_mime_type is None
 
     # Empty text → falls back.
     class _Empty:
@@ -141,6 +149,61 @@ async def test_gemini_timeout_retries_then_falls_back() -> None:
     assert result.metadata.fallback_used is True
     assert result.metadata.attempt_count == 2
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_gemini_rejects_truncated_max_tokens_responses(caplog) -> None:
+    pytest.importorskip("google.genai")
+    from app.intelligence.llm_client import GeminiClient
+
+    client = GeminiClient("dummy-key")
+    client._retries = 2
+    calls = 0
+
+    async def _truncated(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(
+            # Deliberately valid-looking text: completion state, not partial prose,
+            # decides whether it is safe to validate and publish.
+            text="Market breadth has 3 advancers and 2 decliners.",
+            candidates=[SimpleNamespace(finish_reason="MAX_TOKENS")],
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=100,
+                candidates_token_count=40,
+                total_token_count=1024,
+                cached_content_token_count=None,
+                thoughts_token_count=884,
+            ),
+            model_version="gemini-3.6-flash-001",
+            response_id=f"truncated-{calls}",
+            create_time=None,
+        )
+
+    client._client.aio.models.generate_content = _truncated
+    result = await client.generate(
+        "system",
+        "prompt",
+        "deterministic fallback",
+        validator=lambda _text: pytest.fail("truncated text must not be validated"),
+    )
+
+    assert calls == 2
+    assert result.text == "deterministic fallback"
+    assert result.metadata.backend == "deterministic"
+    assert result.metadata.fallback_used is True
+    assert result.metadata.finish_reason == "MAX_TOKENS"
+    assert result.metadata.provider_response_count == 2
+    assert result.metadata.usage.thoughts_tokens == 1768
+    rejection_records = [
+        record for record in caplog.records if record.message == "gemini_generate_rejected"
+    ]
+    assert [record.attempt for record in rejection_records] == [1, 2]
+    assert all(
+        record.reason == "incomplete_provider_response"
+        and record.finish_reason == "MAX_TOKENS"
+        for record in rejection_records
+    )
 
 
 @pytest.mark.asyncio

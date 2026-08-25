@@ -33,10 +33,17 @@ cost-free. The evidence/rankings are identical either way.
 Gemini generation uses `client.aio.models.generate_content`, so provider I/O
 does not block FastAPI's event loop. The system instruction is supplied through
 the SDK's typed `GenerateContentConfig`, separately from prompt contents;
-candidate count is fixed at one and `LLM_MAX_OUTPUT_TOKENS` bounds output.
+candidate count is fixed at one. `LLM_MAX_OUTPUT_TOKENS` defaults to 2,048 and
+`LLM_THINKING_BUDGET` caps hidden reasoning at 256 tokens, leaving ample room
+for the short visible narration. The provider response is intentionally plain
+text: evidence, sources, risks, calculations, and confidence remain structured
+application-owned fields rather than model-authored schema values. Facts JSON
+is compact on the wire without changing its content.
 `LLM_TIMEOUT_SECONDS` is applied both to the SDK transport (milliseconds) and as
 an `asyncio` deadline around each attempt. Timeouts, quota errors, empty
-responses, and exhausted retries all return the deterministic grounded fallback.
+responses, non-`STOP` completions (including `MAX_TOKENS`), and exhausted retries
+all return the deterministic grounded fallback. A truncated fragment is never
+published even if its partial text happens to pass a grounding check.
 
 Each HTTP operation also shares one aggregate `LLM_REQUEST_BUDGET_SECONDS`
 deadline and `LLM_MAX_PROVIDER_CALLS` cap across all of its prose requests.
