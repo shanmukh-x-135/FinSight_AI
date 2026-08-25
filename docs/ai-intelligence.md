@@ -91,9 +91,11 @@ Every provider response is checked before it can enter a report, recommendation
 response, or dashboard payload. The deterministic validator rejects unsupported
 numbers, exact-price predictions/advice, and section prose that omits its
 required factual anchors. Recommendation explanations must mention their symbol,
-confidence, supplied evidence, and supplied risk. Invalid Gemini output is
-retried up to the configured attempt limit; exhausted or non-compliant adapters
-degrade to the validated deterministic fallback.
+supplied evidence, and supplied risk. Confidence remains authoritative structured
+application metadata: prose may omit it, while an explicit contradictory value
+is rejected. Invalid Gemini output is retried up to the configured attempt limit;
+exhausted or non-compliant adapters degrade to the validated deterministic
+fallback.
 
 Before a report is stored, the structural guard additionally requires every
 recommendation to carry evidence, confidence, risks, and an explanation, plus a
@@ -148,9 +150,9 @@ varies by API/backend and response outcome.
 - **Retrieval** — context builder returns the expected slice per request.
 - **Grounding** — automated checks reject unsupported numeric claims and price
   predictions and require section-specific factual anchors. Tests cover valid
-  paraphrases, hallucinated numbers, missing recommendation evidence/confidence/
-  risks, retry after rejected Gemini prose, and fallback for a non-compliant
-  provider adapter.
+  paraphrases, hallucinated numbers, missing recommendation evidence/risks,
+  omitted and contradictory prose confidence, retry after rejected Gemini prose,
+  and fallback for a non-compliant provider adapter.
 - **Consistency / regression** — a dedicated, versioned 12-scenario fixture
   covers broad bullish/bearish alignment, neutral conditions, overbought and
   high-volatility risk, oversold rebound, sentiment-only signals, historical

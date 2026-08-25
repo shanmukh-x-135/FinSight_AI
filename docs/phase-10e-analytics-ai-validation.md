@@ -1,6 +1,6 @@
 # Phase 10E — Analytics and AI Validation
 
-Status: deterministic production evaluation passed; live Gemini narration is blocked by an upstream provider request failure and Phase 10E is not signed off.
+Status: confidence-validation correction complete locally; production deployment and live Gemini re-verification remain pending, so Phase 10E is not signed off.
 
 ## Deterministic analytics audit
 
@@ -98,18 +98,29 @@ August 2026. The evaluator confirmed:
 Observed full-response latency ranged from 996 ms to 12,561 ms, with a median
 of 1,306.5 ms. No unsupported guarantee or price-target language was present.
 
-## Remaining Phase 10E blocker
+## Confidence-validation correction
 
-Every production query used the safe deterministic fallback. A separate
-sanitized diagnostic request reported `GeminiClient` as configured with model
-`gemini-3.6-flash`, two bounded attempts, zero provider responses, no token
-usage/model version, and a deterministic fallback after 197 ms. This is an
-upstream request failure, not a grounding rejection. Official Google Gen AI SDK
-documentation confirms that `gemini-3.6-flash` is a valid model identifier.
+Subsequent production logs established that Gemini was healthy: model
+`gemini-3.6-flash` returned HTTP 200, two provider responses, and populated token
+usage. Both responses were rejected only because their grounded narration did
+not echo the deterministic confidence value in prose.
 
-The Render `GEMINI_API_KEY` and its Google project model access/quota must be
-verified in their respective control planes without exposing the key. After the
-external issue is corrected, at least one production request must return
-`backend=gemini`, a provider response count of one or more, a model version, and
-grounded prose before Phase 10E can be signed off. Phase 10F must not begin
-before that gate passes.
+That check crossed an ownership boundary. `ChatService` already computes and
+attaches confidence to the structured `ChatAnswer`; Gemini supplies only the
+narrative. Chat prompt `v1.1` therefore tells Gemini not to calculate or restate
+confidence. Grounded narration may omit confidence, while an explicit numeric
+confidence that contradicts the deterministic value remains invalid. The same
+rule applies to recommendation explanations, whose structured recommendation
+objects already own confidence.
+
+All other grounding checks remain unchanged: unsupported numbers, predictions
+or advice, missing symbols/evidence/sources/risks, and other inconsistencies are
+still rejected. Provider failure still selects the validated deterministic
+fallback, while successful Gemini narration preserves provider/model/token
+metadata and streams only after complete validation and persistence.
+
+On 25 August 2026, targeted intelligence/chat tests passed, followed by Ruff and
+the full backend suite: 446 passed and four PostgreSQL-only tests skipped because
+`TEST_POSTGRES_URL` was not set. Production deployment and at least one live
+response with `backend=gemini` and `fallback_used=false` remain required before
+Phase 10E can be signed off. Phase 10F must not begin before that gate passes.

@@ -34,6 +34,12 @@ class GroundingResult:
 
 _FACTS_MARKER = "Facts (JSON):\n"
 _NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?%?")
+_CONFIDENCE_CLAIM_RE = re.compile(
+    r"(?:\bconfidence(?:\s+(?:level|score))?(?:\s+(?:is|of|at))?\s*[:=-]?\s*)"
+    r"(?P<after>[-+]?\d[\d,]*(?:\.\d+)?%?)|"
+    r"(?P<before>[-+]?\d[\d,]*(?:\.\d+)?%?)\s+confidence\b",
+    re.IGNORECASE,
+)
 _PREDICTION_RE = re.compile(
     r"\b(?:will|may|might|could|guaranteed to|certain to|expected to|projected to)\s+"
     r"(?:rise|fall|gain|drop|reach|hit|trade|close)\b|"
@@ -43,8 +49,22 @@ _PREDICTION_RE = re.compile(
 )
 _WORD_RE = re.compile(r"[a-z][a-z0-9-]{2,}")
 _STOP_WORDS = {
-    "and", "are", "for", "from", "has", "its", "the", "this", "that",
-    "with", "applies", "risk", "risks", "market", "price", "today",
+    "and",
+    "are",
+    "for",
+    "from",
+    "has",
+    "its",
+    "the",
+    "this",
+    "that",
+    "with",
+    "applies",
+    "risk",
+    "risks",
+    "market",
+    "price",
+    "today",
 }
 
 
@@ -115,6 +135,15 @@ def _mentions_number(text: str, expected: int | float) -> bool:
     return False
 
 
+def _contradicts_confidence(text: str, expected: int | float) -> bool:
+    """Detect only explicit numeric confidence that disagrees with the app."""
+    for match in _CONFIDENCE_CLAIM_RE.finditer(text):
+        claim = match.group("after") or match.group("before")
+        if not _mentions_number(claim, expected):
+            return True
+    return False
+
+
 def _meaningful_words(values: list[str]) -> set[str]:
     return {
         word
@@ -155,8 +184,10 @@ def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
         symbol = str(facts["symbol"])
         if symbol.lower() not in lower:
             return GroundingResult(False, "recommendation omits its symbol")
-        if not _mentions_number(narrative, facts["confidence"]):
-            return GroundingResult(False, "recommendation omits its confidence")
+        if _contradicts_confidence(narrative, facts["confidence"]):
+            return GroundingResult(
+                False, "recommendation contradicts supplied confidence"
+            )
         evidence = [str(v) for v in facts["evidence"]]
         if not _mentions_source_anchor(narrative, evidence):
             return GroundingResult(False, "recommendation omits supplied evidence")
@@ -203,8 +234,8 @@ def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
         ):
             return GroundingResult(False, "executive summary lacks a supplied anchor")
     elif {"question", "evidence", "confidence", "sources", "risks"} <= facts.keys():
-        if not _mentions_number(narrative, facts["confidence"]):
-            return GroundingResult(False, "chat response omits supplied confidence")
+        if _contradicts_confidence(narrative, facts["confidence"]):
+            return GroundingResult(False, "chat response contradicts supplied confidence")
         evidence = [str(value) for value in facts["evidence"]]
         if not evidence or not _mentions_source_anchor(narrative, evidence):
             return GroundingResult(False, "chat response omits supplied evidence")
@@ -220,13 +251,19 @@ def validate_grounded_narrative(text: str, prompt: str) -> GroundingResult:
 
 def validate_recommendation(rec: dict) -> None:
     if not rec.get("evidence"):
-        raise ExplainabilityError(f"Recommendation for {rec.get('symbol')} has no evidence.")
+        raise ExplainabilityError(
+            f"Recommendation for {rec.get('symbol')} has no evidence."
+        )
     if rec.get("confidence") is None:
-        raise ExplainabilityError(f"Recommendation for {rec.get('symbol')} has no confidence.")
+        raise ExplainabilityError(
+            f"Recommendation for {rec.get('symbol')} has no confidence."
+        )
     if not rec.get("risks"):
         raise ExplainabilityError(f"Recommendation for {rec.get('symbol')} has no risks.")
     if not (rec.get("explanation") or "").strip():
-        raise ExplainabilityError(f"Recommendation for {rec.get('symbol')} has no explanation.")
+        raise ExplainabilityError(
+            f"Recommendation for {rec.get('symbol')} has no explanation."
+        )
 
 
 def validate_report(sections: dict) -> None:

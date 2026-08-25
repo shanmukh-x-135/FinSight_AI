@@ -10,14 +10,21 @@ from app.intelligence.explainability import (
     validate_recommendation,
     validate_report,
 )
-from app.intelligence.prompt_builder import market_section, recommendation_explanation
+from app.intelligence.prompt_builder import (
+    chat_response,
+    market_section,
+    recommendation_explanation,
+)
 from app.intelligence.recommendation_engine import Recommendation
 
 
 def _rec(**over) -> dict:
     base = {
-        "symbol": "AAA", "evidence": ["RSI at 60"], "confidence": 70,
-        "risks": ["Standard market risk applies"], "explanation": "Watch AAA.",
+        "symbol": "AAA",
+        "evidence": ["RSI at 60"],
+        "confidence": 70,
+        "risks": ["Standard market risk applies"],
+        "explanation": "Watch AAA.",
     }
     base.update(over)
     return base
@@ -83,7 +90,7 @@ def test_market_narrative_is_checked_against_prompt_facts() -> None:
     assert "unsupported numeric claim" in result.reason
 
 
-def test_recommendation_requires_confidence_evidence_and_risk_anchors() -> None:
+def test_recommendation_allows_omitted_confidence_but_rejects_contradiction() -> None:
     rec = Recommendation(
         symbol="AAA.NS",
         name="AAA",
@@ -101,18 +108,57 @@ def test_recommendation_requires_confidence_evidence_and_risk_anchors() -> None:
         "momentum. Standard market risk applies."
     )
     assert validate_grounded_narrative(valid, prompt).valid
+    omitted = "Watch AAA.NS because RSI at 60 is bullish. Standard market risk applies."
+    assert validate_grounded_narrative(omitted, prompt).valid
 
     for invalid, reason in (
-        ("Watch AAA.NS because RSI at 60 is bullish. Standard market risk applies.",
-         "confidence"),
-        ("Watch AAA.NS with 70% confidence. Standard market risk applies.",
-         "evidence"),
-        ("Watch AAA.NS with 70% confidence because RSI at 60 is bullish.",
-         "risks"),
+        (
+            "Watch AAA.NS with 60% confidence because RSI at 60 is bullish. "
+            "Standard market risk applies.",
+            "contradicts",
+        ),
+        ("Watch AAA.NS with 70% confidence. Standard market risk applies.", "evidence"),
+        ("Watch AAA.NS with 70% confidence because RSI at 60 is bullish.", "risks"),
     ):
         result = validate_grounded_narrative(invalid, prompt)
         assert not result.valid
         assert reason in result.reason
+
+
+def test_chat_allows_omitted_confidence_but_rejects_contradiction() -> None:
+    facts = {
+        "question": "See the untrusted user question above.",
+        "context": {"history": {"statistics": {"bullish_probability": 0.75}}},
+        "evidence": ["75% of 4 similar sessions closed higher."],
+        "confidence": 65,
+        "sources": [
+            {
+                "kind": "history",
+                "label": "Historical similarity",
+                "reference": "/history",
+            }
+        ],
+        "risks": ["Historical analogues are scenarios, not forecasts."],
+    }
+    prompt, _fallback = chat_response(
+        question="What does history show?",
+        recent_questions=[],
+        facts=facts,
+        fallback="unused",
+    )
+    omitted = (
+        "Historical similarity shows 75% of 4 similar sessions closed higher. "
+        "Historical analogues are scenarios, not forecasts."
+    )
+    assert validate_grounded_narrative(omitted, prompt).valid
+
+    contradictory = (
+        "Historical similarity shows 75% confidence from 4 similar sessions. "
+        "Historical analogues are scenarios, not forecasts."
+    )
+    result = validate_grounded_narrative(contradictory, prompt)
+    assert not result.valid
+    assert result.reason == "chat response contradicts supplied confidence"
 
 
 def test_exact_price_prediction_is_rejected_even_if_number_is_supplied() -> None:

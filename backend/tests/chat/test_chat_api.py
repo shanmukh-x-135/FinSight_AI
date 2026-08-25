@@ -8,12 +8,56 @@ import pytest
 from httpx import AsyncClient
 
 from app.chat.dependencies import get_chat_llm_client
+from app.intelligence.generation import GenerationMetadata, GenerationResult, TokenUsage
 from tests.chat.conftest import authenticated_headers, provision_personal_context
 
 
 class UnsupportedAdviceLLM:
     async def generate(self, system, prompt, fallback, validator=None) -> str:
         return "Buy now at 999 because it will rise."
+
+
+class GroundedGeminiLLM:
+    text = (
+        "Market breadth has 1 advancer, 1 decliner, and 1 unchanged. "
+        "Source: Market analytics (2026-08-04). "
+        "Risk: End-of-day data may not reflect intraday moves."
+    )
+
+    async def generate(
+        self, system, prompt, fallback, validator=None
+    ) -> GenerationResult:
+        if validator:
+            assert validator(self.text).valid
+        return GenerationResult(
+            text=self.text,
+            metadata=GenerationMetadata(
+                configured_backend="GeminiClient",
+                backend="gemini",
+                requested_model="gemini-3.6-flash",
+                model_version="gemini-3.6-flash-001",
+                response_id="response-grounded",
+                finish_reason="STOP",
+                attempt_count=1,
+                provider_response_count=1,
+                fallback_used=False,
+                latency_ms=25,
+                usage=TokenUsage(
+                    prompt_tokens=100,
+                    candidate_tokens=30,
+                    total_tokens=130,
+                ),
+            ),
+        )
+
+
+class ContradictoryConfidenceGeminiLLM(GroundedGeminiLLM):
+    text = GroundedGeminiLLM.text + " Confidence is 1%."
+
+    async def generate(
+        self, system, prompt, fallback, validator=None
+    ) -> GenerationResult:
+        return await super().generate(system, prompt, fallback, validator=None)
 
 
 def _events(body: str) -> list[tuple[str, dict]]:
@@ -106,6 +150,81 @@ async def test_chat_stream_reconstructs_validated_persisted_answer(
 
     history = (await client.get("/api/v1/chat/history", headers=headers)).json()["data"]
     assert history[-1]["content"] == completed["content"]
+
+
+@pytest.mark.asyncio
+async def test_valid_gemini_chat_omitting_confidence_keeps_app_confidence(
+    client: AsyncClient, test_app, seeded_chat_market: None
+) -> None:
+    test_app.dependency_overrides[get_chat_llm_client] = lambda: GroundedGeminiLLM()
+    headers = await authenticated_headers(client, "gemini-grounded@example.com")
+
+    response = await client.post(
+        "/api/v1/chat",
+        json={"message": "What moved the market today?"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assistant = response.json()["data"]["assistant"]
+    assert assistant["content"] == GroundedGeminiLLM.text
+    assert assistant["confidence"] == 55
+    assert "confidence" not in assistant["content"].lower()
+    assert assistant["generation"]["backend"] == "gemini"
+    assert assistant["generation"]["fallback_used"] is False
+    assert assistant["generation"]["model_version"] == "gemini-3.6-flash-001"
+    assert assistant["generation"]["provider_response_count"] == 1
+    assert assistant["generation"]["usage"]["total_tokens"] == 130
+
+
+@pytest.mark.asyncio
+async def test_contradictory_gemini_confidence_uses_deterministic_fallback_value(
+    client: AsyncClient, test_app, seeded_chat_market: None
+) -> None:
+    test_app.dependency_overrides[get_chat_llm_client] = lambda: (
+        ContradictoryConfidenceGeminiLLM()
+    )
+    headers = await authenticated_headers(client, "gemini-confidence@example.com")
+
+    response = await client.post(
+        "/api/v1/chat",
+        json={"message": "What moved the market today?"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assistant = response.json()["data"]["assistant"]
+    assert assistant["confidence"] == 55
+    assert "Confidence 55%" in assistant["content"]
+    assert "Confidence is 1%" not in assistant["content"]
+    assert assistant["generation"]["backend"] == "deterministic"
+    assert assistant["generation"]["fallback_used"] is True
+    assert assistant["generation"]["model_version"] == "gemini-3.6-flash-001"
+
+
+@pytest.mark.asyncio
+async def test_successful_gemini_chat_stream_completes_with_metadata(
+    client: AsyncClient, test_app, seeded_chat_market: None
+) -> None:
+    test_app.dependency_overrides[get_chat_llm_client] = lambda: GroundedGeminiLLM()
+    headers = await authenticated_headers(client, "gemini-stream@example.com")
+
+    response = await client.post(
+        "/api/v1/chat?stream=true",
+        json={"message": "What moved the market today?"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[-1][0] == "complete"
+    completed = events[-1][1]["assistant"]
+    deltas = [data["delta"] for event, data in events if event == "chunk"]
+    assert "".join(deltas) == GroundedGeminiLLM.text
+    assert completed["confidence"] == 55
+    assert completed["generation"]["backend"] == "gemini"
+    assert completed["generation"]["fallback_used"] is False
+    assert completed["generation"]["response_id"] == "response-grounded"
 
 
 @pytest.mark.asyncio

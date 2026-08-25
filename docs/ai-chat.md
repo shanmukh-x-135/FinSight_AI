@@ -14,11 +14,12 @@ does not calculate recommendations or predict prices.
 3. the configured `LLMClient` (`DeterministicNarrator` by default, Gemini when
    configured);
 4. `generate_grounded()` and `validate_grounded_narrative()` for the same
-   numeric, prediction/advice, evidence, source, confidence, and risk guards
-   used by reports.
+   numeric, prediction/advice, evidence, source, confidence-consistency, and
+   risk guards used by reports.
 
-The conversational template is versioned separately as `chat-v1.0`, so adding
-Chat does not falsely invalidate the reviewed Phase 6 report benchmark.
+The conversational template is versioned separately. `chat-v1.1` makes
+confidence application-owned metadata rather than required generated prose,
+without invalidating the reviewed Phase 6 report benchmark.
 
 Question text and recent questions are marked as untrusted and kept outside the
 facts JSON. They help resolve conversational follow-ups but cannot establish a
@@ -88,9 +89,10 @@ envelope; SSE uses its documented event contract.
 ## Verification
 
 - Backend API tests cover authentication, input validation, portfolio/watchlist
-  grounding, unsupported advice rejection, SSE reconstruction, persistence,
-  generation provenance, empty portfolios, two-user ownership, and isolated
-  deletion.
+  grounding, valid Gemini prose without repeated confidence, contradictory
+  confidence fallback, unsupported advice rejection, successful-Gemini SSE
+  reconstruction, persistence, generation provenance, empty portfolios,
+  two-user ownership, and isolated deletion.
 - Frontend tests cover arbitrary network chunk boundaries, truncated streams,
   suggested prompts, history, clearing, evidence, confidence, sources, and
   risks.

@@ -294,6 +294,69 @@ async def test_gemini_retries_rejected_prose_then_returns_grounded_output() -> N
 
 
 @pytest.mark.asyncio
+async def test_gemini_chat_omitting_confidence_is_accepted_on_first_response() -> None:
+    pytest.importorskip("google.genai")
+    from app.intelligence.llm_client import GeminiClient
+
+    facts = {
+        "question": "See the untrusted user question above.",
+        "context": {"market": {"breadth": {"advancers": 3, "decliners": 2}}},
+        "evidence": ["Market breadth has 3 advancers and 2 decliners."],
+        "confidence": 65,
+        "sources": [
+            {"kind": "market", "label": "Market analytics", "reference": "/market"}
+        ],
+        "risks": ["End-of-day data may not reflect intraday moves."],
+    }
+    prompt, fallback = pb.chat_response(
+        question="What moved the market?",
+        recent_questions=[],
+        facts=facts,
+        fallback=(
+            "Market breadth has 3 advancers and 2 decliners. Confidence 65%. "
+            "Sources: Market analytics. "
+            "Risks: End-of-day data may not reflect intraday moves."
+        ),
+    )
+    provider_text = (
+        "Market analytics shows 3 advancers and 2 decliners. "
+        "End-of-day data may not reflect intraday moves."
+    )
+    calls = 0
+
+    async def _response(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(
+            text=provider_text,
+            model_version="gemini-3.6-flash-001",
+            response_id="response-chat",
+            create_time=None,
+            candidates=[SimpleNamespace(finish_reason="STOP")],
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=20,
+                candidates_token_count=10,
+                total_token_count=30,
+                cached_content_token_count=None,
+                thoughts_token_count=None,
+            ),
+        )
+
+    client = GeminiClient("dummy-key")
+    client._client.aio.models.generate_content = _response
+
+    result = await generate_grounded_result(client, "system", prompt, fallback)
+
+    assert result.text == provider_text
+    assert calls == 1
+    assert result.metadata.backend == "gemini"
+    assert result.metadata.provider_response_count == 1
+    assert result.metadata.fallback_used is False
+    assert result.metadata.model_version == "gemini-3.6-flash-001"
+    assert result.metadata.usage.total_tokens == 30
+
+
+@pytest.mark.asyncio
 async def test_gemini_metadata_aggregates_usage_across_rejected_attempts() -> None:
     pytest.importorskip("google.genai")
     from app.intelligence.llm_client import GeminiClient
