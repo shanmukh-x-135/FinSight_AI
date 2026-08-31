@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, tokenStore, type User } from "@/lib/api";
@@ -52,5 +52,54 @@ describe("AuthProvider hydration", () => {
     );
 
     expect(await screen.findByText("investor@example.com")).toBeInTheDocument();
+  });
+
+  it("revalidates an open tab when another tab logs in", async () => {
+    vi.spyOn(api, "me").mockResolvedValue(user);
+
+    render(
+      <AuthProvider>
+        <AuthState />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText("anonymous")).toBeInTheDocument();
+
+    tokenStore.set({ access_token: "access", refresh_token: "refresh", token_type: "bearer" });
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "finsight_access",
+          newValue: "access",
+          oldValue: null,
+        }),
+      );
+    });
+
+    expect(await screen.findByText("investor@example.com")).toBeInTheDocument();
+  });
+
+  it("clears authenticated UI when another tab logs out", async () => {
+    tokenStore.set({ access_token: "access", refresh_token: "refresh", token_type: "bearer" });
+    vi.spyOn(api, "me").mockResolvedValue(user);
+
+    render(
+      <AuthProvider>
+        <AuthState />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText("investor@example.com")).toBeInTheDocument();
+
+    tokenStore.clear();
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "finsight_access",
+          newValue: null,
+          oldValue: "access",
+        }),
+      );
+    });
+
+    expect(await screen.findByText("anonymous")).toBeInTheDocument();
   });
 });
