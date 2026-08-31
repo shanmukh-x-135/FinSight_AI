@@ -14,7 +14,9 @@ import { AIAnalysisState } from "@/components/AIAnalysisState";
 import { DataTable, type Column } from "@/components/DataTable";
 import { DonutChart } from "@/components/donut-chart";
 import { ContributionChart } from "@/components/finance-charts";
+import { ContextualAIActions } from "@/components/contextual-ai-actions";
 import { MetricCard, toneOf } from "@/components/MetricCard";
+import { PortfolioRiskView } from "@/components/portfolio-risk";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,7 @@ import {
   type HoldingAnalytics,
   type PortfolioAnalytics,
   type PortfolioDetail,
+  type PortfolioRisk,
   type Recommendation,
 } from "@/lib/api";
 import { money, pct, signClass } from "@/lib/utils";
@@ -35,6 +38,7 @@ export default function PortfolioPage() {
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
+  const [risk, setRisk] = useState<PortfolioRisk | null>(null);
   const [insights, setInsights] = useState<Recommendation[]>([]);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,6 +58,11 @@ export default function PortfolioPage() {
     ]);
     setAnalytics(a);
     setDetail(d);
+    try {
+      setRisk(await portfolioApi.risk(id));
+    } catch {
+      setRisk(null);
+    }
 
     // AI insights relevant to what the user actually holds (best-effort).
     try {
@@ -334,8 +343,8 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow="Portfolio analytics" title={detail?.name ?? "Portfolio"} description="Exposure, contribution, risk, and evidence-backed position intelligence." />
-      {error && !analytics ? <DataState kind="error" title="Portfolio unavailable" description={error} /> : <>{summaryCards}{charts}<Panel><SectionHeader title="Position intelligence" description="Signals are ranked deterministically from current analytics." /><div className="mt-4">{aiAnalysis}</div></Panel><Panel><SectionHeader title="Holdings" description="Current valuation and unrealized performance by position." /><div className="mt-4">{tables}</div></Panel></>}
+      <PageHeader eyebrow="Portfolio analytics" title={detail?.name ?? "Portfolio"} description="Exposure, contribution, risk, and evidence-backed position intelligence." actions={<ContextualAIActions actions={[{ label: "Explain concentration", prompt: "Explain my portfolio concentration using the current evidence and identify the largest contributors." }, { label: "Review P&L", prompt: "Explain my portfolio profit and loss by position using current deterministic analytics." }, { label: "Interpret stress", prompt: "Summarize my portfolio stress-test results, key vulnerabilities, and evidence-backed limitations." }]} />} />
+      {error && !analytics ? <DataState kind="error" title="Portfolio unavailable" description={error} /> : <>{summaryCards}{charts}{risk && portfolioId != null && <PortfolioRiskView risk={risk} onCounterfactual={(changes) => portfolioApi.counterfactual(portfolioId, changes)} />}<Panel><SectionHeader title="Position intelligence" description="Signals are ranked deterministically from current analytics." /><div className="mt-4">{aiAnalysis}</div></Panel><Panel><SectionHeader title="Holdings" description="Current valuation and unrealized performance by position." /><div className="mt-4">{tables}</div></Panel></>}
     </div>
   );
 }

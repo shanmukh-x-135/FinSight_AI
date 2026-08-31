@@ -49,16 +49,37 @@ async def test_ingest_then_read(
     data = news.json()["data"]
     assert len(data) == 2
     assert any("RELIANCE.NS" in a["tags"] for a in data)
+    reliance_article = next(a for a in data if "RELIANCE.NS" in a["tags"])
+    assert reliance_article["event_category"] == "Earnings"
+    assert reliance_article["evidence_excerpt"] == BAD
+    assert reliance_article["url"] == "http://x/1"
+    assert 0 < reliance_article["sentiment_confidence"] < 1
 
     sentiment = await client.get("/api/v1/news/sentiment/RELIANCE.NS")
     assert sentiment.status_code == 200
     series = sentiment.json()["data"]["series"]
     assert series and series[-1]["avg_sentiment"] < 0  # bad news → negative
+    stock_sentiment = sentiment.json()["data"]
+    assert stock_sentiment["availability"] == "available"
+    assert stock_sentiment["article_count"] == 1
+    assert stock_sentiment["negative_count"] == 1
+    assert stock_sentiment["evidence"][0]["source_url"] == "http://x/1"
+    assert stock_sentiment["evidence"][0]["entity_match_confidence"] > 0
 
     latest = (await client.get("/api/v1/news/sentiment")).json()["data"]
     by_symbol = {row["symbol"]: row["latest_sentiment"] for row in latest}
     assert by_symbol["RELIANCE.NS"] < 0
     assert by_symbol["TCS.NS"] > 0
+
+    attribution = await client.get("/api/v1/market/stocks/RELIANCE.NS/attribution")
+    assert attribution.status_code == 200
+    attribution_data = attribution.json()["data"]
+    assert attribution_data["certainty"] == "likely_contributors_not_proven_causes"
+    company_news = next(
+        row for row in attribution_data["drivers"] if row["category"] == "company_news"
+    )
+    assert company_news["direction"] == "bearish"
+    assert company_news["evidence_article_ids"] == [reliance_article["id"]]
 
     sector = await client.get("/api/v1/news/sentiment/sector/Energy")
     assert sector.status_code == 200
@@ -107,6 +128,29 @@ async def test_news_diagnostics_empty(
     assert data["sentiment_rows"] == 0
     assert data["latest_news_ingestion_at"] is None
     assert data["latest_sentiment_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_no_news_is_unavailable_not_neutral(
+    client: AsyncClient, seed_stocks: None
+) -> None:
+    sentiment = (
+        await client.get("/api/v1/news/sentiment/RELIANCE.NS")
+    ).json()["data"]
+    assert sentiment["availability"] == "no_relevant_news"
+    assert sentiment["latest_sentiment"] is None
+    assert sentiment["confidence"] is None
+    assert sentiment["article_count"] == 0
+    assert sentiment["evidence"] == []
+
+    attribution = (
+        await client.get("/api/v1/market/stocks/RELIANCE.NS/attribution")
+    ).json()["data"]
+    company_news = next(
+        row for row in attribution["drivers"] if row["category"] == "company_news"
+    )
+    assert company_news["direction"] == "unavailable"
+    assert "No verified company catalyst" in company_news["observation"]
 
 
 @pytest.mark.asyncio

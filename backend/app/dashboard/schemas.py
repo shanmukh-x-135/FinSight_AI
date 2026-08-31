@@ -11,6 +11,9 @@ rather than redefining their shapes.
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from typing import Literal
+
 from pydantic import BaseModel
 
 from app.intelligence.schemas import GenerationSummaryOut
@@ -28,3 +31,13 @@ class DashboardSummaryOut(BaseModel):
     risk_alerts: list[dict]
     history: dict | None
     generation: GenerationSummaryOut
+    freshness: list["DataFreshnessOut"]
+
+
+class DataFreshnessOut(BaseModel):
+    dataset: Literal["market", "news", "universe", "historical_corpus"]
+    state: Literal["Fresh", "Delayed", "Unavailable"]
+    observed_date: date | None
+    observed_at: datetime | None
+    expected_trading_date: date | None
+    explanation: str

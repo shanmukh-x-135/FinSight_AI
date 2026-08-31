@@ -29,6 +29,14 @@ class PriceIngestionState:
     last_full_price_sync_at: datetime | None
 
 
+@dataclass(frozen=True)
+class ReturnWindows:
+    as_of: date | None
+    return_1d: float | None
+    return_5d: float | None
+    return_20d: float | None
+
+
 class MarketRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -105,7 +113,10 @@ class MarketRepository:
 
     async def list_active_stocks(self) -> list[Stock]:
         result = await self.db.execute(
-            select(Stock).where(Stock.is_active.is_(True)).order_by(Stock.symbol)
+            select(Stock)
+            .where(Stock.is_active.is_(True))
+            .options(selectinload(Stock.fundamentals))
+            .order_by(Stock.symbol)
         )
         return list(result.scalars().all())
 
@@ -128,6 +139,7 @@ class MarketRepository:
                 Stock.is_active.is_(True),
                 Stock.symbol.is_not(None),
             )
+            .options(selectinload(Stock.fundamentals))
             .order_by(Stock.exchange_symbol, Stock.symbol)
         )
         stocks = list(result.scalars().unique().all())
@@ -136,6 +148,97 @@ class MarketRepository:
                 f"Duplicate provider symbols in active {index_code} universe"
             )
         return stocks
+
+    async def active_universe_counts(self) -> dict[str, int]:
+        result = await self.db.execute(
+            select(IndexMembership.index_code, func.count(func.distinct(Stock.id)))
+            .join(Stock, Stock.id == IndexMembership.stock_id)
+            .where(
+                IndexMembership.valid_to.is_(None),
+                Stock.is_active.is_(True),
+            )
+            .group_by(IndexMembership.index_code)
+        )
+        return {str(code): int(count) for code, count in result.all()}
+
+    async def get_return_windows(
+        self, stock_ids: Iterable[int]
+    ) -> dict[int, ReturnWindows]:
+        """Return 1/5/20-session close returns in one bounded window query."""
+        ids = list(dict.fromkeys(stock_ids))
+        if not ids:
+            return {}
+        ranked = (
+            select(
+                DailyPrice.stock_id.label("stock_id"),
+                DailyPrice.date.label("date"),
+                DailyPrice.close.label("close"),
+                func.row_number()
+                .over(
+                    partition_by=DailyPrice.stock_id,
+                    order_by=DailyPrice.date.desc(),
+                )
+                .label("row_number"),
+            )
+            .where(DailyPrice.stock_id.in_(ids))
+            .subquery()
+        )
+        result = await self.db.execute(select(ranked).where(ranked.c.row_number <= 21))
+        closes: dict[int, dict[int, tuple[date, float]]] = {}
+        for row in result:
+            closes.setdefault(row.stock_id, {})[int(row.row_number)] = (
+                row.date,
+                row.close,
+            )
+
+        def change(rows: dict[int, tuple[date, float]], prior_rank: int) -> float | None:
+            latest = rows.get(1)
+            prior = rows.get(prior_rank)
+            if latest is None or prior is None or not prior[1]:
+                return None
+            return (latest[1] / prior[1] - 1.0) * 100.0
+
+        return {
+            stock_id: ReturnWindows(
+                as_of=rows.get(1, (None, 0.0))[0],
+                return_1d=change(rows, 2),
+                return_5d=change(rows, 6),
+                return_20d=change(rows, 21),
+            )
+            for stock_id, rows in closes.items()
+        }
+
+    async def get_latest_relative_volumes(
+        self, stock_ids: Iterable[int]
+    ) -> dict[int, float | None]:
+        """Latest volume divided by the prior 20-session average, in one query."""
+        ids = list(dict.fromkeys(stock_ids))
+        if not ids:
+            return {}
+        ranked = (
+            select(
+                DailyPrice.stock_id.label("stock_id"),
+                DailyPrice.volume.label("volume"),
+                func.row_number().over(
+                    partition_by=DailyPrice.stock_id,
+                    order_by=DailyPrice.date.desc(),
+                ).label("row_number"),
+            )
+            .where(DailyPrice.stock_id.in_(ids))
+            .subquery()
+        )
+        result = await self.db.execute(select(ranked).where(ranked.c.row_number <= 21))
+        values: dict[int, dict[int, int]] = {}
+        for row in result:
+            if row.volume is not None:
+                values.setdefault(row.stock_id, {})[int(row.row_number)] = int(row.volume)
+        ratios: dict[int, float | None] = {}
+        for stock_id, rows in values.items():
+            prior = [volume for rank, volume in rows.items() if 2 <= rank <= 21]
+            latest = rows.get(1)
+            average = sum(prior) / len(prior) if prior else 0.0
+            ratios[stock_id] = latest / average if latest is not None and average > 0 else None
+        return ratios
 
     async def get_market_snapshots(
         self,
@@ -301,6 +404,37 @@ class MarketRepository:
         rows.reverse()
         return rows
 
+    async def get_price_histories(
+        self, stock_ids: Iterable[int], *, limit: int = 300
+    ) -> dict[int, list[DailyPrice]]:
+        """Load a bounded per-stock history in one window query."""
+        ids = list(dict.fromkeys(stock_ids))
+        if not ids:
+            return {}
+        ranked = (
+            select(
+                DailyPrice,
+                func.row_number()
+                .over(
+                    partition_by=DailyPrice.stock_id,
+                    order_by=DailyPrice.date.desc(),
+                )
+                .label("row_number"),
+            )
+            .where(DailyPrice.stock_id.in_(ids))
+            .subquery()
+        )
+        price = aliased(DailyPrice, ranked)
+        result = await self.db.execute(
+            select(price)
+            .where(ranked.c.row_number <= limit)
+            .order_by(price.stock_id, price.date)
+        )
+        output: dict[int, list[DailyPrice]] = {}
+        for row in result.scalars():
+            output.setdefault(row.stock_id, []).append(row)
+        return output
+
     # ----- Fundamentals ----------------------------------------------------
     async def upsert_fundamentals(self, stock_id: int, data: FundamentalsData) -> None:
         values = {
@@ -373,8 +507,9 @@ class MarketRepository:
         return result.scalar_one_or_none()
 
     async def list_latest_indicators_with_close(
-        self,
+        self, stock_ids: Iterable[int] | None = None
     ) -> list[tuple[Indicator, float | None]]:
+        ids = list(dict.fromkeys(stock_ids)) if stock_ids is not None else None
         latest = (
             select(
                 Indicator.stock_id.label("stock_id"),
@@ -383,7 +518,7 @@ class MarketRepository:
             .group_by(Indicator.stock_id)
             .subquery()
         )
-        result = await self.db.execute(
+        stmt = (
             select(Indicator, DailyPrice.close)
             .join(
                 latest,
@@ -402,6 +537,11 @@ class MarketRepository:
             )
             .where(Stock.is_active.is_(True))
         )
+        if ids is not None:
+            if not ids:
+                return []
+            stmt = stmt.where(Indicator.stock_id.in_(ids))
+        result = await self.db.execute(stmt)
         return [(indicator, close) for indicator, close in result.all()]
 
     async def get_indicator_history(

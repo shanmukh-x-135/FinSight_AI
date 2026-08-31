@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth.routes import auth_router, user_router
 from app.chat.routes import chat_router
 from app.dashboard.routes import dashboard_router
+from app.discovery.routes import discovery_router
 from app.health import router as health_router
 from app.history.routes import history_admin_router, history_router
 from app.intelligence.llm_client import close_llm_client
@@ -29,6 +30,7 @@ from app.scheduler.routes import scheduler_admin_router
 from app.shared.database import dispose_engine
 from app.shared.exceptions import register_exception_handlers
 from app.shared.middleware import RequestIDMiddleware
+from app.strategy.routes import backtest_router, strategy_router
 from config.logging import configure_logging, get_logger
 from config.settings import settings
 
@@ -92,6 +94,9 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router, prefix=settings.api_v1_prefix)
     app.include_router(chat_router, prefix=settings.api_v1_prefix)
     app.include_router(scheduler_admin_router, prefix=settings.api_v1_prefix)
+    app.include_router(strategy_router, prefix=settings.api_v1_prefix)
+    app.include_router(backtest_router, prefix=settings.api_v1_prefix)
+    app.include_router(discovery_router, prefix=settings.api_v1_prefix)
 
     return app
 

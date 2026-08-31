@@ -9,8 +9,9 @@ here (design doc's "analytics before AI").
 **yfinance** (Yahoo Finance), wrapped behind a provider-agnostic interface
 (`app/shared/clients/market_data.py`) so it can be swapped. NSE listings use the
 `.NS` suffix (e.g. `RELIANCE.NS`). Equity membership is dynamically discovered
-from the official NSE Indices NIFTY 50 CSV and approved through effective-dated
-database membership. See [Dynamic NIFTY 50 Universe](dynamic-universe.md).
+from official Nifty Indices constituent CSVs and approved through
+index-specific, effective-dated database membership. See
+[Dynamic NIFTY Index Universe](dynamic-universe.md).
 
 The default ingestion also fetches four global macro proxies (USD/INR, crude
 oil, gold, and the US 10-year Treasury yield). They reuse `daily_prices` but are
@@ -47,7 +48,7 @@ cd backend
 ./.venv/bin/python -m app.market.universe --target-date YYYY-MM-DD
 ```
 
-The command loads approved equities from open `NIFTY50` memberships, appends the
+The command loads approved equities from the configured `RESEARCH_UNIVERSE`, appends the
 four macro proxies, prints per-symbol bar counts and classified health status,
 and exits nonzero for any unhealthy symbol. An empty universe exits explicitly
 and directs the operator to run `app.market.universe_sync`; no network
@@ -98,7 +99,7 @@ sector, and intelligence candidate paths share this batch primitive.
 - **Manual** (administrator only): `POST /api/v1/admin/jobs/market-ingestion/run`
   (auth-protected), optional body `{"symbols": ["RELIANCE.NS", ...]}`. Runs
   synchronously and returns symbol results plus fetched-bar and window-mode
-  counters. Without `symbols`, it uses DB-approved NIFTY50 equities plus macros.
+  counters. Without `symbols`, it uses the configured DB-approved research universe plus macros.
 
 ## Indicators
 
@@ -136,7 +137,7 @@ raising a uniqueness race or creating a duplicate. See
 [Write Idempotency](write-idempotency.md).
 Effective-dated memberships, source snapshots, sync audit/quarantine rows, and
 symbol aliases are introduced by migrations `0013`–`0014`; see
-[Dynamic NIFTY 50 Universe](dynamic-universe.md).
+[Dynamic NIFTY Index Universe](dynamic-universe.md).
 
 ## Read endpoints (`/api/v1/market`)
 
@@ -151,6 +152,9 @@ symbol aliases are introduced by migrations `0013`–`0014`; see
 | `GET /sectors/{sector}` | Stocks in a sector + average % change |
 | `GET /stocks/{symbol}` | Latest quote + fundamentals |
 | `GET /stocks/{symbol}/indicators?limit=` | Indicator history (oldest→newest) |
+| `GET /universes` | Supported/preferred universes and active/expected counts |
+| `GET /heatmap?universe=` | Compact membership-scoped stock heatmap data |
+| `GET /sector-rotation?universe=` | Sector 1D/5D/20D returns and momentum regime |
 
 Daily % change is computed from the two most recent `daily_prices` rows.
 

@@ -70,6 +70,16 @@ async def test_dashboard_summary_batches_everything(
         "BBB.NS": pytest.approx(-0.3),
         "CCC.NS": None,
     }
+    assert {row["dataset"] for row in data["freshness"]} == {
+        "market",
+        "news",
+        "universe",
+        "historical_corpus",
+    }
+    assert all(
+        row["state"] in {"Fresh", "Delayed", "Unavailable"}
+        for row in data["freshness"]
+    )
 
     # Opportunities are evidence-backed with a rendered explanation.
     assert "AAA.NS" in {o["symbol"] for o in data["opportunities"]}

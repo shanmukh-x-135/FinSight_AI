@@ -21,6 +21,7 @@ from app.shared.clients.market_data import (
     MarketDataError,
     PriceBar,
 )
+from config.settings import settings
 
 
 def _make_bars(n: int = 60, start: float = 100.0, step: float = 1.0) -> list[PriceBar]:
@@ -87,7 +88,7 @@ async def _approve(
     db_session.add(
         IndexMembership(
             stock_id=stock.id,
-            index_code="NIFTY50",
+            index_code=settings.research_universe,
             valid_from=TARGET - timedelta(days=30),
             valid_to=valid_to,
             source="test",
@@ -211,6 +212,60 @@ async def test_approved_equity_failure_remains_strictly_visible(
     assert result.requested == 1
     assert result.succeeded == []
     assert result.failed == ["BAD.NS"]
+
+
+@pytest.mark.asyncio
+async def test_nifty100_eod_smoke_ingests_overlapping_members_once(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(market_constants, "MACRO_PROXIES", {})
+    stocks = [
+        Stock(
+            symbol=f"SYM{index:03d}.NS",
+            exchange_symbol=f"SYM{index:03d}",
+            exchange="NSE",
+            is_active=True,
+        )
+        for index in range(100)
+    ]
+    db_session.add_all(stocks)
+    await db_session.flush()
+    memberships = [
+        IndexMembership(
+            stock_id=stock.id,
+            index_code=settings.research_universe,
+            valid_from=TARGET - timedelta(days=30),
+            source="test",
+            source_snapshot_date=TARGET,
+        )
+        for stock in stocks
+    ]
+    memberships.extend(
+        IndexMembership(
+            stock_id=stock.id,
+            index_code="NIFTY50",
+            valid_from=TARGET - timedelta(days=30),
+            source="test",
+            source_snapshot_date=TARGET,
+        )
+        for stock in stocks[:50]
+    )
+    db_session.add_all(memberships)
+    await db_session.commit()
+
+    result = await MarketIngestionService(db_session, FakeClient()).ingest(
+        target_trading_date=TARGET
+    )
+
+    assert result.requested == 100
+    assert len(result.succeeded) == 100
+    assert result.failed == []
+    assert len(set(result.succeeded)) == 100
+    assert await db_session.scalar(select(func.count()).select_from(Stock)) == 100
+    assert (
+        await db_session.scalar(select(func.count()).select_from(DailyPrice))
+        == 100 * len(_make_bars())
+    )
 
 
 @pytest.mark.asyncio

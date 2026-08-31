@@ -96,6 +96,14 @@ async def test_postgres_concurrent_writers_preserve_one_logical_row() -> None:
                     NewsArticle.fingerprint == fingerprint
                 )
             ) == 1
+            persisted_article = await db.scalar(
+                select(NewsArticle).where(NewsArticle.fingerprint == fingerprint)
+            )
+            assert persisted_article is not None
+            assert persisted_article.sentiment_confidence == pytest.approx(0.6)
+            assert persisted_article.event_category == "Other"
+            assert persisted_article.event_confidence == pytest.approx(0.35)
+            assert persisted_article.evidence_excerpt == "Concurrent story"
             assert await db.scalar(
                 select(func.count(Report.id)).where(
                     Report.idempotency_key_hash == report_hash

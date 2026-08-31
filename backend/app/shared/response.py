@@ -12,9 +12,9 @@ The error counterpart is produced by the global handlers in
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
+from app.shared.time import utc_now
 from config.logging import get_request_id
 
 
@@ -24,6 +24,6 @@ def envelope(data: Any = None, message: str = "") -> dict[str, Any]:
         "success": True,
         "message": message,
         "data": data,
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": utc_now().isoformat(),
         "requestId": get_request_id(),
     }

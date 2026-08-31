@@ -52,6 +52,11 @@ Portfolio-level:
 - **daily_pnl_percent** = `daily_pnl / (total_value − daily_pnl) × 100` (vs yesterday's value).
 - **concentration (HHI)** = `Σ weightᵢ²` (0–1; higher = more concentrated).
 - **diversification_score** = `(1 − HHI) × 100` (0–100; higher = more diversified).
+
+Phase 11E adds static-current-holdings historical risk, correlation,
+contribution, stress scenarios, and non-mutating counterfactuals. These are
+deliberately not labeled as actual historical portfolio performance because
+transaction timing and cash flows are not stored.
 - **top_holding_weight_percent** = the largest single-holding weight.
 - **sector_allocation** = market value grouped by `stock.sector` (sorted desc).
 - **volatility_percent** = market-value-weighted `ATR / price × 100` across holdings (uses Phase 2's ATR-14; `null` unless every holding has both price and ATR, so partial coverage is never presented as a complete portfolio metric).
@@ -67,6 +72,24 @@ available. If only a previous close is missing, valuation remains valid while
 daily P&L is withheld.
 
 Weights/thresholds live in `app/portfolio/constants.py`.
+
+## Historical risk and counterfactuals
+
+`GET /api/v1/portfolios/{id}/risk` applies current quantities and market-value
+weights to aligned historical close returns. At least 30 aligned holding and
+NIFTY benchmark observations are required; beta, annualized volatility,
+zero-risk-free-rate Sharpe, drawdown, covariance contribution and benchmark
+comparisons are withheld when coverage is insufficient. The response also
+contains pairwise correlations, return/risk contributions, 20-session momentum,
+NIFTY 100 sector deviations, and daily outcomes grouped by available
+`market_regime_v1` breadth context.
+
+Five disclosed linear stress sensitivities cover NIFTY -5%, crude +10%,
+USD/INR +5%, Financials -7%, and one adverse annualized-volatility unit. Every
+scenario sets `is_prediction: false`. `POST
+/api/v1/portfolios/{id}/counterfactual` evaluates quantity deltas without
+mutating holdings and returns complete before/after risk diagnostics. It
+rejects untracked symbols, negative resulting positions, and an empty portfolio.
 
 ### Worked example (from the unit tests)
 

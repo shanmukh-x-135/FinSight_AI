@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.dashboard.schemas import DataFreshnessOut
 from app.scheduler.constants import PipelineRunStatus, PipelineStepStatus
 
 
@@ -47,3 +48,6 @@ class EODStatusOut(BaseModel):
     requested_trading_date: date | None
     run: PipelineRunOut | None
     rerun_recommended: bool
+    health: str
+    operator_explanation: str
+    freshness: list[DataFreshnessOut]

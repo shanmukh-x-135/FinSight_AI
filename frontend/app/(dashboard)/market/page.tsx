@@ -7,21 +7,27 @@ import { useEffect, useMemo, useState } from "react";
 import { AIAnalysisState } from "@/components/AIAnalysisState";
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { DataTable, type Column } from "@/components/DataTable";
-import { Heatmap } from "@/components/Heatmap";
 import { EconomicEventsCard, TechnicalSummaryCard } from "@/components/MarketContext";
 import { MetricCard, toneOf } from "@/components/MetricCard";
+import { SectorRotation } from "@/components/sector-rotation";
+import { StockHeatmap } from "@/components/stock-heatmap";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
-import { intelligenceApi, marketApi, newsApi, watchlistApi, type Breadth, type EconomicCalendar, type LatestSentiment, type MarketStockSnapshot, type Recommendation, type SectorOverview, type TechnicalSummary, type WatchlistItem } from "@/lib/api";
+import { intelligenceApi, marketApi, watchlistApi, type Breadth, type EconomicCalendar, type HeatmapStock, type LatestSentiment, type MarketStockSnapshot, type Recommendation, type SectorOverview, type SectorRotation as SectorRotationRow, type TechnicalSummary, type UniverseCode, type UniverseOption, type WatchlistItem } from "@/lib/api";
 import { money, pct } from "@/lib/utils";
 
 type SortKey = "symbol" | "change" | "rsi";
+const DEFAULT_UNIVERSE: UniverseCode = "NIFTY100";
 
 export default function MarketPage() {
   const [stocks, setStocks] = useState<MarketStockSnapshot[]>([]);
+  const [universe, setUniverse] = useState<UniverseCode>(DEFAULT_UNIVERSE);
+  const [universeOptions, setUniverseOptions] = useState<UniverseOption[]>([]);
   const [breadth, setBreadth] = useState<Breadth | null>(null);
   const [sectors, setSectors] = useState<SectorOverview[]>([]);
+  const [heatmap, setHeatmap] = useState<HeatmapStock[]>([]);
+  const [rotation, setRotation] = useState<SectorRotationRow[]>([]);
   const [technical, setTechnical] = useState<TechnicalSummary | null>(null);
   const [calendar, setCalendar] = useState<EconomicCalendar | null>(null);
   const [sentiment, setSentiment] = useState<LatestSentiment[]>([]);
@@ -39,10 +45,21 @@ export default function MarketPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([marketApi.stocks(), marketApi.breadth(), marketApi.sectors(), marketApi.technicalSummary(), marketApi.economicEvents(14), newsApi.latestSentiment()])
-      .then(([allStocks, nextBreadth, nextSectors, nextTechnical, nextCalendar, nextSentiment]) => { if (active) { setStocks(allStocks); setBreadth(nextBreadth); setSectors(nextSectors); setTechnical(nextTechnical); setCalendar(nextCalendar); setSentiment(nextSentiment); } })
+    marketApi.universes().then((options) => { if (active) { setUniverseOptions(options); const preferred = options.find((option) => option.preferred); if (preferred && preferred.code !== DEFAULT_UNIVERSE) { setLoading(true); setError(false); setUniverse(preferred.code); } } }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    marketApi.workspace(universe)
+      .then((workspace) => { if (active) { setStocks(workspace.stocks); setBreadth(workspace.breadth); setSectors(workspace.sectors); setTechnical(workspace.technical); setHeatmap(workspace.heatmap); setRotation(workspace.sector_rotation); setCalendar(workspace.economic_events); setSentiment(workspace.sentiment); } })
       .catch(() => active && setError(true))
       .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [universe]);
+
+  useEffect(() => {
+    let active = true;
     intelligenceApi.recommendations().then((data) => { if (active) { setRecs(data.watchlist); setRisks(data.risk_alerts); } }).catch(() => active && setAiUnavailable(true));
     watchlistApi.list().then((items) => active && setWatchlist(items)).catch(() => active && setWatchError("Watchlist actions are temporarily unavailable."));
     return () => { active = false; };
@@ -50,6 +67,7 @@ export default function MarketPage() {
 
   const sentimentMap = useMemo(() => new Map(sentiment.map((row) => [row.symbol, row.latest_sentiment])), [sentiment]);
   const watchedMap = useMemo(() => new Map(watchlist.map((row) => [row.symbol, row.id])), [watchlist]);
+  const selectedUniverse = universeOptions.find((option) => option.code === universe);
   const filtered = useMemo(() => stocks.filter((stock) => (sector === "All sectors" || stock.sector === sector) && `${stock.symbol} ${stock.name ?? ""}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "symbol" ? a.symbol.localeCompare(b.symbol) : sort === "rsi" ? (b.rsi_14 ?? -Infinity) - (a.rsi_14 ?? -Infinity) : (b.change_percent ?? -Infinity) - (a.change_percent ?? -Infinity)), [query, sector, sort, stocks]);
 
   if (loading) return <PageSkeleton />;
@@ -88,7 +106,8 @@ export default function MarketPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow="Market intelligence" title="Market Intelligence" description="Scan participation, technical regimes, sentiment, and catalysts across the tracked NSE universe." />
+      <PageHeader eyebrow="Market intelligence" title="Market Intelligence" description="Scan participation, technical regimes, sentiment, and catalysts across a membership-aware NSE research universe." actions={<label className="grid gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"><span>Research universe</span><select aria-label="Research universe" value={universe} onChange={(event) => { setLoading(true); setError(false); setUniverse(event.target.value as UniverseCode); }} className="h-9 min-w-40 rounded-lg border border-input bg-background px-3 text-sm font-medium normal-case tracking-normal text-foreground">{universeOptions.length === 0 ? <option value="NIFTY100">NIFTY 100</option> : universeOptions.map((option) => <option key={option.code} value={option.code}>{option.label} · {option.active_constituents}/{option.expected_constituents}</option>)}</select></label>} />
+      {selectedUniverse && !selectedUniverse.initialized && <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning">{selectedUniverse.label} is not fully synchronized: {selectedUniverse.active_constituents} of {selectedUniverse.expected_constituents} constituents are active. Results remain scoped to validated members only.</div>}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Advancers" value={breadth.advancers} tone="positive" sub={`${breadth.total} priced stocks`} /><MetricCard label="Decliners" value={breadth.decliners} tone="negative" sub={`${breadth.unchanged} unchanged`} /><MetricCard label="A/D ratio" value={breadth.advance_decline_ratio?.toFixed(2) ?? "—"} tone={toneOf((breadth.advance_decline_ratio ?? 1) - 1)} /><MetricCard label="Average RSI" value={technical?.average_rsi?.toFixed(1) ?? "—"} sub={`${technical?.stocks_with_indicators ?? 0} with indicators`} /></div>
 
       <Panel>
@@ -102,7 +121,8 @@ export default function MarketPage() {
         <DataTable columns={columns} rows={filtered} rowKey={(row) => row.symbol} emptyMessage="No instruments match these filters." caption="Tracked market instruments with price, technical, and sentiment metrics" />
       </Panel>
 
-      <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]"><Panel><Heatmap cells={sectors.map((item) => ({ label: item.sector, value: item.average_change_percent, sub: `${item.stock_count} stocks` }))} /></Panel><TechnicalSummaryCard summary={technical} /></div>
+      <Panel><StockHeatmap stocks={heatmap} /></Panel>
+      <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]"><Panel><SectorRotation rows={rotation} /></Panel><TechnicalSummaryCard summary={technical} /></div>
       <div className="grid gap-4 xl:grid-cols-[1fr_1.35fr]"><EconomicEventsCard calendar={calendar} /><Panel><SectionHeader title="Evidence-backed signals" description="Deterministic ranking; AI provides explanation only." /><div className="mt-4 grid gap-3 md:grid-cols-2">{aiUnavailable ? <div className="md:col-span-2"><AIAnalysisState status="unavailable" message="AI analysis is temporarily unavailable. The market data above is still current." /></div> : recs.length + risks.length === 0 ? <div className="md:col-span-2"><AIAnalysisState status="empty" message="No watch or avoid signals met the recommendation thresholds for this session." /></div> : [...recs, ...risks].slice(0, 4).map((item) => <AIInsightCard key={`${item.action}-${item.symbol}`} title={item.symbol} narrative={item.explanation} action={item.action} confidence={item.confidence} evidence={{ evidence: item.evidence, risks: item.risks, confidence: item.confidence, historicalContext: item.historical_context }} />)}</div></Panel></div>
     </div>
   );

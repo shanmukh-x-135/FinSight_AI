@@ -6,13 +6,17 @@ analytics inputs from Phase 2 market data. Deterministic — no AI.
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.history.models import HistoricalSession
+from app.market.models import Stock
 from app.market.repository import MarketRepository
 from app.market.signals import trend_signal
 from app.portfolio.analytics import HoldingInput, compute_portfolio_analytics
 from app.portfolio.constants import DEFAULT_PORTFOLIO_NAME
 from app.portfolio.exceptions import (
+    CounterfactualError,
     DuplicateHoldingError,
     DuplicateWatchlistItemError,
     HoldingNotFoundError,
@@ -22,12 +26,16 @@ from app.portfolio.exceptions import (
 )
 from app.portfolio.models import Portfolio, PortfolioItem, WatchlistItem
 from app.portfolio.repository import PortfolioRepository
+from app.portfolio.risk import RiskHoldingInput, compute_portfolio_risk
 from app.portfolio.schemas import (
+    CounterfactualOut,
+    CounterfactualRequest,
     HoldingCreate,
     HoldingOut,
     HoldingUpdate,
     PortfolioAnalyticsOut,
     PortfolioDetailOut,
+    PortfolioRiskOut,
     PortfolioSummaryOut,
     WatchlistItemOut,
     WatchlistUpdate,
@@ -138,9 +146,7 @@ class PortfolioService:
         await self.db.commit()
         return item
 
-    async def remove_holding(
-        self, user_id: int, portfolio_id: int, item_id: int
-    ) -> None:
+    async def remove_holding(self, user_id: int, portfolio_id: int, item_id: int) -> None:
         await self._owned_portfolio(user_id, portfolio_id)
         item = await self.repo.get_holding(portfolio_id, item_id)
         if item is None:
@@ -178,6 +184,158 @@ class PortfolioService:
                 )
             )
         return compute_portfolio_analytics(portfolio.id, portfolio.name, inputs)
+
+    async def _benchmark_sector_weights(self) -> dict[str, float]:
+        constituents = await self.market.list_approved_equities("NIFTY100")
+        if not constituents:
+            return {}
+        caps = {
+            stock.id: (
+                stock.fundamentals.market_cap
+                if stock.fundamentals and stock.fundamentals.market_cap
+                else None
+            )
+            for stock in constituents
+        }
+        total_cap = sum(value for value in caps.values() if value is not None)
+        complete_caps = total_cap > 0 and all(value is not None for value in caps.values())
+        sector_weights: dict[str, float] = {}
+        for stock in constituents:
+            weight = (
+                caps[stock.id] / total_cap
+                if complete_caps and caps[stock.id] is not None
+                else 1 / len(constituents)
+            )
+            sector = stock.sector or "Unknown"
+            sector_weights[sector] = sector_weights.get(sector, 0.0) + weight * 100
+        return sector_weights
+
+    async def _risk_for_quantities(
+        self,
+        portfolio_id: int,
+        quantities: dict[int, float],
+        stocks: dict[int, Stock],
+    ) -> PortfolioRiskOut:
+        benchmark = await self.market.get_stock_by_symbol("^NSEI")
+        ids = [stock_id for stock_id, quantity in quantities.items() if quantity > 0]
+        history_ids = [*ids, *([benchmark.id] if benchmark else [])]
+        histories = await self.market.get_price_histories(history_ids, limit=300)
+        holdings = []
+        for stock_id in ids:
+            stock = stocks[stock_id]
+            prices = histories.get(stock_id, [])
+            holdings.append(
+                RiskHoldingInput(
+                    symbol=stock.symbol,
+                    sector=stock.sector or "Unknown",
+                    quantity=quantities[stock_id],
+                    current_price=prices[-1].close if prices else None,
+                    closes=tuple((row.date, row.close) for row in prices),
+                )
+            )
+        all_dates = [day for holding in holdings for day, _ in holding.closes]
+        regime_result = (
+            await self.db.execute(
+                select(HistoricalSession.date, HistoricalSession.pct_advancers).where(
+                    HistoricalSession.date >= min(all_dates),
+                    HistoricalSession.date <= max(all_dates),
+                    HistoricalSession.feature_version == "market_regime_v1",
+                )
+            )
+            if all_dates
+            else None
+        )
+        regimes = {
+            day: (
+                "broad_positive"
+                if breadth >= 0.60
+                else "broad_negative"
+                if breadth <= 0.40
+                else "mixed"
+            )
+            for day, breadth in (regime_result.all() if regime_result else [])
+        }
+        benchmark_prices = histories.get(benchmark.id, []) if benchmark else []
+        return compute_portfolio_risk(
+            portfolio_id,
+            holdings,
+            tuple((row.date, row.close) for row in benchmark_prices),
+            await self._benchmark_sector_weights(),
+            regimes,
+        )
+
+    async def get_risk(self, user_id: int, portfolio_id: int) -> PortfolioRiskOut:
+        portfolio = await self._owned_portfolio(user_id, portfolio_id)
+        stocks = await self.market.get_stocks_by_ids(
+            item.stock_id for item in portfolio.items
+        )
+        return await self._risk_for_quantities(
+            portfolio.id,
+            {item.stock_id: item.quantity for item in portfolio.items},
+            stocks,
+        )
+
+    async def counterfactual(
+        self,
+        user_id: int,
+        portfolio_id: int,
+        payload: CounterfactualRequest,
+    ) -> CounterfactualOut:
+        portfolio = await self._owned_portfolio(user_id, portfolio_id)
+        stocks = await self.market.get_stocks_by_ids(
+            item.stock_id for item in portfolio.items
+        )
+        before_quantities = {item.stock_id: item.quantity for item in portfolio.items}
+        after_quantities = dict(before_quantities)
+        normalized: dict[str, float] = {}
+        for change in payload.changes:
+            symbol = change.symbol.strip().upper()
+            normalized[symbol] = normalized.get(symbol, 0.0) + change.quantity_delta
+        for symbol, delta in normalized.items():
+            stock = await self.market.get_stock_by_symbol(symbol)
+            if stock is None:
+                raise CounterfactualError(f"Stock '{symbol}' is not tracked.")
+            stocks[stock.id] = stock
+            quantity = after_quantities.get(stock.id, 0.0) + delta
+            if quantity < 0:
+                raise CounterfactualError(
+                    f"The {symbol} change would create a negative quantity."
+                )
+            after_quantities[stock.id] = quantity
+        if not any(quantity > 0 for quantity in after_quantities.values()):
+            raise CounterfactualError("A scenario must retain at least one holding.")
+        before = await self._risk_for_quantities(portfolio.id, before_quantities, stocks)
+        after = await self._risk_for_quantities(portfolio.id, after_quantities, stocks)
+
+        def delta(after_value: float | None, before_value: float | None) -> float | None:
+            return (
+                round(after_value - before_value, 6)
+                if after_value is not None and before_value is not None
+                else None
+            )
+
+        return CounterfactualOut(
+            changes=payload.changes,
+            before=before,
+            after=after,
+            deltas={
+                "annualized_volatility_percent": delta(
+                    after.annualized_volatility_percent,
+                    before.annualized_volatility_percent,
+                ),
+                "beta": delta(after.beta, before.beta),
+                "max_drawdown_percent": delta(
+                    after.max_drawdown_percent, before.max_drawdown_percent
+                ),
+                "concentration_hhi": delta(
+                    after.concentration_hhi, before.concentration_hhi
+                ),
+                "momentum_exposure_percent": delta(
+                    after.momentum_exposure_percent,
+                    before.momentum_exposure_percent,
+                ),
+            },
+        )
 
     # ----- Watchlist -------------------------------------------------------
     async def list_watchlist(self, user_id: int) -> list[WatchlistItemOut]:

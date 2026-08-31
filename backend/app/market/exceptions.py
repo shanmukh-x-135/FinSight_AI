@@ -29,6 +29,6 @@ class UniverseNotInitializedError(AppException):
 
     def __init__(self) -> None:
         super().__init__(
-            "The approved NIFTY50 universe is empty. Run "
-            "'python -m app.market.universe_sync' before EOD ingestion."
+            "The configured research universe is empty. Run "
+            "'python -m app.market.universe_sync --index <INDEX>' before EOD ingestion."
         )

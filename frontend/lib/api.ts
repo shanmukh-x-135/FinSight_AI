@@ -37,6 +37,7 @@ export interface User {
   id: number;
   email: string;
   is_active: boolean;
+  is_admin?: boolean;
   created_at: string;
   preferences: Preferences;
 }
@@ -258,6 +259,14 @@ export interface PortfolioAnalytics {
   holdings: HoldingAnalytics[];
 }
 
+export interface CorrelationCell { symbol_x: string; symbol_y: string; correlation: number | null; observations: number }
+export interface HoldingRiskContribution { symbol: string; weight_percent: number; return_contribution_percent: number | null; risk_contribution_percent: number | null; momentum_20d_percent: number | null }
+export interface SectorDeviation { sector: string; portfolio_weight_percent: number; benchmark_weight_percent: number; deviation_percent: number }
+export interface RegimeSensitivity { regime: string; sessions: number; average_daily_return_percent: number; positive_session_percent: number }
+export interface StressScenario { code: string; label: string; shock: string; estimated_impact_percent: number | null; estimated_value_change: number | null; methodology: string; is_prediction: false }
+export interface PortfolioRisk { portfolio_id: number; as_of: string | null; methodology: string; benchmark_symbol: string; observations: number; minimum_observations: number; data_complete: boolean; missing_symbols: string[]; annualized_volatility_percent: number | null; beta: number | null; sharpe_ratio: number | null; max_drawdown_percent: number | null; concentration_hhi: number | null; momentum_exposure_percent: number | null; correlation: CorrelationCell[]; holding_contributions: HoldingRiskContribution[]; sector_deviation: SectorDeviation[]; sector_benchmark_methodology: string; regime_sensitivity: RegimeSensitivity[]; stress_scenarios: StressScenario[] }
+export interface PortfolioCounterfactual { label: string; changes: { symbol: string; quantity_delta: number }[]; before: PortfolioRisk; after: PortfolioRisk; deltas: Record<string, number | null> }
+
 export interface WatchlistItem {
   id: number;
   symbol: string;
@@ -287,6 +296,10 @@ export const portfolioApi = {
     request<null>(`/api/v1/portfolios/${id}`, { method: "DELETE", auth: true }),
   analytics: (id: number) =>
     request<PortfolioAnalytics>(`/api/v1/portfolios/${id}/analytics`, { auth: true }),
+  risk: (id: number) =>
+    request<PortfolioRisk>(`/api/v1/portfolios/${id}/risk`, { auth: true }),
+  counterfactual: (id: number, changes: { symbol: string; quantity_delta: number }[]) =>
+    request<PortfolioCounterfactual>(`/api/v1/portfolios/${id}/counterfactual`, { method: "POST", body: { changes }, auth: true }),
   addHolding: (id: number, body: { symbol: string; quantity: number; avg_buy_price: number }) =>
     request<{ id: number }>(`/api/v1/portfolios/${id}/items`, {
       method: "POST",
@@ -347,6 +360,40 @@ export interface MarketStockSnapshot extends Quote {
   ema_50: number | null;
   macd_histogram: number | null;
   trend: string | null;
+}
+
+export type UniverseCode = "NIFTY50" | "NIFTYNEXT50" | "NIFTY100";
+
+export interface UniverseOption {
+  code: UniverseCode;
+  label: string;
+  expected_constituents: number;
+  active_constituents: number;
+  initialized: boolean;
+  preferred: boolean;
+  source_url: string;
+}
+
+export interface HeatmapStock {
+  symbol: string;
+  name: string | null;
+  sector: string;
+  as_of: string | null;
+  change_percent: number | null;
+  market_cap: number | null;
+  sentiment: number | null;
+  sentiment_availability: "available" | "no_relevant_news";
+  rsi_14: number | null;
+  signal: string | null;
+}
+
+export interface SectorRotation {
+  sector: string;
+  stock_count: number;
+  return_1d: number | null;
+  return_5d: number | null;
+  return_20d: number | null;
+  momentum_regime: "leader" | "improving" | "weakening" | "laggard" | "mixed" | "unavailable";
 }
 
 export interface Fundamentals {
@@ -435,20 +482,41 @@ export interface EconomicCalendar {
   events: EconomicEvent[];
 }
 
+export interface MarketWorkspace {
+  universe: UniverseCode;
+  stocks: MarketStockSnapshot[];
+  breadth: Breadth;
+  sectors: SectorOverview[];
+  technical: TechnicalSummary;
+  heatmap: HeatmapStock[];
+  sector_rotation: SectorRotation[];
+  economic_events: EconomicCalendar;
+  sentiment: LatestSentiment[];
+}
+
 export const marketApi = {
-  stocks: () => request<MarketStockSnapshot[]>("/api/v1/market/stocks"),
+  universes: () => request<UniverseOption[]>("/api/v1/market/universes"),
+  workspace: (universe: UniverseCode, days = 14) =>
+    request<MarketWorkspace>(`/api/v1/market/workspace?universe=${universe}&days=${days}`),
+  stocks: (universe?: UniverseCode) => request<MarketStockSnapshot[]>(`/api/v1/market/stocks${universe ? `?universe=${universe}` : ""}`),
+  heatmap: (universe: UniverseCode) => request<HeatmapStock[]>(`/api/v1/market/heatmap?universe=${universe}`),
+  sectorRotation: (universe: UniverseCode) => request<SectorRotation[]>(`/api/v1/market/sector-rotation?universe=${universe}`),
   detail: (symbol: string) =>
     request<StockDetail>(`/api/v1/market/stocks/${encodeURIComponent(symbol)}`),
+  attribution: (symbol: string) =>
+    request<MovementAttribution>(
+      `/api/v1/market/stocks/${encodeURIComponent(symbol)}/attribution`,
+    ),
   prices: (symbol: string, limit = 180) =>
     request<PricePoint[]>(`/api/v1/market/stocks/${encodeURIComponent(symbol)}/prices?limit=${limit}`),
   indicators: (symbol: string, limit = 180) =>
     request<IndicatorPoint[]>(`/api/v1/market/stocks/${encodeURIComponent(symbol)}/indicators?limit=${limit}`),
-  gainers: (limit = 5) => request<Quote[]>(`/api/v1/market/gainers?limit=${limit}`),
-  losers: (limit = 5) => request<Quote[]>(`/api/v1/market/losers?limit=${limit}`),
-  breadth: () => request<Breadth>("/api/v1/market/breadth"),
-  sectors: () => request<SectorOverview[]>("/api/v1/market/sectors"),
-  technicalSummary: () =>
-    request<TechnicalSummary>("/api/v1/market/technical-summary"),
+  gainers: (limit = 5, universe?: UniverseCode) => request<Quote[]>(`/api/v1/market/gainers?limit=${limit}${universe ? `&universe=${universe}` : ""}`),
+  losers: (limit = 5, universe?: UniverseCode) => request<Quote[]>(`/api/v1/market/losers?limit=${limit}${universe ? `&universe=${universe}` : ""}`),
+  breadth: (universe?: UniverseCode) => request<Breadth>(`/api/v1/market/breadth${universe ? `?universe=${universe}` : ""}`),
+  sectors: (universe?: UniverseCode) => request<SectorOverview[]>(`/api/v1/market/sectors${universe ? `?universe=${universe}` : ""}`),
+  technicalSummary: (universe?: UniverseCode) =>
+    request<TechnicalSummary>(`/api/v1/market/technical-summary${universe ? `?universe=${universe}` : ""}`),
   economicEvents: (days = 14) =>
     request<EconomicCalendar>(`/api/v1/market/economic-events?days=${days}`),
 };
@@ -467,12 +535,39 @@ export interface StockSentiment {
   symbol: string;
   name: string | null;
   latest_sentiment: number | null;
+  availability: "available" | "no_relevant_news";
+  confidence: number | null;
+  article_count: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  evidence: StockNewsEvidence[];
   series: SentimentDaily[];
 }
 
 export interface LatestSentiment {
   symbol: string;
   latest_sentiment: number | null;
+  availability: "available" | "no_relevant_news";
+  confidence: number | null;
+  article_count: number;
+}
+
+export interface StockNewsEvidence {
+  id: number;
+  headline: string;
+  publisher: string;
+  published_at: string | null;
+  source_url: string;
+  sentiment_class: "positive" | "neutral" | "negative";
+  sentiment_score: number;
+  sentiment_confidence: number;
+  event_category: string;
+  event_confidence: number;
+  driver: string;
+  evidence_excerpt: string;
+  matched_alias: string | null;
+  entity_match_confidence: number;
 }
 
 export interface NewsArticle {
@@ -484,7 +579,17 @@ export interface NewsArticle {
   published_at: string | null;
   sentiment_label: string;
   sentiment_score: number;
+  sentiment_confidence: number;
+  event_category: string;
+  event_confidence: number;
+  driver: string;
+  evidence_excerpt: string;
   tags: string[];
+  associations: {
+    symbol: string;
+    matched_alias: string | null;
+    entity_match_confidence: number;
+  }[];
 }
 
 export const newsApi = {
@@ -493,6 +598,40 @@ export const newsApi = {
   stockSentiment: (symbol: string) =>
     request<StockSentiment>(`/api/v1/news/sentiment/${encodeURIComponent(symbol)}`),
 };
+
+export interface AttributionDriver {
+  rank: number;
+  category: string;
+  label: string;
+  observation: string;
+  direction: "bullish" | "bearish" | "neutral" | "unavailable";
+  relevance: "high" | "medium" | "low" | "unavailable";
+  confidence: number;
+  value_percent: number | null;
+  evidence_article_ids: number[];
+}
+
+export interface ConflictSignal {
+  source: string;
+  direction: "bullish" | "bearish" | "neutral" | "unavailable";
+  confidence: number;
+  observation: string;
+}
+
+export interface MovementAttribution {
+  symbol: string;
+  as_of: string | null;
+  change_percent: number | null;
+  certainty: "likely_contributors_not_proven_causes";
+  summary: string;
+  drivers: AttributionDriver[];
+  evidence_conflict: {
+    consensus: "bullish" | "bearish" | "neutral" | "mixed" | "unavailable";
+    confidence: number;
+    conflict_detected: boolean;
+    signals: ConflictSignal[];
+  };
+}
 
 // ----- Historical similarity types (Phase 4 reads) --------------------------
 export interface SessionSummary {
@@ -643,11 +782,26 @@ export interface DashboardSummary {
   risk_alerts: Recommendation[];
   history: SimilarityResult | null;
   generation: GenerationSummary;
+  freshness: DataFreshness[];
+}
+
+export interface DataFreshness {
+  dataset: "market" | "news" | "universe" | "historical_corpus";
+  state: "Fresh" | "Delayed" | "Unavailable";
+  observed_date: string | null;
+  observed_at: string | null;
+  expected_trading_date: string | null;
+  explanation: string;
 }
 
 export const dashboardApi = {
   summary: () => request<DashboardSummary>("/api/v1/dashboard/summary", { auth: true }),
 };
+
+export interface PipelineStepStatus { step_name: string; sequence: number; status: "pending" | "running" | "completed" | "failed" | "skipped"; attempt_count: number; counters: Record<string, number>; last_error_summary: string | null; started_at: string | null; heartbeat_at: string | null; completed_at: string | null }
+export interface PipelineRunStatus { id: number; pipeline_name: string; target_trading_date: string; correlation_id: string; status: "pending" | "running" | "partial" | "completed" | "failed"; attempt_count: number; counters: Record<string, number>; last_error_summary: string | null; started_at: string | null; heartbeat_at: string | null; completed_at: string | null; created_at: string; updated_at: string; steps: PipelineStepStatus[] }
+export interface EODStatus { pipeline_name: string; requested_trading_date: string | null; run: PipelineRunStatus | null; rerun_recommended: boolean; health: "healthy" | "running" | "attention" | "unavailable"; operator_explanation: string; freshness: DataFreshness[] }
+export const operationsApi = { eodStatus: (target?: string) => request<EODStatus>(`/api/v1/admin/jobs/eod/status${target ? `?target_trading_date=${encodeURIComponent(target)}` : ""}`, { auth: true }) };
 
 // ----- Reports (Phase 8) ----------------------------------------------------
 export interface ReportSummary {
@@ -725,6 +879,56 @@ export const reportsApi = {
       auth: true,
       headers: { "Idempotency-Key": crypto.randomUUID() },
     }),
+};
+
+// ----- Strategies & deterministic backtesting (Phase 11C) -----------------
+export type RuleField =
+  | "price_vs_ema20" | "price_vs_ema50" | "rsi" | "macd_histogram"
+  | "volume_ratio" | "sector_momentum_20d" | "market_breadth"
+  | "market_regime" | "news_sentiment";
+export type RuleOperator = "gt" | "gte" | "lt" | "lte" | "between" | "positive" | "negative" | "above" | "below" | "is" | "is_not";
+export type RuleNode = RuleCondition | RuleGroup;
+export interface RuleCondition { kind: "condition"; field: RuleField; operator: RuleOperator; value?: number | string | null; upper_value?: number | null }
+export interface RuleGroup { kind: "group"; operator: "AND" | "OR" | "NOT"; rules: RuleNode[] }
+export interface ExecutionConfig { initial_capital: number; max_positions: number; transaction_cost_bps: number; slippage_bps: number; stop_loss_percent: number | null; take_profit_percent: number | null; max_holding_sessions: number | null; benchmark_symbol: string }
+export interface StrategyDefinition { entry: RuleGroup; exit: RuleGroup; execution: ExecutionConfig }
+export interface StrategyVersion { id: number; version: number; definition: StrategyDefinition; created_at: string }
+export interface Strategy { id: number; name: string; description: string | null; is_active: boolean; created_at: string; updated_at: string; latest_version: StrategyVersion }
+export interface BacktestMetrics { total_return_percent: number; benchmark_return_percent: number | null; excess_return_percent: number | null; cagr_percent: number | null; sharpe_ratio: number | null; sortino_ratio: number | null; max_drawdown_percent: number; win_rate_percent: number | null; profit_factor: number | null; average_winner_percent: number | null; average_loser_percent: number | null; expectancy_percent: number | null; total_trades: number; average_holding_sessions: number | null; turnover_percent: number; estimated_transaction_costs: number }
+export interface EquityPoint { date: string; equity: number; benchmark_equity: number | null; drawdown_percent: number }
+export interface BacktestTrade { symbol: string; entry_signal_date: string; entry_date: string; entry_price: number; exit_signal_date: string | null; exit_date: string; exit_price: number; quantity: number; gross_pnl: number; net_pnl: number; return_percent: number; holding_sessions: number; exit_reason: string; transaction_cost: number }
+export interface ValidationMetricSlice { total_return_percent: number; benchmark_return_percent: number | null; excess_return_percent: number | null; max_drawdown_percent: number; sharpe_ratio: number | null; total_trades: number }
+export interface PerformanceBreakdown { label: string; trades: number; average_return_percent: number; win_rate_percent: number; net_pnl: number }
+export interface SignalOutcome { symbol: string; signal_date: string; execution_date: string; confidence: number; confidence_bucket: string; positive_outcome: boolean; return_percent: number; net_pnl: number; breadth_regime: string; momentum_regime: string; volatility_regime: string; macro_stress: string; sector: string }
+export interface RobustnessAnalysis { analysis_version: "strategy_robustness_v1"; baseline_result_hash: string; chronological_split: { train_percent: number; test_percent: number; split_date: string | null; training: ValidationMetricSlice | null; test: ValidationMetricSlice | null; note: string }; signal_outcomes: SignalOutcome[]; breakdowns: Record<"breadth_regime" | "momentum_regime" | "volatility_regime" | "macro_stress" | "sector" | "confidence_bucket", PerformanceBreakdown[]>; parameter_sensitivity: (ValidationMetricSlice & { label: string })[]; cost_sensitivity: (ValidationMetricSlice & { label: string; transaction_cost_bps: number; slippage_bps: number })[]; robustness: { score: number; components: Record<string, number>; explanation: string[] } }
+export interface Backtest { id: number; strategy_id: number; strategy_version_id: number; strategy_version: number; status: "completed" | "failed"; start_date: string; end_date: string; universe_code: "NIFTY50" | "NIFTYNEXT50" | "NIFTY100"; membership_mode: "current_universe" | "historical_membership"; membership_disclaimer: string; benchmark_symbol: string; result_hash: string | null; created_at: string; completed_at: string | null; metrics: BacktestMetrics | null; equity_curve: EquityPoint[]; trades: BacktestTrade[]; robustness_analysis: RobustnessAnalysis | null }
+export interface BacktestSummary { id: number; strategy_version: number; status: "completed" | "failed"; start_date: string; end_date: string; universe_code: "NIFTY50" | "NIFTYNEXT50" | "NIFTY100"; membership_mode: "current_universe" | "historical_membership"; result_hash: string | null; created_at: string; metrics: BacktestMetrics | null }
+
+export const strategiesApi = {
+  list: () => request<Strategy[]>("/api/v1/strategies", { auth: true }),
+  create: (payload: { name: string; description?: string; definition: StrategyDefinition }) => request<Strategy>("/api/v1/strategies", { method: "POST", body: payload, auth: true }),
+  update: (id: number, payload: { name?: string; description?: string; definition: StrategyDefinition }) => request<Strategy>(`/api/v1/strategies/${id}`, { method: "PUT", body: payload, auth: true }),
+  archive: (id: number) => request<null>(`/api/v1/strategies/${id}`, { method: "DELETE", auth: true }),
+  run: (id: number, payload: { start_date: string; end_date: string; universe_code: string; membership_mode: string }) => request<Backtest>(`/api/v1/strategies/${id}/backtests`, { method: "POST", body: payload, auth: true }),
+  runs: (id: number) => request<BacktestSummary[]>(`/api/v1/strategies/${id}/backtests`, { auth: true }),
+  backtest: (id: number) => request<Backtest>(`/api/v1/backtests/${id}`, { auth: true }),
+  analyze: (id: number) => request<RobustnessAnalysis>(`/api/v1/backtests/${id}/robustness`, { method: "POST", auth: true }),
+};
+
+// ----- Deterministic discovery (Phase 11F) -------------------------------
+export type ScreenerField = "sector" | "price_change_percent" | "rsi_14" | "price_vs_ema20" | "price_vs_ema50" | "macd_histogram" | "volume_ratio" | "pe_ratio" | "eps" | "news_sentiment" | "signal_state" | "regime_fit";
+export interface ScreenerCondition { field: ScreenerField; operator: string; value: number | string | null; upper_value: number | null }
+export interface ScreenerAST { version: "screener_ast_v1"; universe: "NIFTY50" | "NIFTYNEXT50" | "NIFTY100"; conditions: ScreenerCondition[] }
+export interface ScreenerRow { symbol: string; name: string | null; sector: string | null; as_of: string | null; close: number | null; price_change_percent: number | null; rsi_14: number | null; ema_20: number | null; ema_50: number | null; macd_histogram: number | null; volume_ratio: number | null; pe_ratio: number | null; eps: number | null; news_sentiment: number | null; signal_state: string; regime_fit: string }
+export interface ScreenerResult { query: string; ast: ScreenerAST; explanation: string[]; rows: ScreenerRow[]; result_hash: string }
+export interface SavedScreen { id: number; name: string; query_text: string; filter_ast: ScreenerAST; created_at: string; updated_at: string }
+
+export const discoveryApi = {
+  screen: (query: string) => request<ScreenerResult>("/api/v1/discovery/screen", { method: "POST", body: { query }, auth: true }),
+  list: () => request<SavedScreen[]>("/api/v1/discovery/screens", { auth: true }),
+  save: (payload: { name: string; query_text: string; filter_ast: ScreenerAST }) => request<SavedScreen>("/api/v1/discovery/screens", { method: "POST", body: payload, auth: true }),
+  run: (id: number) => request<ScreenerResult>(`/api/v1/discovery/screens/${id}/run`, { method: "POST", auth: true }),
+  remove: (id: number) => request<null>(`/api/v1/discovery/screens/${id}`, { method: "DELETE", auth: true }),
 };
 
 // ----- AI Chat (Phase 9) ---------------------------------------------------

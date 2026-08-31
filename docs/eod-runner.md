@@ -15,9 +15,11 @@ From `backend/`:
 ```
 
 `--target-trading-date` accepts an ISO `YYYY-MM-DD` date. If it is omitted, the
-runner resolves the current calendar date in `MARKET_TIMEZONE` (default
-`Asia/Kolkata`). The P10.3 preflight validates that the target is an NSE session,
-the close buffer has elapsed, and yfinance exposes a real target-session bar.
+runner walks backward from the current `MARKET_TIMEZONE` date (default
+`Asia/Kolkata`) and selects the latest NSE session whose provider bar is ready.
+This prevents a delayed invocation after midnight from targeting a new,
+not-yet-open calendar date. The P10.3 preflight validates that the target is an
+NSE session, the close buffer has elapsed, and yfinance exposes a real bar.
 See [Trading Calendar and Provider Readiness](trading-calendar-readiness.md).
 
 The process uses the P10.1 control plane, so duplicate invocations are safe at

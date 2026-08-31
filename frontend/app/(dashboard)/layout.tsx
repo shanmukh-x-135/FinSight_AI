@@ -32,5 +32,5 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  return <AppShell email={user?.email} onLogout={logout}>{children}</AppShell>;
+  return <AppShell email={user?.email} isAdmin={user?.is_admin} onLogout={logout}>{children}</AppShell>;
 }

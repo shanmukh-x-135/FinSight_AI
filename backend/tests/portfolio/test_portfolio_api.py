@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.market.models import DailyPrice, Stock
+from app.market.models import DailyPrice, Fundamentals, IndexMembership, Stock
 
 PW = "S3curePass!"
 
@@ -104,6 +105,106 @@ async def test_analytics_reflects_real_prices(client: AsyncClient, seed_stocks: 
     assert a["holdings"][0]["current_price"] == pytest.approx(110.0)
 
 
+@pytest.mark.asyncio
+async def test_risk_stress_and_counterfactual_are_populated_and_labeled(
+    client: AsyncClient, seed_stocks: None, db_session: AsyncSession
+) -> None:
+    aaa = await db_session.scalar(select(Stock).where(Stock.symbol == "AAA.NS"))
+    bbb = await db_session.scalar(select(Stock).where(Stock.symbol == "BBB.NS"))
+    assert aaa is not None and bbb is not None
+    benchmark = Stock(symbol="^NSEI", name="NIFTY 50", exchange="GLOBAL")
+    db_session.add(benchmark)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            IndexMembership(
+                stock_id=stock.id,
+                index_code="NIFTY100",
+                valid_from=date(2024, 1, 1),
+                source="test",
+                source_snapshot_date=date(2024, 1, 1),
+            )
+            for stock in (aaa, bbb)
+        ]
+        + [
+            Fundamentals(stock_id=aaa.id, market_cap=600),
+            Fundamentals(stock_id=bbb.id, market_cap=400),
+        ]
+    )
+    for index in range(2, 45):
+        day = date(2024, 1, 1) + timedelta(days=index)
+        for stock, close in (
+            (aaa, 110 * (1.004**index)),
+            (bbb, 180 * (1.002**index)),
+            (benchmark, 200 * (1.003**index)),
+        ):
+            db_session.add(
+                DailyPrice(
+                    stock_id=stock.id,
+                    date=day,
+                    open=close,
+                    high=close + 1,
+                    low=close - 1,
+                    close=close,
+                    volume=1000,
+                )
+            )
+    for index in range(2):
+        day = date(2024, 1, 1) + timedelta(days=index)
+        close = 200 * (1.003**index)
+        db_session.add(
+            DailyPrice(
+                stock_id=benchmark.id,
+                date=day,
+                open=close,
+                high=close + 1,
+                low=close - 1,
+                close=close,
+                volume=1000,
+            )
+        )
+    await db_session.commit()
+    headers = _hdr(await _token(client, "risk@example.com"))
+    portfolio_id = (
+        await client.post("/api/v1/portfolios", json={"name": "Risk"}, headers=headers)
+    ).json()["data"]["id"]
+    await client.post(
+        f"/api/v1/portfolios/{portfolio_id}/items",
+        headers=headers,
+        json={"symbol": "AAA.NS", "quantity": 10, "avg_buy_price": 100},
+    )
+
+    risk = await client.get(
+        f"/api/v1/portfolios/{portfolio_id}/risk", headers=headers
+    )
+    assert risk.status_code == 200
+    data = risk.json()["data"]
+    assert data["data_complete"] is True
+    assert data["observations"] >= 30
+    assert data["beta"] is not None
+    assert data["correlation"]
+    assert data["holding_contributions"][0]["risk_contribution_percent"] == 100
+    assert len(data["stress_scenarios"]) == 5
+    assert all(item["is_prediction"] is False for item in data["stress_scenarios"])
+    assert "not actual portfolio performance" in data["methodology"]
+
+    scenario = await client.post(
+        f"/api/v1/portfolios/{portfolio_id}/counterfactual",
+        headers=headers,
+        json={
+            "changes": [
+                {"symbol": "AAA.NS", "quantity_delta": -5},
+                {"symbol": "BBB.NS", "quantity_delta": 5},
+            ]
+        },
+    )
+    assert scenario.status_code == 200
+    result = scenario.json()["data"]
+    assert result["label"] == "Scenario estimate, not a prediction"
+    assert result["after"]["concentration_hhi"] < result["before"]["concentration_hhi"]
+    assert result["deltas"]["concentration_hhi"] < 0
+
+
 # ----- Validation / business errors ----------------------------------------
 @pytest.mark.asyncio
 async def test_add_untracked_stock_404(client: AsyncClient, seed_stocks: None) -> None:
@@ -176,6 +277,14 @@ async def test_user_cannot_access_others_portfolio(client: AsyncClient, seed_sto
     # Bob must not read, mutate, or even confirm existence of Alice's portfolio.
     assert (await client.get(f"/api/v1/portfolios/{pid}", headers=b)).status_code == 404
     assert (await client.get(f"/api/v1/portfolios/{pid}/analytics", headers=b)).status_code == 404
+    assert (await client.get(f"/api/v1/portfolios/{pid}/risk", headers=b)).status_code == 404
+    assert (
+        await client.post(
+            f"/api/v1/portfolios/{pid}/counterfactual",
+            headers=b,
+            json={"changes": [{"symbol": "BBB.NS", "quantity_delta": 1}]},
+        )
+    ).status_code == 404
     assert (await client.delete(f"/api/v1/portfolios/{pid}", headers=b)).status_code == 404
     assert (
         await client.post(

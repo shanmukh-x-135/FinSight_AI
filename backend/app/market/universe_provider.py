@@ -9,17 +9,43 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Protocol
 
 import httpx
 
+from app.shared.time import utc_now
+
 NIFTY50_INDEX_CODE = "NIFTY50"
-NSE_NIFTY50_CSV_URL = (
-    "https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv"
+NIFTY_NEXT50_INDEX_CODE = "NIFTYNEXT50"
+NIFTY100_INDEX_CODE = "NIFTY100"
+SUPPORTED_INDEX_CODES = (
+    NIFTY50_INDEX_CODE,
+    NIFTY_NEXT50_INDEX_CODE,
+    NIFTY100_INDEX_CODE,
 )
 NSE_INDEX_SOURCE = "nse-indices-csv"
 EXPECTED_NIFTY50_COUNT = 50
+EXPECTED_NIFTY_NEXT50_COUNT = 50
+EXPECTED_NIFTY100_COUNT = 100
+NSE_NIFTY50_CSV_URL = (
+    "https://www.niftyindices.com/IndexConstituent/ind_nifty50list.csv"
+)
+NSE_NIFTY_NEXT50_CSV_URL = (
+    "https://www.niftyindices.com/IndexConstituent/ind_niftynext50list.csv"
+)
+NSE_NIFTY100_CSV_URL = (
+    "https://www.niftyindices.com/IndexConstituent/ind_nifty100list.csv"
+)
+INDEX_DEFINITIONS: dict[str, tuple[str, str, int]] = {
+    NIFTY50_INDEX_CODE: ("NIFTY 50", NSE_NIFTY50_CSV_URL, EXPECTED_NIFTY50_COUNT),
+    NIFTY_NEXT50_INDEX_CODE: (
+        "NIFTY Next 50",
+        NSE_NIFTY_NEXT50_CSV_URL,
+        EXPECTED_NIFTY_NEXT50_COUNT,
+    ),
+    NIFTY100_INDEX_CODE: ("NIFTY 100", NSE_NIFTY100_CSV_URL, EXPECTED_NIFTY100_COUNT),
+}
 _SYMBOL_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9&.\-]*$")
 
 
@@ -89,13 +115,19 @@ class UniverseProvider(Protocol):
         """Return a normalized, shape-validated constituent snapshot."""
 
 
-def parse_nifty50_csv(
+def parse_index_csv(
     content: bytes,
     *,
+    index_code: str,
     snapshot_date: date,
     fetched_at: datetime,
 ) -> UniverseProviderSnapshot:
-    """Parse the official CSV defensively and require all 50 unique constituents."""
+    """Parse one official index CSV and require its exact constituent count."""
+    normalized_code = index_code.strip().upper()
+    definition = INDEX_DEFINITIONS.get(normalized_code)
+    if definition is None:
+        raise UniverseProviderError(f"Unsupported universe index: {index_code}")
+    display_name, source_url, expected_count = definition
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -122,7 +154,7 @@ def parse_nifty50_csv(
         seen.add(symbol)
         constituents.append(
             UniverseConstituent(
-                index_code=NIFTY50_INDEX_CODE,
+                index_code=normalized_code,
                 exchange_symbol=symbol,
                 company_name=name,
                 industry=row.get("Industry") or None,
@@ -131,23 +163,38 @@ def parse_nifty50_csv(
             )
         )
 
-    if len(constituents) != EXPECTED_NIFTY50_COUNT:
+    if len(constituents) != expected_count:
         raise UniversePayloadError(
-            "NSE NIFTY 50 response must contain exactly "
-            f"{EXPECTED_NIFTY50_COUNT} unique rows; received {len(constituents)}"
+            f"NSE {display_name} response must contain exactly "
+            f"{expected_count} unique rows; received {len(constituents)}"
         )
     return UniverseProviderSnapshot(
-        index_code=NIFTY50_INDEX_CODE,
+        index_code=normalized_code,
         source=NSE_INDEX_SOURCE,
-        source_url=NSE_NIFTY50_CSV_URL,
+        source_url=source_url,
         snapshot_date=snapshot_date,
         fetched_at=fetched_at,
         constituents=tuple(sorted(constituents, key=lambda row: row.exchange_symbol)),
     )
 
 
-class NseNifty50Provider:
-    """Fetch the official machine-readable NSE Indices constituent CSV."""
+def parse_nifty50_csv(
+    content: bytes,
+    *,
+    snapshot_date: date,
+    fetched_at: datetime,
+) -> UniverseProviderSnapshot:
+    """Backward-compatible NIFTY 50 parser wrapper."""
+    return parse_index_csv(
+        content,
+        index_code=NIFTY50_INDEX_CODE,
+        snapshot_date=snapshot_date,
+        fetched_at=fetched_at,
+    )
+
+
+class NseIndexConstituentProvider:
+    """Fetch official machine-readable Nifty Indices constituent CSVs."""
 
     source = NSE_INDEX_SOURCE
 
@@ -163,9 +210,12 @@ class NseNifty50Provider:
         self.today = today
 
     async def get_constituents(self, index_code: str) -> UniverseProviderSnapshot:
-        if index_code.upper() != NIFTY50_INDEX_CODE:
+        normalized_code = index_code.strip().upper()
+        definition = INDEX_DEFINITIONS.get(normalized_code)
+        if definition is None:
             raise UniverseProviderError(f"Unsupported universe index: {index_code}")
-        fetched_at = datetime.now(tz=timezone.utc)
+        display_name, source_url, _expected_count = definition
+        fetched_at = utc_now()
         try:
             async with self.client_factory(
                 timeout=httpx.Timeout(self.timeout_seconds),
@@ -175,21 +225,26 @@ class NseNifty50Provider:
                     "User-Agent": "FinSight-AI-Universe/1.0",
                 },
             ) as client:
-                response = await client.get(NSE_NIFTY50_CSV_URL)
+                response = await client.get(source_url)
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise UniverseProviderUnavailableError(
-                f"Official NSE NIFTY 50 source unavailable: {type(exc).__name__}"
+                f"Official NSE {display_name} source unavailable: {type(exc).__name__}"
             ) from exc
         if not response.content:
             raise UniversePayloadError(
-                "Official NSE NIFTY 50 source returned an empty body"
+                f"Official NSE {display_name} source returned an empty body"
             )
-        return parse_nifty50_csv(
+        return parse_index_csv(
             response.content,
+            index_code=normalized_code,
             snapshot_date=self.today(),
             fetched_at=fetched_at,
         )
+
+
+# Compatibility alias retained for callers and operators introduced in Phase 10.
+NseNifty50Provider = NseIndexConstituentProvider
 
 
 def _optional_string(value: object) -> str | None:

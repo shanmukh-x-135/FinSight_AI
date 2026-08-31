@@ -15,7 +15,7 @@ concerns with different update frequencies.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
@@ -31,10 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from app.shared.time import utc_now
 
 
 class HistoricalSession(Base):
@@ -71,7 +68,7 @@ class HistoricalSession(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -100,7 +97,7 @@ class HistoricalEmbedding(Base):
     feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -130,8 +127,8 @@ class HistoricalIndexState(Base):
     built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -165,7 +162,7 @@ class HistoricalStatistics(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )

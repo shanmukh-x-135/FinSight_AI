@@ -209,15 +209,21 @@ async def _run_health_check(target_date: date) -> int:
     from app.market.repository import MarketRepository
     from app.shared.clients.yfinance_client import build_default_client
     from app.shared.database import SessionFactory
+    from config.settings import settings
 
     async with SessionFactory() as db:
-        approved = await MarketRepository(db).list_approved_equities("NIFTY50")
+        approved = await MarketRepository(db).list_approved_equities(
+            settings.research_universe
+        )
     if not approved:
         print(
             json.dumps(
                 {
                     "target_date": target_date.isoformat(),
-                    "error": "NIFTY50 universe is empty; run app.market.universe_sync first",
+                    "error": (
+                        f"{settings.research_universe} universe is empty; run "
+                        "app.market.universe_sync first"
+                    ),
                 },
                 indent=2,
             )

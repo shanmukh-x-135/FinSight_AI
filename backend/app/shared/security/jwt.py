@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 import jwt
 
+from app.shared.time import utc_now
 from config.settings import settings
 
 TokenType = Literal["access", "refresh"]
@@ -39,7 +40,7 @@ class DecodedToken:
 
 
 def _now() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return utc_now()
 
 
 def _create_token(

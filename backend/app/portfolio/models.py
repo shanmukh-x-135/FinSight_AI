@@ -8,7 +8,7 @@ consistent when a portfolio or user is removed.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
@@ -23,10 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from app.shared.time import utc_now
 
 
 class Portfolio(Base):
@@ -38,7 +35,10 @@ class Portfolio(Base):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False, default="My Portfolio")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )
 
     items: Mapped[list["PortfolioItem"]] = relationship(
@@ -65,7 +65,10 @@ class PortfolioItem(Base):
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
     avg_buy_price: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )
 
     portfolio: Mapped["Portfolio"] = relationship(back_populates="items")
@@ -89,5 +92,8 @@ class WatchlistItem(Base):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )

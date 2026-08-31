@@ -13,6 +13,7 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dashboard.freshness import FreshnessService
 from app.intelligence import prompt_builder as pb
 from app.intelligence.context_builder import ContextBuilder
 from app.intelligence.generation import (
@@ -56,6 +57,7 @@ class DashboardService:
         sectors = await market_queries.get_sectors_overview()
         technical = await market_queries.get_technical_summary()
         sentiment = await NewsService(self.db).list_latest_sentiment()
+        freshness = await FreshnessService(self.db).get()
 
         # Recommendations: deterministic ranking; the LLM only explains each pick.
         candidates = await self.cb.build_candidates(history)
@@ -115,4 +117,5 @@ class DashboardService:
                 generation_records,
                 configured_backend=type(self.llm).__name__,
             ),
+            "freshness": [item.model_dump(mode="json") for item in freshness],
         }

@@ -20,7 +20,7 @@ describe("WatchlistPage sorting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(watchlistApi.list).mockResolvedValue(rows);
-    vi.mocked(newsApi.latestSentiment).mockResolvedValue([{ symbol: "ZZZ.NS", latest_sentiment: -0.2 }, { symbol: "AAA.NS", latest_sentiment: 0.5 }]);
+    vi.mocked(newsApi.latestSentiment).mockResolvedValue([{ symbol: "ZZZ.NS", latest_sentiment: -0.2, availability: "available", confidence: 0.7, article_count: 1 }, { symbol: "AAA.NS", latest_sentiment: 0.5, availability: "available", confidence: 0.8, article_count: 2 }]);
   });
 
   it("sorts the dense table while retaining pinned-first behavior", async () => {

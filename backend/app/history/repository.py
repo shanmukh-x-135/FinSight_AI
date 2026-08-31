@@ -205,6 +205,22 @@ class HistoryRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_statistics(
+        self,
+    ) -> tuple[HistoricalStatistics, date] | None:
+        """Latest persisted analogue outcome summary, if the corpus has one."""
+        result = await self.db.execute(
+            select(HistoricalStatistics, HistoricalSession.date)
+            .join(
+                HistoricalSession,
+                HistoricalSession.id == HistoricalStatistics.session_id,
+            )
+            .order_by(HistoricalSession.date.desc())
+            .limit(1)
+        )
+        row = result.one_or_none()
+        return (row[0], row[1]) if row else None
+
     async def get_sessions_by_ids(self, ids: list[int]) -> dict[int, HistoricalSession]:
         if not ids:
             return {}

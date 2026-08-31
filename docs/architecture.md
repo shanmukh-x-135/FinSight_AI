@@ -45,12 +45,15 @@ store directly.
 | `intelligence`  | RAG, context/prompt builders, recommendations, report composition    | Phase 6     |
 | `reports`       | Report listing/detail, Markdown/PDF export                           | Phase 8     |
 | `chat`          | Conversational assistant reusing the RAG pipeline                    | Phase 9     |
+| `dashboard`     | Batched home-screen composition and cross-domain freshness           | Phase 7     |
+| `strategy`      | Versioned rules, deterministic replay, robustness analysis           | Phase 11C   |
+| `discovery`     | Validated natural-language screening and saved screens               | Phase 11F   |
 | `scheduler`     | Durable control plane and one-shot external EOD runner                 | Phase 2+    |
 
-## Implemented through P10.8
+## Implemented through Phase 12
 
 - FastAPI app factory with request IDs, structured JSON logging, global envelope
-  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0012`).
+  errors, health probes, and async SQLAlchemy/Alembic (`0001`–`0019`).
 - JWT/Argon2 auth with refresh rotation, preferences, rate limiting, persisted
   administrator capability, and ownership-scoped resources.
 - Deterministic market indicators, batched market snapshots, portfolio/risk
@@ -80,11 +83,15 @@ store directly.
   or generated financial content.
 - Next.js Assistant UI with incremental rendering, recent-question history,
   confidence, sources, risks, and the shared evidence disclosure.
+- Effective-dated NIFTY 50/Next 50/100 membership, a batched Market workspace,
+  evidence-backed movement attribution, advanced portfolio risk, deterministic
+  strategy replay/robustness, validated research discovery, and administrator
+  operations status.
 - Zero-cost Vercel Hobby + Render Free + Neon Free topology, timezone-aware
   GitHub Actions EOD attempts, non-root health-checked production images,
   CI-gated deploys, fail-closed settings, and a non-mutating smoke verifier.
-- Docker Compose for the real stack, 340 backend tests, 42 frontend tests, and
-  three Playwright Chromium journeys.
+- Docker Compose for the real stack, 493 backend tests, 78 frontend tests, and
+  responsive plus real-stack Playwright Chromium journeys.
 
 See [Production Deployment](deployment.md) for the P10.8 operator contract.
 

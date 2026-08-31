@@ -8,7 +8,6 @@ validated for explainability before it is returned/stored.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +31,7 @@ from app.intelligence.recommendation_engine import (
     select_risk_alerts,
     select_watchlist,
 )
+from app.shared.time import utc_now
 from config.prompts import PROMPT_VERSION
 from config.settings import settings
 
@@ -166,7 +166,7 @@ class ReportGenerator:
             "prompt_version": PROMPT_VERSION,
             "llm_backend": backend_label(generation),
             "generation": generation,
-            "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+            "generated_at": utc_now().isoformat(),
         }
 
         validate_report(sections)

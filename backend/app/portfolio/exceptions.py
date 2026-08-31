@@ -57,3 +57,11 @@ class DuplicateWatchlistItemError(BusinessException):
 
     def __init__(self, symbol: str) -> None:
         super().__init__(f"'{symbol}' is already in your watchlist.")
+
+
+class CounterfactualError(AppException):
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    error_type = "invalid_counterfactual"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

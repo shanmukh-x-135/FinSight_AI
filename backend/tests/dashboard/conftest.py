@@ -6,13 +6,13 @@ cross-package imports): 3 stocks — AAA bullish, BBB bearish, CCC neutral.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.models import DailyPrice, Indicator, Stock
-from app.news.models import SentimentDaily
+from app.news.models import NewsArticle, NewsArticleStock, SentimentDaily
 
 D1, D2 = date(2024, 1, 1), date(2024, 1, 2)
 
@@ -38,6 +38,35 @@ async def seed_market(db_session: AsyncSession) -> dict[str, int]:
                       macd_histogram=macd, atr_14=atr),
         ])
         if senti is not None:
+            label = "positive" if senti > 0 else "negative"
+            article = NewsArticle(
+                source="Fixture Feed",
+                url=f"https://example.test/{symbol}",
+                fingerprint=f"{stock.id:064x}",
+                title=f"Verified coverage for {symbol}",
+                summary="Controlled dashboard fixture",
+                published_at=datetime(2024, 1, 2, 10, tzinfo=timezone.utc),
+                sentiment_label=label,
+                sentiment_score=senti,
+                sentiment_positive=max(senti, 0),
+                sentiment_negative=max(-senti, 0),
+                sentiment_neutral=1 - abs(senti),
+                sentiment_confidence=0.7,
+                event_category="Other",
+                event_confidence=0.35,
+                driver="Unclassified company coverage",
+                evidence_excerpt="Controlled dashboard fixture",
+            )
+            db_session.add(article)
+            await db_session.flush()
+            db_session.add(
+                NewsArticleStock(
+                    article_id=article.id,
+                    stock_id=stock.id,
+                    matching_alias=symbol.split(".")[0],
+                    entity_match_confidence=0.9,
+                )
+            )
             db_session.add(SentimentDaily(
                 stock_id=stock.id, date=D2, avg_sentiment=senti, article_count=1,
                 positive_count=1 if senti > 0 else 0, negative_count=1 if senti < 0 else 0,

@@ -7,7 +7,7 @@ created here (same domain) and used by Phase 9.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
     JSON,
@@ -20,10 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from app.shared.time import utc_now
 
 
 class Report(Base):
@@ -42,8 +39,11 @@ class Report(Base):
     )
     sections: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(),
-        index=True, nullable=False,
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        index=True,
+        nullable=False,
     )
 
 
@@ -57,5 +57,8 @@ class ChatHistory(Base):
     role: Mapped[str] = mapped_column(String(12), nullable=False)  # user | assistant
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )

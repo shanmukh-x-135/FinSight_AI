@@ -8,7 +8,7 @@ dates avoids timezone ambiguity).
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
@@ -29,10 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from app.shared.time import utc_now
 
 
 class Stock(Base):
@@ -60,7 +57,7 @@ class Stock(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -110,7 +107,7 @@ class IndexMembership(Base):
     source_snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -140,7 +137,7 @@ class UniverseSnapshot(Base):
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -164,7 +161,7 @@ class UniverseSyncRun(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -236,7 +233,7 @@ class StockSymbolAlias(Base):
     effective_to: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -312,7 +309,7 @@ class Fundamentals(Base):
     week52_low: Mapped[float | None] = mapped_column(Float)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )

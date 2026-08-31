@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -111,6 +111,85 @@ class PortfolioAnalyticsOut(BaseModel):
     unpriced_symbols: list[str]
     sector_allocation: list[SectorAllocationOut]
     holdings: list[HoldingAnalyticsOut]
+
+
+class CorrelationCellOut(BaseModel):
+    symbol_x: str
+    symbol_y: str
+    correlation: float | None
+    observations: int
+
+
+class HoldingRiskContributionOut(BaseModel):
+    symbol: str
+    weight_percent: float
+    return_contribution_percent: float | None
+    risk_contribution_percent: float | None
+    momentum_20d_percent: float | None
+
+
+class SectorDeviationOut(BaseModel):
+    sector: str
+    portfolio_weight_percent: float
+    benchmark_weight_percent: float
+    deviation_percent: float
+
+
+class RegimeSensitivityOut(BaseModel):
+    regime: str
+    sessions: int
+    average_daily_return_percent: float
+    positive_session_percent: float
+
+
+class StressScenarioOut(BaseModel):
+    code: str
+    label: str
+    shock: str
+    estimated_impact_percent: float | None
+    estimated_value_change: float | None
+    methodology: str
+    is_prediction: bool = False
+
+
+class PortfolioRiskOut(BaseModel):
+    portfolio_id: int
+    as_of: date | None
+    methodology: str
+    benchmark_symbol: str
+    observations: int
+    minimum_observations: int
+    data_complete: bool
+    missing_symbols: list[str]
+    annualized_volatility_percent: float | None
+    beta: float | None
+    sharpe_ratio: float | None
+    max_drawdown_percent: float | None
+    concentration_hhi: float | None
+    momentum_exposure_percent: float | None
+    correlation: list[CorrelationCellOut]
+    holding_contributions: list[HoldingRiskContributionOut]
+    sector_deviation: list[SectorDeviationOut]
+    sector_benchmark_methodology: str
+    regime_sensitivity: list[RegimeSensitivityOut]
+    stress_scenarios: list[StressScenarioOut]
+
+
+class CounterfactualChange(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    quantity_delta: float
+
+
+class CounterfactualRequest(BaseModel):
+    changes: list[CounterfactualChange] = Field(min_length=1, max_length=20)
+
+
+class CounterfactualOut(BaseModel):
+    label: str = "Scenario estimate, not a prediction"
+    changes: list[CounterfactualChange]
+    before: PortfolioRiskOut
+    after: PortfolioRiskOut
+    deltas: dict[str, float | None]
 
 
 class WatchlistItemOut(BaseModel):

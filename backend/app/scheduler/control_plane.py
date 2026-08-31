@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import TypeAlias
 from uuid import uuid4
 
@@ -20,6 +20,7 @@ from app.scheduler.constants import (
 from app.scheduler.locks import pipeline_run_lock, pipeline_run_lock_id
 from app.scheduler.models import PipelineRun, PipelineRunStep
 from app.scheduler.repository import PipelineRunRepository
+from app.shared.time import as_utc, utc_now
 from config.logging import get_logger
 from config.settings import settings
 
@@ -59,18 +60,6 @@ def sanitized_error_summary(exc: BaseException) -> str:
     if isinstance(exc, StepExecutionError):
         return exc.summary
     return f"Step execution failed ({type(exc).__name__})"[:500]
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
-
-
-def _as_utc(value: datetime) -> datetime:
-    return (
-        value.replace(tzinfo=timezone.utc)
-        if value.tzinfo is None
-        else value.astimezone(timezone.utc)
-    )
 
 
 class EODControlPlane:
@@ -181,7 +170,7 @@ class EODControlPlane:
         async with self.session_factory.begin() as db:
             repo = PipelineRunRepository(db)
             run = await repo.get_run(pipeline_name, target_trading_date)
-            now = _utcnow()
+            now = utc_now()
             if run is None:
                 run = PipelineRun(
                     pipeline_name=pipeline_name,
@@ -209,7 +198,7 @@ class EODControlPlane:
 
             if run.status == PipelineRunStatus.RUNNING:
                 heartbeat = run.heartbeat_at or run.started_at or run.created_at
-                if now - _as_utc(heartbeat) > self.stale_after:
+                if now - as_utc(heartbeat) > self.stale_after:
                     for step in run.steps:
                         if step.status == PipelineStepStatus.RUNNING:
                             step.status = PipelineStepStatus.FAILED
@@ -233,7 +222,7 @@ class EODControlPlane:
         async with self.session_factory.begin() as db:
             run = await PipelineRunRepository(db).get_run_by_id(run_id)
             assert run is not None
-            now = _utcnow()
+            now = utc_now()
             run.status = PipelineRunStatus.RUNNING
             run.attempt_count += 1
             run.started_at = now
@@ -248,7 +237,7 @@ class EODControlPlane:
             run = await repo.get_run_by_id(run_id)
             step = await repo.get_step(run_id, step_name.value)
             assert run is not None and step is not None
-            now = _utcnow()
+            now = utc_now()
             step.status = PipelineStepStatus.RUNNING
             step.attempt_count += 1
             step.started_at = now
@@ -264,7 +253,7 @@ class EODControlPlane:
             step = await repo.get_step(run_id, step_name.value)
             if run is None or step is None:
                 return
-            now = _utcnow()
+            now = utc_now()
             run.heartbeat_at = now
             step.heartbeat_at = now
 
@@ -298,7 +287,7 @@ class EODControlPlane:
             run = await repo.get_run_by_id(run_id)
             step = await repo.get_step(run_id, step_name.value)
             assert run is not None and step is not None
-            now = _utcnow()
+            now = utc_now()
             step.status = PipelineStepStatus.COMPLETED
             step.counters = dict(counters)
             step.completed_at = now
@@ -320,7 +309,7 @@ class EODControlPlane:
             run = await repo.get_run_by_id(run_id)
             step = await repo.get_step(run_id, step_name.value)
             assert run is not None and step is not None
-            now = _utcnow()
+            now = utc_now()
             step.status = PipelineStepStatus.FAILED
             step.counters = dict(counters)
             step.last_error_summary = summary
@@ -347,7 +336,7 @@ class EODControlPlane:
             run = await repo.get_run_by_id(run_id)
             step = await repo.get_step(run_id, step_name.value)
             assert run is not None and step is not None
-            now = _utcnow()
+            now = utc_now()
             step.status = PipelineStepStatus.SKIPPED
             step.counters = dict(counters)
             step.completed_at = now
@@ -361,7 +350,7 @@ class EODControlPlane:
         async with self.session_factory.begin() as db:
             run = await PipelineRunRepository(db).get_run_by_id(run_id)
             assert run is not None
-            now = _utcnow()
+            now = utc_now()
             run.status = PipelineRunStatus.COMPLETED
             run.counters = self._combined_counters(run)
             run.last_error_summary = None

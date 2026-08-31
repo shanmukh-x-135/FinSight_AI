@@ -9,10 +9,17 @@ import pytest
 
 from app.market.universe_provider import (
     EXPECTED_NIFTY50_COUNT,
+    EXPECTED_NIFTY100_COUNT,
+    EXPECTED_NIFTY_NEXT50_COUNT,
     NIFTY50_INDEX_CODE,
+    NIFTY100_INDEX_CODE,
+    NIFTY_NEXT50_INDEX_CODE,
+    NseIndexConstituentProvider,
     NseNifty50Provider,
     UniversePayloadError,
+    UniverseProviderError,
     UniverseProviderUnavailableError,
+    parse_index_csv,
     parse_nifty50_csv,
 )
 
@@ -37,6 +44,27 @@ def test_parse_official_csv_normalizes_all_fifty_constituents() -> None:
     assert snapshot.constituents[0].exchange_symbol == "SYM00"
     assert snapshot.constituents[-1].isin == "INE000000049"
     assert len(snapshot.checksum) == 64
+
+
+@pytest.mark.parametrize(
+    ("index_code", "count"),
+    [
+        (NIFTY50_INDEX_CODE, EXPECTED_NIFTY50_COUNT),
+        (NIFTY_NEXT50_INDEX_CODE, EXPECTED_NIFTY_NEXT50_COUNT),
+        (NIFTY100_INDEX_CODE, EXPECTED_NIFTY100_COUNT),
+    ],
+)
+def test_parse_all_supported_index_payloads(index_code: str, count: int) -> None:
+    snapshot = parse_index_csv(
+        _csv(count),
+        index_code=index_code,
+        snapshot_date=TARGET,
+        fetched_at=FETCHED_AT,
+    )
+
+    assert snapshot.index_code == index_code
+    assert len(snapshot.constituents) == count
+    assert {row.index_code for row in snapshot.constituents} == {index_code}
 
 
 @pytest.mark.parametrize(
@@ -82,3 +110,31 @@ async def test_provider_fetches_and_parses_successful_response() -> None:
 
     assert snapshot.snapshot_date == TARGET
     assert len(snapshot.constituents) == 50
+
+
+@pytest.mark.asyncio
+async def test_provider_selects_the_requested_official_index_source() -> None:
+    requested_paths: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.path)
+        return httpx.Response(200, content=_csv(EXPECTED_NIFTY100_COUNT))
+
+    transport = httpx.MockTransport(respond)
+
+    def client_factory(**kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=transport, **kwargs)
+
+    snapshot = await NseIndexConstituentProvider(
+        client_factory=client_factory, today=lambda: TARGET
+    ).get_constituents(NIFTY100_INDEX_CODE)
+
+    assert requested_paths == ["/IndexConstituent/ind_nifty100list.csv"]
+    assert snapshot.index_code == NIFTY100_INDEX_CODE
+    assert len(snapshot.constituents) == 100
+
+
+@pytest.mark.asyncio
+async def test_provider_rejects_an_unknown_index_before_transport() -> None:
+    with pytest.raises(UniverseProviderError, match="Unsupported universe index"):
+        await NseIndexConstituentProvider().get_constituents("NIFTY500")

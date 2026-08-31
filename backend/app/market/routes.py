@@ -10,6 +10,7 @@ All responses use the standard envelope.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -30,6 +31,7 @@ from app.shared.response import envelope
 
 market_router = APIRouter(prefix="/market", tags=["market"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
+UniverseCode = Literal["NIFTY50", "NIFTYNEXT50", "NIFTY100"]
 
 
 # --------------------------------------------------------------------------- #
@@ -37,29 +39,39 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
 # --------------------------------------------------------------------------- #
 @market_router.get("/gainers", summary="Top gaining stocks by daily % change")
 async def gainers(
-    limit: int = Query(5, ge=1, le=50), db: AsyncSession = Depends(get_db)
+    limit: int = Query(5, ge=1, le=50),
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    data = await MarketQueryService(db).get_gainers(limit)
+    data = await MarketQueryService(db).get_gainers(limit, universe)
     return envelope(data=data)
 
 
 @market_router.get("/losers", summary="Top losing stocks by daily % change")
 async def losers(
-    limit: int = Query(5, ge=1, le=50), db: AsyncSession = Depends(get_db)
+    limit: int = Query(5, ge=1, le=50),
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    data = await MarketQueryService(db).get_losers(limit)
+    data = await MarketQueryService(db).get_losers(limit, universe)
     return envelope(data=data)
 
 
 @market_router.get("/breadth", summary="Market breadth (advancers vs decliners)")
-async def breadth(db: AsyncSession = Depends(get_db)) -> dict:
-    data = await MarketQueryService(db).get_breadth()
+async def breadth(
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    data = await MarketQueryService(db).get_breadth(universe)
     return envelope(data=data)
 
 
 @market_router.get("/technical-summary", summary="Market-wide technical summary")
-async def technical_summary(db: AsyncSession = Depends(get_db)) -> dict:
-    data = await MarketQueryService(db).get_technical_summary()
+async def technical_summary(
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    data = await MarketQueryService(db).get_technical_summary(universe)
     return envelope(data=data)
 
 
@@ -76,20 +88,79 @@ async def economic_events(
 
 
 @market_router.get("/sectors", summary="Per-sector performance overview (heatmap)")
-async def sectors_overview(db: AsyncSession = Depends(get_db)) -> dict:
-    data = await MarketQueryService(db).get_sectors_overview()
+async def sectors_overview(
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    data = await MarketQueryService(db).get_sectors_overview(universe)
     return envelope(data=data)
 
 
 @market_router.get("/sectors/{sector}", summary="Performance of a sector")
-async def sector_performance(sector: str, db: AsyncSession = Depends(get_db)) -> dict:
-    data = await MarketQueryService(db).get_sector_performance(sector)
+async def sector_performance(
+    sector: str,
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    data = await MarketQueryService(db).get_sector_performance(sector, universe)
     return envelope(data=data)
 
 
 @market_router.get("/stocks", summary="Dense snapshots for the active stock universe")
-async def market_stocks(db: AsyncSession = Depends(get_db)) -> dict:
-    data = await MarketQueryService(db).list_market_stocks()
+async def market_stocks(
+    universe: UniverseCode | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    data = await MarketQueryService(db).list_market_stocks(universe)
+    return envelope(data=data)
+
+
+@market_router.get("/universes", summary="Supported research universes and status")
+async def universes(db: AsyncSession = Depends(get_db)) -> dict:
+    return envelope(data=await MarketQueryService(db).list_universes())
+
+
+@market_router.get("/workspace", summary="Batched market research workspace")
+async def market_workspace(
+    universe: UniverseCode = Query("NIFTY100"),
+    days: int = Query(14, ge=1, le=60),
+    db: AsyncSession = Depends(get_db),
+    client: EconomicCalendarClient | None = Depends(get_economic_calendar_client),
+) -> dict:
+    start_date = date.today()
+    calendar = await EconomicCalendarService(client).upcoming(
+        start_date, start_date + timedelta(days=days)
+    )
+    data = await MarketQueryService(db).get_workspace(universe, calendar)
+    return envelope(data=data)
+
+
+@market_router.get("/heatmap", summary="Compact stock heatmap for one universe")
+async def market_heatmap(
+    universe: UniverseCode = Query("NIFTY100"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return envelope(data=await MarketQueryService(db).get_heatmap(universe))
+
+
+@market_router.get(
+    "/sector-rotation", summary="Sector 1D, 5D, and 20D momentum regimes"
+)
+async def sector_rotation(
+    universe: UniverseCode = Query("NIFTY100"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return envelope(data=await MarketQueryService(db).get_sector_rotation(universe))
+
+
+@market_router.get(
+    "/stocks/{symbol}/attribution",
+    summary="Deterministic likely contributors to a stock's latest move",
+)
+async def stock_movement_attribution(
+    symbol: str, db: AsyncSession = Depends(get_db)
+) -> dict:
+    data = await MarketQueryService(db).get_movement_attribution(symbol)
     return envelope(data=data)
 
 
@@ -132,7 +203,7 @@ class IngestionTriggerRequest(BaseModel):
     "/jobs/market-ingestion/run",
     summary="Manually trigger market data ingestion (dev/ops)",
     description="Runs the fetch→validate→store→indicators pipeline synchronously "
-    "for the given symbols (or the DB-approved NIFTY50 universe plus macros). "
+    "for the given symbols (or the configured DB-approved research universe plus macros). "
     "Auth-protected.",
 )
 async def run_market_ingestion(

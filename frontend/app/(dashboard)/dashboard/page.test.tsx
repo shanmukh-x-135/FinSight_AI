@@ -54,6 +54,12 @@ const summary: DashboardSummary = {
     },
     items: [],
   },
+  freshness: [
+    { dataset: "market", state: "Fresh", observed_date: "2026-08-27", observed_at: null, expected_trading_date: "2026-08-27", explanation: "Current market session." },
+    { dataset: "news", state: "Delayed", observed_date: "2026-08-26", observed_at: "2026-08-26T12:00:00Z", expected_trading_date: "2026-08-27", explanation: "News is delayed." },
+    { dataset: "universe", state: "Fresh", observed_date: "2026-08-25", observed_at: "2026-08-25T12:00:00Z", expected_trading_date: null, explanation: "Universe is current." },
+    { dataset: "historical_corpus", state: "Unavailable", observed_date: null, observed_at: null, expected_trading_date: "2026-08-27", explanation: "History unavailable." },
+  ],
 };
 
 describe("Dashboard news sentiment", () => {
@@ -65,6 +71,9 @@ describe("Dashboard news sentiment", () => {
       sentiment: Array.from({ length: 50 }, (_, index) => ({
         symbol: `STOCK${index}.NS`,
         latest_sentiment: null,
+        availability: "no_relevant_news" as const,
+        confidence: null,
+        article_count: 0,
       })),
     });
     render(<DashboardPage />);
@@ -81,10 +90,10 @@ describe("Dashboard news sentiment", () => {
     vi.mocked(dashboardApi.summary).mockResolvedValue({
       ...summary,
       sentiment: [
-        { symbol: "POS.NS", latest_sentiment: 0.4 },
-        { symbol: "FLAT.NS", latest_sentiment: 0 },
-        { symbol: "NEG.NS", latest_sentiment: -0.3 },
-        { symbol: "NONE.NS", latest_sentiment: null },
+        { symbol: "POS.NS", latest_sentiment: 0.4, availability: "available", confidence: 0.8, article_count: 2 },
+        { symbol: "FLAT.NS", latest_sentiment: 0, availability: "available", confidence: 0.5, article_count: 1 },
+        { symbol: "NEG.NS", latest_sentiment: -0.3, availability: "available", confidence: 0.7, article_count: 1 },
+        { symbol: "NONE.NS", latest_sentiment: null, availability: "no_relevant_news", confidence: null, article_count: 0 },
       ],
     });
     render(<DashboardPage />);

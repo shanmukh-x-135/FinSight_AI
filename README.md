@@ -7,20 +7,23 @@ technical indicators, news sentiment, and Retrieval-Augmented Generation (RAG)
 to produce market and portfolio reports. It is a research assistant, not a
 price-prediction engine — every insight carries evidence, confidence, and risk.
 
-> **Status:** Phases 0–9 and local Phase 10 implementation are complete:
+> **Status:** Phases 0–12 are complete locally:
 > authentication, market ingestion,
 > portfolio analytics, historical similarity, news/sentiment, evidence-grounded
 > intelligence, the dashboard, report browse/detail/Markdown/PDF export, and a
 > grounded streaming AI assistant with user-scoped history, durable/retryable
 > EOD operations, reconstructable FAISS, production deployment definitions, and
-> recovery/staging procedures. External staging verification is still required; see
+> strategy backtesting and robustness, NIFTY 100 discovery, portfolio risk,
+> natural-language screening, operator status, and repository consolidation.
+> External staging verification is still required; see
 > [`docs/deployment.md`](docs/deployment.md).
 
 ## Architecture
 
 A **modular monolith**: a single FastAPI backend organized into feature modules
 (`auth`, `market`, `portfolio`, `history`, `intelligence`, `reports`, `chat`,
-`scheduler`, `shared`) and a Next.js frontend. See
+`strategy`, `discovery`, `dashboard`, `scheduler`, `shared`) and a Next.js
+frontend. See
 [`docs/architecture.md`](docs/architecture.md); the authoritative source is the
 Engineering Design Document v2.1.
 
@@ -97,13 +100,13 @@ curl http://localhost:8000/health/db       # {"status":"ok","database":"reachabl
 
 ```bash
 cd backend
-./.venv/bin/python -m pytest               # 336 fast tests + 4 PostgreSQL integration tests
+./.venv/bin/python -m pytest               # 493 tests; 4 opt-in PostgreSQL integrations
 ./.venv/bin/ruff check .                   # Python lint gate
 
 cd ../frontend
 npm test                                  # Vitest + Testing Library
 npm run lint
-npm run build -- --webpack                # type-check + production build
+npm run build                              # type-check + production Webpack build
 npm run test:e2e                          # real Docker stack + Chromium flows
 ```
 

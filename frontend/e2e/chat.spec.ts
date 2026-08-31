@@ -28,7 +28,7 @@ test("stream a grounded answer, reload persisted history, and clear it", async (
   const answer = page.getByLabel("FinSight AI response").last();
   await expect(answer).toBeVisible();
   await expect(answer.getByText(/confidence/)).toBeVisible();
-  await expect(answer.getByRole("link", { name: "Market breadth" })).toBeVisible();
+  await expect(answer.getByRole("link", { name: /Market analytics/ })).toBeVisible();
   await answer.getByRole("button", { name: "Show evidence" }).click();
   await expect(
     answer.getByText(

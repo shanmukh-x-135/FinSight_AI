@@ -37,6 +37,14 @@ async def test_eod_status_reports_an_absent_target_as_retryable(
     assert data["requested_trading_date"] == "2026-08-10"
     assert data["run"] is None
     assert data["rerun_recommended"] is True
+    assert data["health"] == "unavailable"
+    assert "No durable EOD run" in data["operator_explanation"]
+    assert {item["dataset"] for item in data["freshness"]} == {
+        "market",
+        "news",
+        "universe",
+        "historical_corpus",
+    }
 
 
 @pytest.mark.asyncio
@@ -74,9 +82,7 @@ async def test_eod_status_returns_latest_run_and_step_checkpoints(
     )
     await db_session.commit()
 
-    response = await client.get(
-        "/api/v1/admin/jobs/eod/status", headers=admin_headers
-    )
+    response = await client.get("/api/v1/admin/jobs/eod/status", headers=admin_headers)
 
     assert response.status_code == 200
     data = response.json()["data"]
@@ -85,3 +91,5 @@ async def test_eod_status_returns_latest_run_and_step_checkpoints(
     assert data["run"]["steps"][0]["status"] == "completed"
     assert data["run"]["steps"][0]["counters"] == {"processed": 5}
     assert data["rerun_recommended"] is True
+    assert data["health"] == "attention"
+    assert "safe resumable rerun" in data["operator_explanation"]

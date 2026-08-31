@@ -19,7 +19,7 @@ import argparse
 import asyncio
 import json
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from time import monotonic
 from urllib.parse import urlsplit
 
@@ -42,12 +42,13 @@ from app.market.universe_sync import (
 from app.scheduler.constants import EOD_PIPELINE_NAME, PipelineRunStatus
 from app.scheduler.models import PipelineRun
 from app.shared.database import SessionFactory
+from app.shared.time import utc_now
 from config.logging import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
 
-EXPECTED_DATABASE_REVISION = "0015_market_regime_history"
+EXPECTED_DATABASE_REVISION = "0019_saved_screens"
 PRODUCTION_CONFIRMATION = "RUN_PRODUCTION_PHASE_10D_BOOTSTRAP"
 
 
@@ -318,7 +319,7 @@ class ExpandedBootstrapService:
             )
 
     async def _verify_no_conflicting_jobs(self) -> tuple[str, ...]:
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(
+        cutoff = utc_now() - timedelta(
             seconds=settings.pipeline_stale_after_seconds
         )
         eod_run_ids = list(

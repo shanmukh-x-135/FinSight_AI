@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.news.schemas import LatestSentimentOut
 
 
 class IngestionResult(BaseModel):
@@ -51,12 +53,84 @@ class StockDetailOut(QuoteOut):
     fundamentals: FundamentalsOut | None
 
 
+class AttributionDriverOut(BaseModel):
+    rank: int
+    category: str
+    label: str
+    observation: str
+    direction: Literal["bullish", "bearish", "neutral", "unavailable"]
+    relevance: Literal["high", "medium", "low", "unavailable"]
+    confidence: float
+    value_percent: float | None = None
+    evidence_article_ids: list[int] = Field(default_factory=list)
+
+
+class ConflictSignalOut(BaseModel):
+    source: str
+    direction: Literal["bullish", "bearish", "neutral", "unavailable"]
+    confidence: float
+    observation: str
+
+
+class EvidenceConflictOut(BaseModel):
+    consensus: Literal["bullish", "bearish", "neutral", "mixed", "unavailable"]
+    confidence: float
+    conflict_detected: bool
+    signals: list[ConflictSignalOut]
+
+
+class MovementAttributionOut(BaseModel):
+    symbol: str
+    as_of: date | None
+    change_percent: float | None
+    certainty: Literal["likely_contributors_not_proven_causes"] = (
+        "likely_contributors_not_proven_causes"
+    )
+    summary: str
+    drivers: list[AttributionDriverOut]
+    evidence_conflict: EvidenceConflictOut
+
+
 class MarketStockSnapshotOut(QuoteOut):
     rsi_14: float | None
     ema_20: float | None
     ema_50: float | None
     macd_histogram: float | None
     trend: str | None
+
+
+class UniverseOptionOut(BaseModel):
+    code: Literal["NIFTY50", "NIFTYNEXT50", "NIFTY100"]
+    label: str
+    expected_constituents: int
+    active_constituents: int
+    initialized: bool
+    preferred: bool
+    source_url: str
+
+
+class HeatmapStockOut(BaseModel):
+    symbol: str
+    name: str | None
+    sector: str
+    as_of: date | None
+    change_percent: float | None
+    market_cap: int | None
+    sentiment: float | None
+    sentiment_availability: Literal["available", "no_relevant_news"]
+    rsi_14: float | None
+    signal: str | None
+
+
+class SectorRotationOut(BaseModel):
+    sector: str
+    stock_count: int
+    return_1d: float | None
+    return_5d: float | None
+    return_20d: float | None
+    momentum_regime: Literal[
+        "leader", "improving", "weakening", "laggard", "mixed", "unavailable"
+    ]
 
 
 class PricePointOut(BaseModel):
@@ -143,3 +217,17 @@ class EconomicCalendarOut(BaseModel):
     provider: str = "Trading Economics"
     status: Literal["ok", "not_configured", "unavailable"]
     events: list[EconomicEventOut]
+
+
+class MarketWorkspaceOut(BaseModel):
+    """All non-personalized data required by the market research workspace."""
+
+    universe: Literal["NIFTY50", "NIFTYNEXT50", "NIFTY100"]
+    stocks: list[MarketStockSnapshotOut]
+    breadth: BreadthOut
+    sectors: list[SectorOverviewOut]
+    technical: TechnicalSummaryOut
+    heatmap: list[HeatmapStockOut]
+    sector_rotation: list[SectorRotationOut]
+    economic_events: EconomicCalendarOut
+    sentiment: list[LatestSentimentOut]

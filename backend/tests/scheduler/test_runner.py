@@ -333,17 +333,17 @@ def test_runner_main_accepts_explicit_target_date(monkeypatch) -> None:
     assert targets == [TARGET]
 
 
-def test_runner_main_defaults_to_current_market_date(monkeypatch) -> None:
-    targets: list[date] = []
+def test_runner_main_resolves_default_target(monkeypatch) -> None:
+    called = 0
 
-    async def _execute(target):
-        targets.append(target)
+    async def _execute_default():
+        nonlocal called
+        called += 1
         return runner.EXIT_SUCCESS
 
-    monkeypatch.setattr(runner, "current_market_date", lambda: TARGET)
-    monkeypatch.setattr(runner, "execute_once", _execute)
+    monkeypatch.setattr(runner, "execute_default_once", _execute_default)
     assert runner.main([]) == 0
-    assert targets == [TARGET]
+    assert called == 1
 
 
 def test_runner_rejects_invalid_target_date() -> None:
@@ -355,6 +355,53 @@ def test_runner_rejects_invalid_target_date() -> None:
 def test_default_date_uses_market_timezone() -> None:
     instant = datetime(2026, 8, 4, 19, 0, tzinfo=timezone.utc)
     assert runner.current_market_date(instant) == TARGET
+
+
+@pytest.mark.asyncio
+async def test_delayed_run_crossing_midnight_resolves_prior_ready_session() -> None:
+    friday = date(2026, 8, 7)
+    thursday = date(2026, 8, 6)
+
+    class _Calendar:
+        def session(self, candidate: date):
+            return object() if candidate in {friday, thursday} else None
+
+    async def _check(candidate: date) -> ReadinessResult:
+        status = (
+            ReadinessStatus.TOO_EARLY if candidate == friday else ReadinessStatus.READY
+        )
+        return ReadinessResult(status, candidate)
+
+    # 19:30 UTC is 01:00 Friday in the configured Asia/Kolkata market timezone.
+    resolved = await runner.resolve_latest_provider_ready_trading_date(
+        now=datetime(2026, 8, 6, 19, 30, tzinfo=timezone.utc),
+        calendar=_Calendar(),
+        readiness_check=_check,
+    )
+    assert resolved == thursday
+
+
+@pytest.mark.asyncio
+async def test_default_resolution_skips_weekend_and_holiday() -> None:
+    friday = date(2026, 8, 7)
+
+    class _Calendar:
+        def session(self, candidate: date):
+            return object() if candidate == friday else None
+
+    checked: list[date] = []
+
+    async def _check(candidate: date) -> ReadinessResult:
+        checked.append(candidate)
+        return ReadinessResult(ReadinessStatus.READY, candidate)
+
+    resolved = await runner.resolve_latest_provider_ready_trading_date(
+        now=datetime(2026, 8, 9, 6, tzinfo=timezone.utc),
+        calendar=_Calendar(),
+        readiness_check=_check,
+    )
+    assert resolved == friday
+    assert checked == [friday]
 
 
 @pytest.mark.asyncio

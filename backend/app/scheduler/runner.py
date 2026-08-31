@@ -4,24 +4,31 @@ Usage::
 
     python -m app.scheduler.runner --target-trading-date 2026-08-05
 
-When the date is omitted, the runner resolves the current market-local calendar
-date. The P10.3 preflight rejects exchange holidays, premature runs, and stale
-provider data before the durable pipeline creates or resumes execution state.
+When the date is omitted, the runner resolves the latest NSE session whose bar
+the provider confirms is ready. This remains correct when a delayed invocation
+crosses midnight, a weekend, or a holiday.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Sequence
-from datetime import date, datetime, timezone
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.intelligence.llm_client import close_llm_client
 from app.scheduler.constants import PipelineRunStatus
 from app.scheduler.jobs import get_eod_run_status, run_eod_pipeline
-from app.scheduler.readiness import ReadinessStatus, check_eod_readiness
+from app.scheduler.readiness import (
+    NSETradingCalendar,
+    ReadinessResult,
+    ReadinessStatus,
+    TradingCalendar,
+    check_eod_readiness,
+)
 from app.shared.database import dispose_engine
+from app.shared.time import utc_now
 from config.logging import configure_logging, get_logger
 from config.settings import settings
 
@@ -48,8 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-trading-date",
         type=_iso_date,
         help=(
-            "Target trading date in YYYY-MM-DD format. Defaults to the current "
-            "calendar date in MARKET_TIMEZONE."
+            "Target trading date in YYYY-MM-DD format. Defaults to the latest "
+            "provider-ready NSE trading session."
         ),
     )
     return parser
@@ -57,10 +64,30 @@ def build_parser() -> argparse.ArgumentParser:
 
 def current_market_date(now: datetime | None = None) -> date:
     """Resolve the calendar date in the configured market timezone."""
-    instant = now or datetime.now(tz=timezone.utc)
+    instant = now or utc_now()
     if instant.tzinfo is None:
         instant = instant.replace(tzinfo=timezone.utc)
     return instant.astimezone(ZoneInfo(settings.market_timezone)).date()
+
+
+async def resolve_latest_provider_ready_trading_date(
+    *,
+    now: datetime | None = None,
+    calendar: TradingCalendar | None = None,
+    readiness_check: Callable[[date], Awaitable[ReadinessResult]] | None = None,
+) -> date | None:
+    """Walk backward to the newest NSE session the provider confirms as ready."""
+    market_date = current_market_date(now)
+    sessions = calendar or NSETradingCalendar()
+    check = readiness_check or check_eod_readiness
+    for offset in range(10):
+        candidate = market_date - timedelta(days=offset)
+        if sessions.session(candidate) is None:
+            continue
+        readiness = await check(candidate)
+        if readiness.ready:
+            return candidate
+    return None
 
 
 async def execute_once(target_trading_date: date) -> int:
@@ -144,12 +171,22 @@ async def execute_once(target_trading_date: date) -> int:
             await dispose_engine()
 
 
+async def execute_default_once() -> int:
+    """Resolve the latest provider-ready session, then execute it once."""
+    target = await resolve_latest_provider_ready_trading_date()
+    if target is None:
+        logger.warning("eod_runner_no_provider_ready_session")
+        return EXIT_PIPELINE_INCOMPLETE
+    return await execute_once(target)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse one-shot runner arguments and return a shell-compatible exit code."""
     configure_logging()
     args = build_parser().parse_args(argv)
-    target = args.target_trading_date or current_market_date()
-    return asyncio.run(execute_once(target))
+    if args.target_trading_date is not None:
+        return asyncio.run(execute_once(args.target_trading_date))
+    return asyncio.run(execute_default_once())
 
 
 if __name__ == "__main__":

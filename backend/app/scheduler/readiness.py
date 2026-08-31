@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
@@ -12,6 +12,7 @@ import pandas_market_calendars as market_calendars
 
 from app.shared.clients.market_data import MarketDataClient
 from app.shared.clients.yfinance_client import build_default_client
+from app.shared.time import as_utc, utc_now
 from config.logging import get_logger
 from config.settings import settings
 
@@ -87,14 +88,6 @@ class NSETradingCalendar:
         )
 
 
-def _as_utc(value: datetime | None) -> datetime:
-    if value is None:
-        return datetime.now(tz=timezone.utc)
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
 class MarketProviderReadinessChecker:
     """Confirm a real, finalized target-session bar is available before ingestion."""
 
@@ -118,7 +111,7 @@ class MarketProviderReadinessChecker:
         if session is None:
             return ReadinessResult(ReadinessStatus.NON_TRADING_DAY, target_trading_date)
 
-        if _as_utc(now) < session.data_ready_at:
+        if (as_utc(now) if now is not None else utc_now()) < session.data_ready_at:
             return ReadinessResult(
                 ReadinessStatus.TOO_EARLY,
                 target_trading_date,

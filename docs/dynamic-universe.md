@@ -1,15 +1,16 @@
-# Dynamic NIFTY 50 Universe (Phase 10C)
+# Dynamic NIFTY Index Universe (Phases 10C and 11B)
 
 Phase 10C replaced the hardcoded equity list with an effective-dated,
 database-backed NIFTY 50 universe. Phase 10D now uses those intervals for
-historical reconstruction and provides the guarded expanded bootstrap.
+historical reconstruction and provides the guarded expanded bootstrap. Phase
+11B generalizes the same model to NIFTY Next 50 and NIFTY 100.
 
 ## Architecture and sources of truth
 
 ```text
 official NSE Indices CSV
-  → NseNifty50Provider
-  → defensive CSV normalization (exactly 50 unique rows)
+  → NseIndexConstituentProvider
+  → defensive CSV normalization (exact expected unique rows)
   → YahooNseSymbolResolver
   → yfinance history validation
   → transactional membership update
@@ -17,8 +18,8 @@ official NSE Indices CSV
   → strict EOD ingestion + separately configured macro proxies
 ```
 
-- The official machine-readable source is
-  `https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv`.
+- Official machine-readable constituent downloads come from the Nifty Indices
+  `IndexConstituent` endpoints for NIFTY 50, Next 50, and 100.
 - The external source determines discovery. A successfully persisted
   `universe_snapshots` row is the last-known-good discovery payload.
 - Open `index_memberships` rows (`valid_to IS NULL`) are the operational source
@@ -28,14 +29,14 @@ official NSE Indices CSV
   in static configuration and are not NIFTY constituents.
 
 The provider is behind the `UniverseProvider` protocol. The NSE implementation
-requires the expected columns, valid symbols and company names, exactly 50
+requires the expected columns, valid symbols and company names, exactly 50/50/100
 unique constituents, a non-empty body, and a successful HTTP response. It does
 not scrape HTML.
 
 ## Synchronization lifecycle
 
 Each run acquires the existing non-blocking job lock using a stable key for
-`NIFTY50`, then persists a `universe_sync_runs` audit record.
+the requested index code, then persists a `universe_sync_runs` audit record.
 
 1. Fetch and validate the official snapshot.
 2. If the source is unavailable or malformed, explicitly load the latest
@@ -80,7 +81,7 @@ normal EOD ingestion:
 ```bash
 cd backend
 ./.venv/bin/alembic upgrade head
-./.venv/bin/python -m app.market.universe_sync
+./.venv/bin/python -m app.market.universe_sync --index NIFTY100
 ./.venv/bin/python -m app.market.universe --target-date YYYY-MM-DD
 ```
 
@@ -108,9 +109,19 @@ scheduler or infrastructure.
 
 The administrator ingestion endpoint may still accept explicit symbols for
 targeted repair. With no explicit list, it reads deterministic, duplicate-free
-provider tickers from open NIFTY50 memberships and then appends `INR=X`, `CL=F`,
+provider tickers from the configured research-universe memberships and then appends `INR=X`, `CL=F`,
 `GC=F`, and `^TNX`. Once approved, any equity ingestion failure remains visible
 in the result and therefore fails the scheduler's market step.
+
+## Membership-scoped market reads
+
+`GET /api/v1/market/universes` exposes initialization and preferred-universe
+status. Stocks, breadth, movers, sectors and technical summaries accept a
+validated `universe` query. Heatmap and sector-rotation endpoints expose compact
+1D/5D/20D research views. `GET /api/v1/market/workspace` batches all non-personal
+Market-page data—including recent sentiment and economic events—while reusing
+one universe snapshot for stocks, breadth, sectors and heatmap. The UI never
+fills partial memberships with unapproved rows.
 
 ## Data model
 

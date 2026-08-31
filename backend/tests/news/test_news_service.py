@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.market.models import DailyPrice, Stock
 from app.market.repository import MarketRepository
 from app.news.models import NewsArticle, NewsArticleStock, SentimentDaily
+from app.news.repository import NewsRepository
 from app.news.service import NewsService
 from app.shared.ml.sentiment import LexiconScorer
 from tests.news.conftest import FakeNewsClient, make_item
@@ -22,6 +23,34 @@ NEUTRAL = "Markets closed for a public holiday on Monday"
 
 def _service(db: AsyncSession, items) -> NewsService:
     return NewsService(db, scorer=LexiconScorer(), client=FakeNewsClient(items))
+
+
+@pytest.mark.asyncio
+async def test_repository_enriches_legacy_article_callers(
+    db_session: AsyncSession,
+) -> None:
+    article = NewsArticle(
+        source="Legacy writer",
+        url="https://example.test/legacy-writer",
+        fingerprint="f" * 64,
+        title="Company quarterly profit rises",
+        summary="Results beat estimates",
+        published_at=datetime(2024, 3, 1, tzinfo=timezone.utc),
+        sentiment_label="positive",
+        sentiment_score=0.5,
+        sentiment_positive=0.75,
+        sentiment_negative=0.25,
+        sentiment_neutral=0,
+    )
+    article_id = await NewsRepository(db_session).add_article(article)
+    await db_session.commit()
+    persisted = await db_session.get(NewsArticle, article_id)
+    assert persisted is not None
+    assert persisted.sentiment_confidence == pytest.approx(0.75)
+    assert persisted.event_category == "Earnings"
+    assert persisted.event_confidence > 0
+    assert persisted.driver == "Reported financial performance"
+    assert persisted.evidence_excerpt == "Results beat estimates"
 
 
 @pytest.mark.asyncio

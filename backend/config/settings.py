@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     market_timezone: str = "Asia/Kolkata"  # NSE/BSE trading timezone (IST)
     market_calendar: str = "NSE"
     market_readiness_symbol: str = "^NSEI"
+    research_universe: Literal["NIFTY50", "NIFTYNEXT50", "NIFTY100"] = "NIFTY100"
     market_close_grace_minutes: int = Field(default=60, ge=0)
     pipeline_heartbeat_interval_seconds: float = Field(default=30.0, gt=0)
     pipeline_stale_after_seconds: int = Field(default=900, gt=0)

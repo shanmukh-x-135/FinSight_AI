@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+
+class ArticleStockMatchOut(BaseModel):
+    symbol: str
+    matched_alias: str | None
+    entity_match_confidence: float
 
 
 class NewsArticleOut(BaseModel):
@@ -16,7 +23,30 @@ class NewsArticleOut(BaseModel):
     published_at: datetime | None
     sentiment_label: str
     sentiment_score: float
+    sentiment_confidence: float
+    event_category: str
+    event_confidence: float
+    driver: str
+    evidence_excerpt: str
     tags: list[str]
+    associations: list[ArticleStockMatchOut]
+
+
+class StockNewsEvidenceOut(BaseModel):
+    id: int
+    headline: str
+    publisher: str
+    published_at: datetime | None
+    source_url: str
+    sentiment_class: Literal["positive", "neutral", "negative"]
+    sentiment_score: float
+    sentiment_confidence: float
+    event_category: str
+    event_confidence: float
+    driver: str
+    evidence_excerpt: str
+    matched_alias: str | None
+    entity_match_confidence: float
 
 
 class SentimentDailyOut(BaseModel):
@@ -32,12 +62,22 @@ class StockSentimentOut(BaseModel):
     symbol: str
     name: str | None
     latest_sentiment: float | None
+    availability: Literal["available", "no_relevant_news"]
+    confidence: float | None
+    article_count: int
+    positive_count: int
+    negative_count: int
+    neutral_count: int
+    evidence: list[StockNewsEvidenceOut]
     series: list[SentimentDailyOut]
 
 
 class LatestSentimentOut(BaseModel):
     symbol: str
     latest_sentiment: float | None
+    availability: Literal["available", "no_relevant_news"]
+    confidence: float | None
+    article_count: int
 
 
 class SectorSentimentOut(BaseModel):

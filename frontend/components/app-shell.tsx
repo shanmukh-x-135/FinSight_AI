@@ -2,14 +2,18 @@
 
 import {
   BarChart3,
+  Activity,
   Binoculars,
   Bot,
   BriefcaseBusiness,
   ChevronRight,
   FileText,
+  Funnel,
   History,
+  LineChart,
   LogOut,
   Moon,
+  Newspaper,
   PanelLeftClose,
   Settings,
   Sun,
@@ -25,9 +29,12 @@ import { cn } from "@/lib/utils";
 const navigation = [
   { href: "/dashboard", label: "Overview", icon: BarChart3 },
   { href: "/market", label: "Market", icon: Binoculars },
+  { href: "/news", label: "News", icon: Newspaper },
   { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
   { href: "/watchlist", label: "Watchlist", icon: Telescope },
   { href: "/history", label: "Research", icon: History },
+  { href: "/strategies", label: "Strategies", icon: LineChart },
+  { href: "/discover", label: "Discover", icon: Funnel },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/chat", label: "AI", icon: Bot },
 ] as const;
@@ -36,10 +43,11 @@ function isActive(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
 }
 
-export function AppShell({ children, email, onLogout }: { children: ReactNode; email?: string; onLogout: () => void }) {
+export function AppShell({ children, email, isAdmin = false, onLogout }: { children: ReactNode; email?: string; isAdmin?: boolean; onLogout: () => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [dark, setDark] = useState(true);
+  const visibleNavigation = isAdmin ? [...navigation, { href: "/operations", label: "Operations", icon: Activity }] : navigation;
 
   function toggleTheme() {
     setDark((current) => !current);
@@ -56,7 +64,7 @@ export function AppShell({ children, email, onLogout }: { children: ReactNode; e
             </Link>
           </div>
           <nav aria-label="Primary navigation" className="flex-1 space-y-1 p-2">
-            {navigation.map((item) => {
+            {visibleNavigation.map((item) => {
               const active = isActive(pathname, item.href);
               const Icon = item.icon;
               return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined} className={cn("group flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring", active && "bg-primary/10 font-medium text-primary")}><Icon className="size-4 shrink-0" aria-hidden />{!collapsed && <span>{item.label}</span>}{active && !collapsed && <ChevronRight className="ml-auto size-3.5" aria-hidden />}</Link>;
@@ -84,7 +92,7 @@ export function AppShell({ children, email, onLogout }: { children: ReactNode; e
         </div>
 
         <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-50 flex overflow-x-auto border-t border-border/80 bg-background/95 px-2 pb-[max(.4rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-xl lg:hidden">
-          {navigation.map((item) => { const active = isActive(pathname, item.href); const Icon = item.icon; return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={cn("flex min-w-[4.25rem] flex-1 flex-col items-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] text-muted-foreground", active && "bg-primary/10 text-primary")}><Icon className="size-4" aria-hidden /><span>{item.label}</span></Link>; })}
+          {visibleNavigation.map((item) => { const active = isActive(pathname, item.href); const Icon = item.icon; return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={cn("flex min-w-[4.25rem] flex-1 flex-col items-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] text-muted-foreground", active && "bg-primary/10 text-primary")}><Icon className="size-4" aria-hidden /><span>{item.label}</span></Link>; })}
         </nav>
       </div>
     </div>

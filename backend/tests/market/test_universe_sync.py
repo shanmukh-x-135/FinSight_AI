@@ -19,6 +19,7 @@ from app.market.models import (
 )
 from app.market.universe_provider import (
     NIFTY50_INDEX_CODE,
+    NIFTY100_INDEX_CODE,
     UniverseConstituent,
     UniverseProviderSnapshot,
     UniverseProviderUnavailableError,
@@ -34,9 +35,11 @@ from app.shared.clients.market_data import MarketDataError, PriceBar
 TARGET = date(2026, 8, 21)
 
 
-def _constituent(symbol: str) -> UniverseConstituent:
+def _constituent(
+    symbol: str, index_code: str = NIFTY50_INDEX_CODE
+) -> UniverseConstituent:
     return UniverseConstituent(
-        index_code=NIFTY50_INDEX_CODE,
+        index_code=index_code,
         exchange_symbol=symbol,
         company_name=f"{symbol} Limited",
         industry="Test Sector",
@@ -45,14 +48,16 @@ def _constituent(symbol: str) -> UniverseConstituent:
     )
 
 
-def _snapshot(*symbols: str) -> UniverseProviderSnapshot:
+def _snapshot(
+    *symbols: str, index_code: str = NIFTY50_INDEX_CODE
+) -> UniverseProviderSnapshot:
     return UniverseProviderSnapshot(
-        index_code=NIFTY50_INDEX_CODE,
+        index_code=index_code,
         source="test-provider",
         source_url="https://example.test/universe.csv",
         snapshot_date=TARGET,
         fetched_at=datetime(2026, 8, 21, 12, tzinfo=timezone.utc),
-        constituents=tuple(_constituent(symbol) for symbol in symbols),
+        constituents=tuple(_constituent(symbol, index_code) for symbol in symbols),
     )
 
 
@@ -75,6 +80,20 @@ class _UnavailableProvider:
 
     async def get_constituents(self, index_code: str) -> UniverseProviderSnapshot:
         raise UniverseProviderUnavailableError(f"offline: {index_code}")
+
+
+class _MultiProvider:
+    source = "test-provider"
+
+    def __init__(self, snapshots: dict[str, list[UniverseProviderSnapshot]]) -> None:
+        self.snapshots = snapshots
+        self.calls: dict[str, int] = {}
+
+    async def get_constituents(self, index_code: str) -> UniverseProviderSnapshot:
+        calls = self.calls.get(index_code, 0)
+        snapshots = self.snapshots[index_code]
+        self.calls[index_code] = calls + 1
+        return snapshots[min(calls, len(snapshots) - 1)]
 
 
 def _bars() -> list[PriceBar]:
@@ -205,6 +224,53 @@ async def test_new_and_removed_constituents_preserve_membership_and_price_histor
         select(IndexMembership).where(IndexMembership.stock_id == alpha.id)
     )
     assert membership is not None and membership.valid_to == TARGET
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(DailyPrice)
+            .where(DailyPrice.stock_id == alpha.id)
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_overlapping_indices_share_one_stock_and_one_price_history(
+    db_session: AsyncSession,
+) -> None:
+    provider = _MultiProvider(
+        {
+            NIFTY50_INDEX_CODE: [_snapshot("ALPHA")],
+            NIFTY100_INDEX_CODE: [
+                _snapshot("ALPHA", "BETA", index_code=NIFTY100_INDEX_CODE),
+                _snapshot("BETA", index_code=NIFTY100_INDEX_CODE),
+            ],
+        }
+    )
+    service = UniverseSyncService(
+        db_session, provider=provider, market_client=_MarketClient()
+    )
+
+    await service.sync(index_code=NIFTY50_INDEX_CODE, target_date=TARGET)
+    await service.sync(index_code=NIFTY100_INDEX_CODE, target_date=TARGET)
+    alpha = await db_session.scalar(select(Stock).where(Stock.exchange_symbol == "ALPHA"))
+    assert alpha is not None
+    db_session.add(DailyPrice(stock_id=alpha.id, **_bars()[0].__dict__))
+    await db_session.commit()
+
+    await service.sync(index_code=NIFTY100_INDEX_CODE, target_date=TARGET)
+    await db_session.refresh(alpha)
+
+    assert alpha.is_active is True
+    assert await db_session.scalar(select(func.count()).select_from(Stock)) == 2
+    assert (
+        await db_session.scalar(
+            select(func.count())
+            .select_from(IndexMembership)
+            .where(IndexMembership.stock_id == alpha.id)
+        )
+        == 2
+    )
     assert (
         await db_session.scalar(
             select(func.count())

@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy import (
     Date,
@@ -26,10 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from app.shared.time import utc_now
 
 
 class NewsArticle(Base):
@@ -37,7 +34,9 @@ class NewsArticle(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(String(200), nullable=False)
-    url: Mapped[str] = mapped_column(String(1000), unique=True, index=True, nullable=False)
+    url: Mapped[str] = mapped_column(
+        String(1000), unique=True, index=True, nullable=False
+    )
     fingerprint: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
     )
@@ -46,13 +45,27 @@ class NewsArticle(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     sentiment_label: Mapped[str] = mapped_column(String(10), nullable=False)
-    sentiment_score: Mapped[float] = mapped_column(Float, nullable=False)   # [-1, 1]
+    sentiment_score: Mapped[float] = mapped_column(Float, nullable=False)  # [-1, 1]
     sentiment_positive: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     sentiment_negative: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     sentiment_neutral: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sentiment_confidence: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+    event_category: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="Other"
+    )
+    event_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    driver: Mapped[str] = mapped_column(
+        String(240), nullable=False, default="Unclassified company coverage"
+    )
+    evidence_excerpt: Mapped[str] = mapped_column(String(600), nullable=False, default="")
 
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )
 
     tags: Mapped[list["NewsArticleStock"]] = relationship(
@@ -72,6 +85,10 @@ class NewsArticleStock(Base):
     )
     stock_id: Mapped[int] = mapped_column(
         ForeignKey("stocks.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    matching_alias: Mapped[str | None] = mapped_column(String(160))
+    entity_match_confidence: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
     )
 
     article: Mapped["NewsArticle"] = relationship(back_populates="tags")
@@ -94,5 +111,8 @@ class SentimentDaily(Base):
     negative_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     neutral_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )

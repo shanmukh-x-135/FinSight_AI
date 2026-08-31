@@ -107,7 +107,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(() => typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("prompt") ?? "").slice(0, 2000));
   const [streamedText, setStreamedText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);

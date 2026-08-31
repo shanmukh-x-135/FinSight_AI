@@ -7,8 +7,6 @@ thin and never touch the ORM or JWT internals directly.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.exceptions import (
@@ -27,11 +25,7 @@ from app.shared.security.jwt import (
     decode_token,
 )
 from app.shared.security.passwords import hash_password, verify_password
-
-
-def _as_utc(dt: datetime) -> datetime:
-    """Normalize a possibly-naive datetime (SQLite) to timezone-aware UTC."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+from app.shared.time import as_utc, utc_now
 
 
 class AuthService:
@@ -84,7 +78,7 @@ class AuthService:
         session = await self.repo.get_session_by_jti(decoded.jti)
         if session is None or session.revoked:
             raise InvalidTokenError("Refresh token has been revoked.")
-        if _as_utc(session.expires_at) < datetime.now(tz=timezone.utc):
+        if as_utc(session.expires_at) < utc_now():
             raise InvalidTokenError("Refresh token has expired.")
 
         user = await self.repo.get_user_by_id(int(decoded.subject))
@@ -96,9 +90,7 @@ class AuthService:
         return await self._issue_tokens(user)
 
     # ----- Preferences -----------------------------------------------------
-    async def update_preferences(
-        self, user: User, changes: PreferencesUpdate
-    ) -> User:
+    async def update_preferences(self, user: User, changes: PreferencesUpdate) -> User:
         provided = changes.model_dump(exclude_unset=True)
         # Convert enum values to their plain-string storage form.
         normalized = {

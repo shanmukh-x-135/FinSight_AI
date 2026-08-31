@@ -68,7 +68,7 @@ Phase 10D commit, back up PostgreSQL according to the hosting provider, and run
 the command without `--execute`. Confirm all of the following:
 
 1. `environment` is `production` and `database_revision` is
-   `0015_market_regime_history`.
+   `0016_news_evidence`.
 2. The database host/name identifies the intended production database.
 3. Provider validation can tolerate a roughly one-to-two-minute run and the
    configured market-data limits.

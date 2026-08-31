@@ -1,4 +1,4 @@
-"""Idempotent NIFTY 50 discovery, validation, and membership synchronization.
+"""Idempotent NIFTY index discovery, validation, and membership synchronization.
 
 Operator usage::
 
@@ -12,7 +12,7 @@ import argparse
 import asyncio
 import json
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timezone
+from datetime import date
 from time import monotonic
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,8 @@ from app.market.universe import (
 )
 from app.market.universe_provider import (
     NIFTY50_INDEX_CODE,
-    NseNifty50Provider,
+    SUPPORTED_INDEX_CODES,
+    NseIndexConstituentProvider,
     UniverseConstituent,
     UniverseProvider,
     UniverseProviderError,
@@ -41,6 +42,7 @@ from app.scheduler.locks import pipeline_run_lock, pipeline_run_lock_id
 from app.shared.clients.market_data import MarketDataClient
 from app.shared.clients.yfinance_client import build_default_client
 from app.shared.database import SessionFactory
+from app.shared.time import utc_now
 from config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -175,7 +177,7 @@ class UniverseSyncService:
     ) -> None:
         self.db = db
         self.repo = UniverseRepository(db)
-        self.provider = provider or NseNifty50Provider()
+        self.provider = provider or NseIndexConstituentProvider()
         self.resolver = resolver or YahooNseSymbolResolver()
         self.market_client = market_client or build_default_client()
 
@@ -187,7 +189,7 @@ class UniverseSyncService:
     ) -> UniversePreflightResult:
         """Fetch, resolve, validate, and diff without persisting an audit run."""
         index_code = index_code.strip().upper()
-        if index_code != NIFTY50_INDEX_CODE:
+        if index_code not in SUPPORTED_INDEX_CODES:
             raise UniverseSyncError(f"Unsupported universe index: {index_code}")
         lock_id = pipeline_run_lock_id(f"universe-sync:{index_code}", date.min)
         async with pipeline_run_lock(self.db, lock_id) as acquired:
@@ -272,7 +274,7 @@ class UniverseSyncService:
         target_date: date | None = None,
     ) -> UniverseSyncResult:
         index_code = index_code.strip().upper()
-        if index_code != NIFTY50_INDEX_CODE:
+        if index_code not in SUPPORTED_INDEX_CODES:
             raise UniverseSyncError(f"Unsupported universe index: {index_code}")
         lock_id = pipeline_run_lock_id(f"universe-sync:{index_code}", date.min)
         async with pipeline_run_lock(self.db, lock_id) as acquired:
@@ -438,7 +440,7 @@ class UniverseSyncService:
             run.source = snapshot.source
             run.snapshot_date = snapshot.snapshot_date
             run.status = final_status
-            run.completed_at = datetime.now(tz=timezone.utc)
+            run.completed_at = utc_now()
             run.fetched_count = len(snapshot.constituents)
             run.normalized_count = len(candidates)
             run.added_count = len(additions)
@@ -560,7 +562,7 @@ class UniverseSyncService:
 
     async def _mark_failed(self, run_id: int, error: str) -> None:
         await self.repo.fail_run(
-            run_id, error=error, completed_at=datetime.now(tz=timezone.utc)
+            run_id, error=error, completed_at=utc_now()
         )
         await self.db.commit()
         logger.error(
@@ -595,10 +597,10 @@ async def _run_cli(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Synchronize the approved NIFTY 50 universe from official NSE data."
+        description="Synchronize an approved NIFTY universe from official index data."
     )
     parser.add_argument(
-        "--index", default=NIFTY50_INDEX_CODE, choices=[NIFTY50_INDEX_CODE]
+        "--index", default=NIFTY50_INDEX_CODE, choices=SUPPORTED_INDEX_CODES
     )
     parser.add_argument(
         "--dry-run",

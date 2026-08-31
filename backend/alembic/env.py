@@ -19,6 +19,7 @@ from alembic import context
 # Import model modules so ``Base.metadata`` is fully populated for autogenerate
 # and offline SQL. Add new feature models here as later phases introduce them.
 from app.auth import models as _auth_models  # noqa: E402,F401
+from app.discovery import models as _discovery_models  # noqa: E402,F401
 from app.history import models as _history_models  # noqa: E402,F401
 from app.intelligence import models as _intelligence_models  # noqa: E402,F401
 from app.market import models as _market_models  # noqa: E402,F401
@@ -26,6 +27,7 @@ from app.news import models as _news_models  # noqa: E402,F401
 from app.portfolio import models as _portfolio_models  # noqa: E402,F401
 from app.scheduler import models as _scheduler_models  # noqa: E402,F401
 from app.shared.database import Base
+from app.strategy import models as _strategy_models  # noqa: E402,F401
 from config.settings import settings
 
 config = context.config

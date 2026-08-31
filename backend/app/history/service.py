@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date, datetime, timezone
+from datetime import date
 from time import monotonic
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,11 +47,12 @@ from app.history.similarity import (
     outcome_label,
 )
 from app.market.constants import MACRO_FEATURE_SYMBOLS
+from app.shared.time import utc_now
 from config.logging import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
-INDEX_CODE = "NIFTY50"
+INDEX_CODE = settings.research_universe
 
 
 class HistoryService:
@@ -117,7 +118,7 @@ class HistoryService:
                 feature_version=FEATURE_VERSION,
             )
 
-        built_at = datetime.now(tz=timezone.utc)
+        built_at = utc_now()
         await self.repo.upsert_index_state(
             corpus_hash=corpus.corpus_hash,
             session_count=len(corpus.ids),

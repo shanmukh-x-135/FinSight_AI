@@ -9,35 +9,49 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.history.repository import HistoryRepository
 from app.market import constants as C
 from app.market import indicators as ind
+from app.market.attribution import conflict_summary, directional_view, technical_view
 from app.market.exceptions import (
     SectorNotFoundError,
     StockNotFoundError,
     UniverseNotInitializedError,
 )
 from app.market.models import DailyPrice, Stock
-from app.market.repository import MarketRepository, PriceIngestionState
+from app.market.repository import (
+    MarketRepository,
+    MarketSnapshot,
+    PriceIngestionState,
+    ReturnWindows,
+)
 from app.market.schemas import (
+    AttributionDriverOut,
     BreadthOut,
+    ConflictSignalOut,
     EconomicCalendarOut,
     EconomicEventOut,
     FundamentalsOut,
+    HeatmapStockOut,
     IndicatorPointOut,
     IngestionResult,
     MarketStockSnapshotOut,
+    MarketWorkspaceOut,
+    MovementAttributionOut,
     PricePointOut,
     QuoteOut,
     SectorOverviewOut,
     SectorPerformanceOut,
+    SectorRotationOut,
     StockDetailOut,
     TechnicalSummaryOut,
+    UniverseOptionOut,
 )
 from app.market.signals import trend_signal
 from app.market.universe import (
@@ -45,6 +59,9 @@ from app.market.universe import (
     MINIMUM_MACRO_HISTORY_BARS,
     validate_symbol_history,
 )
+from app.market.universe_provider import INDEX_DEFINITIONS
+from app.news.schemas import LatestSentimentOut
+from app.news.service import NewsService
 from app.shared.clients.economic_calendar import EconomicCalendarClient
 from app.shared.clients.market_data import (
     FundamentalsData,
@@ -53,6 +70,7 @@ from app.shared.clients.market_data import (
     PriceBar,
 )
 from app.shared.clients.yfinance_client import build_default_client
+from app.shared.time import as_utc, utc_now
 from config.logging import get_logger
 from config.settings import settings
 
@@ -83,14 +101,6 @@ class SymbolIngestionOutcome:
     mode: IngestionMode
 
 
-def _as_utc(value: datetime | None) -> datetime:
-    if value is None:
-        return datetime.now(tz=timezone.utc)
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
 def plan_price_fetch(
     state: PriceIngestionState | None,
     target_trading_date: date,
@@ -98,13 +108,13 @@ def plan_price_fetch(
     now: datetime | None = None,
 ) -> PriceFetchWindow:
     """Choose a bounded bootstrap, reconciliation, or incremental window."""
-    synchronized_at = _as_utc(now)
+    synchronized_at = as_utc(now) if now is not None else utc_now()
     if state is None or state.latest_price_date is None:
         mode = IngestionMode.BOOTSTRAP
     elif state.last_full_price_sync_at is None:
         mode = IngestionMode.RECONCILIATION
     else:
-        last_full = _as_utc(state.last_full_price_sync_at)
+        last_full = as_utc(state.last_full_price_sync_at)
         due_at = last_full + timedelta(days=settings.market_full_reconciliation_days)
         mode = (
             IngestionMode.RECONCILIATION
@@ -189,7 +199,7 @@ class MarketIngestionService:
         target_trading_date: date | None = None,
         now: datetime | None = None,
     ) -> IngestionResult:
-        synchronized_at = _as_utc(now)
+        synchronized_at = as_utc(now) if now is not None else utc_now()
         target = (
             target_trading_date
             or synchronized_at.astimezone(ZoneInfo(settings.market_timezone)).date()
@@ -197,7 +207,7 @@ class MarketIngestionService:
         if symbols is not None:
             universe = list(dict.fromkeys(symbols))
         else:
-            approved = await self.repo.list_approved_equities("NIFTY50")
+            approved = await self.repo.list_approved_equities(settings.research_universe)
             if not approved:
                 raise UniverseNotInitializedError()
             universe = [
@@ -381,6 +391,26 @@ def _quote_from_prices(stock: Stock, last_two: list[DailyPrice]) -> QuoteOut:
     )
 
 
+def sector_rotation_regime(
+    return_1d: float | None,
+    return_5d: float | None,
+    return_20d: float | None,
+) -> str:
+    """Classify sector momentum from comparable per-session return rates."""
+    if return_1d is None or return_5d is None or return_20d is None:
+        return "unavailable"
+    one_rate, five_rate, twenty_rate = return_1d, return_5d / 5, return_20d / 20
+    if one_rate > five_rate > twenty_rate:
+        return "improving"
+    if one_rate < five_rate < twenty_rate:
+        return "weakening"
+    if one_rate > 0 and five_rate > 0 and twenty_rate > 0:
+        return "leader"
+    if one_rate < 0 and five_rate < 0 and twenty_rate < 0:
+        return "laggard"
+    return "mixed"
+
+
 class MarketQueryService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -390,8 +420,15 @@ class MarketQueryService:
         last_two = await self.repo.get_last_two_prices(stock.id)
         return _quote_from_prices(stock, last_two)
 
-    async def _all_quotes(self) -> list[QuoteOut]:
-        stocks = await self.repo.list_active_stocks()
+    async def _stocks(self, index_code: str | None = None) -> list[Stock]:
+        return (
+            await self.repo.list_approved_equities(index_code)
+            if index_code is not None
+            else await self.repo.list_active_stocks()
+        )
+
+    async def _all_quotes(self, index_code: str | None = None) -> list[QuoteOut]:
+        stocks = await self._stocks(index_code)
         snapshots = await self.repo.get_market_snapshots(
             (stock.id for stock in stocks), known_stocks=stocks
         )
@@ -432,22 +469,30 @@ class MarketQueryService:
         )
 
     async def get_market_overview(
-        self, limit: int = 5
+        self, limit: int = 5, index_code: str | None = None
     ) -> tuple[BreadthOut, list[QuoteOut], list[QuoteOut]]:
         """Build breadth and movers from one batched universe read."""
-        quotes = await self._all_quotes()
+        quotes = await self._all_quotes(index_code)
         return (
             self._breadth_from(quotes),
             self._gainers_from(quotes, limit),
             self._losers_from(quotes, limit),
         )
 
-    async def list_market_stocks(self) -> list[MarketStockSnapshotOut]:
+    async def list_market_stocks(
+        self, index_code: str | None = None
+    ) -> list[MarketStockSnapshotOut]:
         """Dense, batched universe rows for the market research table."""
-        stocks = await self.repo.list_active_stocks()
+        stocks = await self._stocks(index_code)
         snapshots = await self.repo.get_market_snapshots(
             (stock.id for stock in stocks), known_stocks=stocks
         )
+        return self._market_rows_from(stocks, snapshots)
+
+    @staticmethod
+    def _market_rows_from(
+        stocks: list[Stock], snapshots: dict[int, MarketSnapshot]
+    ) -> list[MarketStockSnapshotOut]:
         rows: list[MarketStockSnapshotOut] = []
         for stock in stocks:
             snapshot = snapshots.get(stock.id)
@@ -472,6 +517,75 @@ class MarketQueryService:
         rows.sort(key=lambda row: row.symbol)
         return rows
 
+    @staticmethod
+    def _sectors_from(quotes: list[QuoteOut]) -> list[SectorOverviewOut]:
+        counts: dict[str, int] = {}
+        changes: dict[str, list[float]] = {}
+        for quote in quotes:
+            if not quote.sector:
+                continue
+            counts[quote.sector] = counts.get(quote.sector, 0) + 1
+            if quote.change_percent is not None:
+                changes.setdefault(quote.sector, []).append(quote.change_percent)
+        overview = [
+            SectorOverviewOut(
+                sector=sector,
+                stock_count=count,
+                average_change_percent=(
+                    sum(changes[sector]) / len(changes[sector])
+                    if changes.get(sector)
+                    else None
+                ),
+            )
+            for sector, count in counts.items()
+        ]
+        overview.sort(
+            key=lambda row: (
+                row.average_change_percent is not None,
+                row.average_change_percent or 0.0,
+            ),
+            reverse=True,
+        )
+        return overview
+
+    @staticmethod
+    def _heatmap_from(
+        stocks: list[Stock],
+        snapshots: dict[int, MarketSnapshot],
+        sentiment_rows: list[LatestSentimentOut],
+    ) -> list[HeatmapStockOut]:
+        sentiment = {row.symbol: row for row in sentiment_rows}
+        rows: list[HeatmapStockOut] = []
+        for stock in stocks:
+            snapshot = snapshots.get(stock.id)
+            if snapshot is None or not stock.sector:
+                continue
+            quote = _quote_from_prices(stock, list(snapshot.prices))
+            news = sentiment.get(stock.symbol)
+            rows.append(
+                HeatmapStockOut(
+                    symbol=stock.symbol,
+                    name=stock.name,
+                    sector=stock.sector,
+                    as_of=quote.date,
+                    change_percent=quote.change_percent,
+                    market_cap=(
+                        stock.fundamentals.market_cap if stock.fundamentals else None
+                    ),
+                    sentiment=news.latest_sentiment if news else None,
+                    sentiment_availability=(
+                        news.availability if news else "no_relevant_news"
+                    ),
+                    rsi_14=snapshot.indicator.rsi_14 if snapshot.indicator else None,
+                    signal=trend_signal(
+                        quote.close,
+                        snapshot.indicator.ema_20 if snapshot.indicator else None,
+                        snapshot.indicator.macd_histogram if snapshot.indicator else None,
+                    ),
+                )
+            )
+        return sorted(rows, key=lambda row: (row.sector, row.symbol))
+
     async def get_stock_detail(self, symbol: str) -> StockDetailOut:
         stock = await self.repo.get_stock_by_symbol(symbol)
         if stock is None:
@@ -487,6 +601,265 @@ class MarketQueryService:
             industry=stock.industry,
             exchange=stock.exchange,
             fundamentals=fundamentals,
+        )
+
+    async def get_movement_attribution(self, symbol: str) -> MovementAttributionOut:
+        """Describe observable contributors without asserting causal certainty."""
+        stock = await self.repo.get_stock_by_symbol(symbol)
+        if stock is None:
+            raise StockNotFoundError(symbol)
+
+        stocks = await self.repo.list_active_stocks()
+        snapshots = await self.repo.get_market_snapshots(
+            (item.id for item in stocks), known_stocks=stocks
+        )
+        snapshot = snapshots.get(stock.id)
+        quote = (
+            _quote_from_prices(stock, list(snapshot.prices))
+            if snapshot is not None
+            else await self._quote(stock)
+        )
+        indicator = snapshot.indicator if snapshot is not None else None
+        quotes = [
+            _quote_from_prices(item, list(snapshots[item.id].prices))
+            for item in stocks
+            if item.id in snapshots
+        ]
+        market_changes = [
+            item.change_percent
+            for item in quotes
+            if item.sector is not None and item.change_percent is not None
+        ]
+        sector_changes = [
+            item.change_percent
+            for item in quotes
+            if item.sector == stock.sector and item.change_percent is not None
+        ]
+        market_return = (
+            sum(market_changes) / len(market_changes) if market_changes else None
+        )
+        sector_return = (
+            sum(sector_changes) / len(sector_changes) if sector_changes else None
+        )
+
+        sentiment = await NewsService(self.db).get_stock_sentiment(symbol)
+        history_row = await HistoryRepository(self.db).get_latest_statistics()
+        history = (
+            history_row[0]
+            if history_row is not None and history_row[1] == quote.date
+            else None
+        )
+        technical_direction, technical_observation, technical_confidence = technical_view(
+            quote.close,
+            indicator.ema_20 if indicator else None,
+            indicator.macd_histogram if indicator else None,
+        )
+
+        price_rows = await self.repo.get_price_history(stock.id, 22)
+        relative_volume = None
+        if len(price_rows) >= 2:
+            prior_volumes = [row.volume for row in price_rows[:-1] if row.volume > 0]
+            if prior_volumes:
+                relative_volume = price_rows[-1].volume / (
+                    sum(prior_volumes) / len(prior_volumes)
+                )
+
+        news_direction = directional_view(sentiment.latest_sentiment, band=0.1)
+        news_observation = (
+            f"{sentiment.article_count} verified article association(s); "
+            f"aggregate sentiment {sentiment.latest_sentiment:+.2f}"
+            if sentiment.latest_sentiment is not None
+            else "No verified company catalyst identified in the recent news window"
+        )
+        historical_probability = history.bullish_probability if history else None
+        historical_direction = (
+            "unavailable"
+            if historical_probability is None
+            else (
+                "bullish"
+                if historical_probability > 0.55
+                else "bearish"
+                if historical_probability < 0.45
+                else "neutral"
+            )
+        )
+        historical_confidence = (
+            min(0.85, (history.sample_size / 20) * abs(historical_probability - 0.5) * 2)
+            if history and historical_probability is not None
+            else 0.0
+        )
+        historical_observation = (
+            f"{historical_probability * 100:.0f}% of {history.sample_size} comparable "
+            "market sessions closed higher next session"
+            if history and historical_probability is not None
+            else "Historical analogue outcomes unavailable"
+        )
+
+        corporate_evidence = [
+            item
+            for item in sentiment.evidence
+            if item.event_category == "Corporate Action"
+        ]
+        sector_direction = directional_view(sector_return, band=0.15)
+        market_direction = directional_view(market_return, band=0.15)
+        volume_direction = "unavailable" if relative_volume is None else "neutral"
+        macro_context = {
+            "Energy": "Energy-sector returns can be associated with crude and refining conditions",
+            "Financial Services": "Financial-sector returns can be associated with rates and liquidity",
+            "Technology": "Technology-sector returns can be associated with global demand and USD/INR",
+        }.get(stock.sector or "")
+
+        driver_values = [
+            (
+                "company_news",
+                "Company-specific news",
+                news_observation,
+                news_direction,
+                "high" if sentiment.evidence else "unavailable",
+                sentiment.confidence or 0.0,
+                sentiment.latest_sentiment,
+                [item.id for item in sentiment.evidence],
+            ),
+            (
+                "sector",
+                f"{stock.sector or 'Sector'} return",
+                f"Sector average return {sector_return:+.2f}%"
+                if sector_return is not None
+                else "Sector return unavailable",
+                sector_direction,
+                "high" if sector_return is not None else "unavailable",
+                0.8 if sector_return is not None else 0.0,
+                sector_return,
+                [],
+            ),
+            (
+                "market",
+                "Broad-market return",
+                f"Tracked-universe average return {market_return:+.2f}%"
+                if market_return is not None
+                else "Broad-market return unavailable",
+                market_direction,
+                "medium" if market_return is not None else "unavailable",
+                0.7 if market_return is not None else 0.0,
+                market_return,
+                [],
+            ),
+            (
+                "technical",
+                "Technical momentum",
+                technical_observation,
+                technical_direction,
+                "medium" if technical_direction != "unavailable" else "unavailable",
+                technical_confidence,
+                None,
+                [],
+            ),
+            (
+                "volume",
+                "Volume regime",
+                f"Volume was {relative_volume:.2f}× its prior-session average"
+                if relative_volume is not None
+                else "Volume regime unavailable",
+                volume_direction,
+                "medium" if relative_volume is not None else "unavailable",
+                0.65 if relative_volume is not None else 0.0,
+                None,
+                [],
+            ),
+            (
+                "historical",
+                "Similar historical regimes",
+                historical_observation,
+                historical_direction,
+                "medium" if history else "unavailable",
+                historical_confidence,
+                None,
+                [],
+            ),
+            (
+                "macro",
+                "Macro exposure",
+                macro_context
+                or "No deterministic macro-exposure rule is available for this sector",
+                "neutral" if macro_context else "unavailable",
+                "low" if macro_context else "unavailable",
+                0.4 if macro_context else 0.0,
+                None,
+                [],
+            ),
+            (
+                "corporate_action",
+                "Corporate actions",
+                f"{len(corporate_evidence)} verified corporate-action article(s) identified"
+                if corporate_evidence
+                else "No verified corporate action identified",
+                news_direction if corporate_evidence else "unavailable",
+                "high" if corporate_evidence else "unavailable",
+                sentiment.confidence or 0.0 if corporate_evidence else 0.0,
+                None,
+                [item.id for item in corporate_evidence],
+            ),
+        ]
+        drivers = [
+            AttributionDriverOut(
+                rank=index,
+                category=category,
+                label=label,
+                observation=observation,
+                direction=direction,
+                relevance=relevance,
+                confidence=round(confidence, 4),
+                value_percent=value,
+                evidence_article_ids=article_ids,
+            )
+            for index, (
+                category,
+                label,
+                observation,
+                direction,
+                relevance,
+                confidence,
+                value,
+                article_ids,
+            ) in enumerate(driver_values, start=1)
+        ]
+        signals = [
+            ConflictSignalOut(
+                source="Technical",
+                direction=technical_direction,
+                confidence=technical_confidence,
+                observation=technical_observation,
+            ),
+            ConflictSignalOut(
+                source="News",
+                direction=news_direction,
+                confidence=sentiment.confidence or 0.0,
+                observation=news_observation,
+            ),
+            ConflictSignalOut(
+                source="Sector",
+                direction=sector_direction,
+                confidence=0.8 if sector_return is not None else 0.0,
+                observation=drivers[1].observation,
+            ),
+            ConflictSignalOut(
+                source="Historical regime",
+                direction=historical_direction,
+                confidence=historical_confidence,
+                observation=historical_observation,
+            ),
+        ]
+        available_count = sum(driver.direction != "unavailable" for driver in drivers)
+        return MovementAttributionOut(
+            symbol=stock.symbol,
+            as_of=quote.date,
+            change_percent=quote.change_percent,
+            summary=(
+                f"{available_count} observable contributor(s) were evaluated. "
+                "These are associations, not proven causes."
+            ),
+            drivers=drivers,
+            evidence_conflict=conflict_summary(signals),
         )
 
     async def get_indicator_history(
@@ -507,8 +880,14 @@ class MarketQueryService:
         rows = await self.repo.get_price_history(stock.id, limit)
         return [PricePointOut.model_validate(row) for row in rows]
 
-    async def get_sector_performance(self, sector: str) -> SectorPerformanceOut:
-        stocks = await self.repo.list_stocks_by_sector(sector)
+    async def get_sector_performance(
+        self, sector: str, index_code: str | None = None
+    ) -> SectorPerformanceOut:
+        stocks = (
+            [stock for stock in await self._stocks(index_code) if stock.sector == sector]
+            if index_code is not None
+            else await self.repo.list_stocks_by_sector(sector)
+        )
         if not stocks:
             raise SectorNotFoundError(sector)
         snapshots = await self.repo.get_market_snapshots(
@@ -528,54 +907,140 @@ class MarketQueryService:
             stocks=quotes,
         )
 
-    async def get_sectors_overview(self) -> list[SectorOverviewOut]:
+    async def get_sectors_overview(
+        self, index_code: str | None = None
+    ) -> list[SectorOverviewOut]:
         """Per-sector average daily change across the tracked universe.
 
         Powers the dashboard/market sector heatmap in one query. A sector's
         count includes every stock in it; the average is over those with a
         computable day change. Sorted best-performing first.
         """
-        quotes = await self._all_quotes()
-        counts: dict[str, int] = {}
-        changes: dict[str, list[float]] = {}
-        for q in quotes:
-            if not q.sector:
-                continue
-            counts[q.sector] = counts.get(q.sector, 0) + 1
-            if q.change_percent is not None:
-                changes.setdefault(q.sector, []).append(q.change_percent)
-        overview = [
-            SectorOverviewOut(
-                sector=sector,
-                stock_count=count,
-                average_change_percent=(
-                    sum(changes[sector]) / len(changes[sector])
-                    if changes.get(sector)
-                    else None
-                ),
+        quotes = await self._all_quotes(index_code)
+        return self._sectors_from(quotes)
+
+    async def list_universes(self) -> list[UniverseOptionOut]:
+        counts = await self.repo.active_universe_counts()
+        return [
+            UniverseOptionOut(
+                code=code,
+                label=label,
+                expected_constituents=expected,
+                active_constituents=counts.get(code, 0),
+                initialized=counts.get(code, 0) == expected,
+                preferred=code == settings.research_universe,
+                source_url=source_url,
             )
-            for sector, count in counts.items()
+            for code, (label, source_url, expected) in INDEX_DEFINITIONS.items()
         ]
-        overview.sort(
-            key=lambda s: (
-                s.average_change_percent is not None,
-                s.average_change_percent or 0.0,
+
+    async def get_heatmap(self, index_code: str) -> list[HeatmapStockOut]:
+        stocks = await self._stocks(index_code)
+        snapshots = await self.repo.get_market_snapshots(
+            (stock.id for stock in stocks), known_stocks=stocks
+        )
+        sentiment_rows = await NewsService(self.db).list_latest_sentiment()
+        return self._heatmap_from(stocks, snapshots, sentiment_rows)
+
+    async def get_workspace(
+        self,
+        index_code: str,
+        economic_events: EconomicCalendarOut,
+    ) -> MarketWorkspaceOut:
+        """Build the market workspace from one shared universe snapshot."""
+        stocks = await self._stocks(index_code)
+        snapshots = await self.repo.get_market_snapshots(
+            (stock.id for stock in stocks), known_stocks=stocks
+        )
+        quotes = [
+            _quote_from_prices(stock, list(snapshots[stock.id].prices))
+            for stock in stocks
+            if stock.id in snapshots
+        ]
+        sentiment = await NewsService(self.db).list_latest_sentiment()
+        symbols = {stock.symbol for stock in stocks}
+        sentiment = [row for row in sentiment if row.symbol in symbols]
+        technical = await self._technical_summary_for(stocks)
+        windows = await self.repo.get_return_windows(stock.id for stock in stocks)
+        return MarketWorkspaceOut(
+            universe=index_code,
+            stocks=self._market_rows_from(stocks, snapshots),
+            breadth=self._breadth_from(quotes),
+            sectors=self._sectors_from(quotes),
+            technical=technical,
+            heatmap=self._heatmap_from(stocks, snapshots, sentiment),
+            sector_rotation=self._rotation_from(stocks, windows),
+            economic_events=economic_events,
+            sentiment=sentiment,
+        )
+
+    async def get_sector_rotation(self, index_code: str) -> list[SectorRotationOut]:
+        stocks = await self._stocks(index_code)
+        windows = await self.repo.get_return_windows(stock.id for stock in stocks)
+        return self._rotation_from(stocks, windows)
+
+    @staticmethod
+    def _rotation_from(
+        stocks: list[Stock], windows: dict[int, ReturnWindows]
+    ) -> list[SectorRotationOut]:
+        by_sector: dict[str, list[ReturnWindows]] = {}
+        for stock in stocks:
+            if stock.sector and stock.id in windows:
+                by_sector.setdefault(stock.sector, []).append(windows[stock.id])
+
+        def average(values: list[float | None]) -> float | None:
+            available = [value for value in values if value is not None]
+            return sum(available) / len(available) if available else None
+
+        rows = []
+        for sector, items in by_sector.items():
+            one = average([item.return_1d for item in items])
+            five = average([item.return_5d for item in items])
+            twenty = average([item.return_20d for item in items])
+            rows.append(
+                SectorRotationOut(
+                    sector=sector,
+                    stock_count=len(items),
+                    return_1d=one,
+                    return_5d=five,
+                    return_20d=twenty,
+                    momentum_regime=sector_rotation_regime(one, five, twenty),
+                )
+            )
+        rows.sort(
+            key=lambda row: (
+                row.return_20d is not None,
+                row.return_20d or float("-inf"),
             ),
             reverse=True,
         )
-        return overview
+        return rows
 
-    async def get_gainers(self, limit: int = 5) -> list[QuoteOut]:
-        return self._gainers_from(await self._all_quotes(), limit)
+    async def get_gainers(
+        self, limit: int = 5, index_code: str | None = None
+    ) -> list[QuoteOut]:
+        return self._gainers_from(await self._all_quotes(index_code), limit)
 
-    async def get_losers(self, limit: int = 5) -> list[QuoteOut]:
-        return self._losers_from(await self._all_quotes(), limit)
+    async def get_losers(
+        self, limit: int = 5, index_code: str | None = None
+    ) -> list[QuoteOut]:
+        return self._losers_from(await self._all_quotes(index_code), limit)
 
-    async def get_breadth(self) -> BreadthOut:
-        return self._breadth_from(await self._all_quotes())
+    async def get_breadth(self, index_code: str | None = None) -> BreadthOut:
+        return self._breadth_from(await self._all_quotes(index_code))
 
-    async def get_technical_summary(self) -> TechnicalSummaryOut:
-        rows = await self.repo.list_latest_indicators_with_close()
+    async def get_technical_summary(
+        self, index_code: str | None = None
+    ) -> TechnicalSummaryOut:
+        stocks = await self._stocks(index_code) if index_code is not None else None
+        return await self._technical_summary_for(stocks)
+
+    async def _technical_summary_for(
+        self, stocks: list[Stock] | None
+    ) -> TechnicalSummaryOut:
+        rows = await self.repo.list_latest_indicators_with_close(
+            (stock.id for stock in stocks) if stocks is not None else None
+        )
         indicators = [row for row, _close in rows]
         rsi_values = [row.rsi_14 for row in indicators if row.rsi_14 is not None]
         atr_values = [

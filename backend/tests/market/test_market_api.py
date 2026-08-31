@@ -7,10 +7,17 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.dependencies import get_economic_calendar_client, get_market_client
-from app.market.models import DailyPrice, Fundamentals, Indicator, Stock
+from app.market.models import (
+    DailyPrice,
+    Fundamentals,
+    IndexMembership,
+    Indicator,
+    Stock,
+)
 from app.shared.clients.economic_calendar import EconomicEventData
 from app.shared.clients.market_data import FundamentalsData, PriceBar
 
@@ -133,6 +140,84 @@ async def test_market_stocks_returns_dense_batched_snapshots(
 
 
 @pytest.mark.asyncio
+async def test_universe_selector_heatmap_and_rotation_are_membership_scoped(
+    client: AsyncClient, db_session: AsyncSession, seed_market: None
+) -> None:
+    stock = await db_session.scalar(select(Stock).where(Stock.symbol == "AAA.NS"))
+    assert stock is not None
+    db_session.add(
+        IndexMembership(
+            stock_id=stock.id,
+            index_code="NIFTY100",
+            valid_from=date(2023, 12, 1),
+            source="test",
+            source_snapshot_date=D2,
+        )
+    )
+    prior_dates = [date(2023, 12, 13) + timedelta(days=index) for index in range(19)]
+    db_session.add_all(
+        [
+            _price(stock.id, day, 81.0 + index)
+            for index, day in enumerate(prior_dates)
+        ]
+    )
+    await db_session.commit()
+
+    universes = (await client.get("/api/v1/market/universes")).json()["data"]
+    nifty100 = next(item for item in universes if item["code"] == "NIFTY100")
+    assert nifty100["preferred"] is True
+    assert nifty100["active_constituents"] == 1
+    assert nifty100["initialized"] is False
+
+    stocks = (
+        await client.get("/api/v1/market/stocks?universe=NIFTY100")
+    ).json()["data"]
+    assert [row["symbol"] for row in stocks] == ["AAA.NS"]
+
+    heatmap = (
+        await client.get("/api/v1/market/heatmap?universe=NIFTY100")
+    ).json()["data"]
+    assert heatmap[0]["market_cap"] == 2000
+    assert heatmap[0]["sentiment_availability"] == "no_relevant_news"
+
+    rotation = (
+        await client.get("/api/v1/market/sector-rotation?universe=NIFTY100")
+    ).json()["data"]
+    assert rotation[0]["sector"] == "Technology"
+    assert rotation[0]["return_1d"] == pytest.approx(10.0)
+    assert rotation[0]["return_5d"] is not None
+    assert rotation[0]["return_20d"] is not None
+    assert rotation[0]["momentum_regime"] in {
+        "leader",
+        "improving",
+        "weakening",
+        "laggard",
+        "mixed",
+    }
+
+    workspace_response = await client.get(
+        "/api/v1/market/workspace?universe=NIFTY100&days=7"
+    )
+    assert workspace_response.status_code == 200
+    workspace = workspace_response.json()["data"]
+    assert workspace["universe"] == "NIFTY100"
+    assert [row["symbol"] for row in workspace["stocks"]] == ["AAA.NS"]
+    assert workspace["breadth"]["advancers"] == 1
+    assert workspace["sectors"][0]["sector"] == "Technology"
+    assert workspace["technical"]["stocks_with_indicators"] == 1
+    assert workspace["heatmap"][0]["symbol"] == "AAA.NS"
+    assert workspace["sector_rotation"][0]["sector"] == "Technology"
+    assert [row["symbol"] for row in workspace["sentiment"]] == ["AAA.NS"]
+    assert workspace["economic_events"]["status"] == "not_configured"
+
+
+@pytest.mark.asyncio
+async def test_market_rejects_unsupported_universe(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/market/heatmap?universe=NIFTY500")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_technical_summary(client: AsyncClient, seed_market: None) -> None:
     data = (await client.get("/api/v1/market/technical-summary")).json()["data"]
     assert data["as_of"] == "2024-01-02"
@@ -240,6 +325,34 @@ async def test_stock_detail(client: AsyncClient, seed_market: None) -> None:
     assert data["close"] == pytest.approx(110.0)
     assert data["change_percent"] == pytest.approx(10.0)
     assert data["fundamentals"]["pe_ratio"] == pytest.approx(25.0)
+
+
+@pytest.mark.asyncio
+async def test_movement_attribution_is_deterministic_and_honest_about_missing_news(
+    client: AsyncClient, seed_market: None
+) -> None:
+    response = await client.get("/api/v1/market/stocks/AAA.NS/attribution")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["certainty"] == "likely_contributors_not_proven_causes"
+    drivers = {row["category"]: row for row in data["drivers"]}
+    assert set(drivers) == {
+        "company_news",
+        "sector",
+        "market",
+        "technical",
+        "volume",
+        "historical",
+        "macro",
+        "corporate_action",
+    }
+    assert drivers["company_news"]["direction"] == "unavailable"
+    assert "No verified company catalyst" in drivers["company_news"]["observation"]
+    assert drivers["sector"]["value_percent"] == pytest.approx(0)
+    assert drivers["market"]["value_percent"] == pytest.approx(0)
+    assert drivers["technical"]["direction"] == "bullish"
+    assert drivers["volume"]["observation"] == "Volume was 1.00× its prior-session average"
+    assert data["evidence_conflict"]["signals"][1]["direction"] == "unavailable"
 
 
 @pytest.mark.asyncio

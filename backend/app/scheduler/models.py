@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
@@ -20,10 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.scheduler.constants import PipelineRunStatus, PipelineStepStatus
 from app.shared.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from app.shared.time import utc_now
 
 
 class PipelineRun(Base):
@@ -62,14 +59,14 @@ class PipelineRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         server_default=func.now(),
         nullable=False,
     )
@@ -113,14 +110,14 @@ class PipelineRunStep(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=utc_now,
+        onupdate=utc_now,
         server_default=func.now(),
         nullable=False,
     )

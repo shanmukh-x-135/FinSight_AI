@@ -15,14 +15,13 @@ one shape everywhere::
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.shared.time import utc_now
 from config.logging import get_logger, get_request_id
 
 logger = get_logger(__name__)
@@ -97,7 +96,7 @@ def _error_body(
         "success": False,
         "message": message,
         "error": {"type": error_type},
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": utc_now().isoformat(),
         "requestId": get_request_id(),
     }
     if detail is not None:

@@ -9,6 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.market.models import Stock
+from app.news.classification import (
+    classify_event,
+    evidence_excerpt,
+    sentiment_confidence,
+)
 from app.news.models import NewsArticle, NewsArticleStock, SentimentDaily
 from app.shared.upsert import conflict_insert
 
@@ -33,22 +38,67 @@ class NewsRepository:
 
     async def add_article(self, article: NewsArticle) -> int | None:
         """Insert once by either URL or fingerprint; return the new id if won."""
+        event = classify_event(article.title, article.summary)
         values = {
             column.name: getattr(article, column.name)
             for column in NewsArticle.__table__.columns
             if column.name not in {"id", "fetched_at"}
         }
+        # Repository callers include maintenance and concurrency paths that may
+        # construct legacy article objects without Phase-11A enrichment. Keep
+        # the persistence boundary non-null and deterministic for every caller.
+        values.update(
+            sentiment_confidence=(
+                article.sentiment_confidence
+                if article.sentiment_confidence is not None
+                else sentiment_confidence(
+                    score=article.sentiment_score,
+                    positive=article.sentiment_positive,
+                    negative=article.sentiment_negative,
+                    neutral=article.sentiment_neutral,
+                )
+            ),
+            event_category=article.event_category or event.category,
+            event_confidence=(
+                article.event_confidence
+                if article.event_confidence is not None
+                else event.confidence
+            ),
+            driver=article.driver or event.driver,
+            evidence_excerpt=(
+                article.evidence_excerpt
+                or evidence_excerpt(article.title, article.summary)
+            ),
+        )
         stmt = conflict_insert(self.db, NewsArticle).values(**values)
         result = await self.db.execute(
             stmt.on_conflict_do_nothing().returning(NewsArticle.id)
         )
         return result.scalar_one_or_none()
 
-    async def add_tag(self, article_id: int, stock_id: int) -> None:
+    async def add_tag(
+        self,
+        article_id: int,
+        stock_id: int,
+        *,
+        matching_alias: str | None = None,
+        entity_match_confidence: float = 0.0,
+    ) -> None:
         stmt = conflict_insert(self.db, NewsArticleStock).values(
-            article_id=article_id, stock_id=stock_id
+            article_id=article_id,
+            stock_id=stock_id,
+            matching_alias=matching_alias,
+            entity_match_confidence=entity_match_confidence,
         )
-        await self.db.execute(stmt.on_conflict_do_nothing())
+        await self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[NewsArticleStock.article_id, NewsArticleStock.stock_id],
+                set_={
+                    "matching_alias": stmt.excluded.matching_alias,
+                    "entity_match_confidence": stmt.excluded.entity_match_confidence,
+                },
+            )
+        )
 
     async def list_articles_since(self, since: datetime) -> list[NewsArticle]:
         result = await self.db.execute(
@@ -65,10 +115,13 @@ class NewsRepository:
         return list(result.scalars().all())
 
     async def reconcile_tags(
-        self, article: NewsArticle, desired_stock_ids: set[int]
+        self,
+        article: NewsArticle,
+        desired_matches: dict[int, tuple[str, float]],
     ) -> tuple[int, int]:
         """Make one article's associations exactly match deterministic tagging."""
         current = {tag.stock_id for tag in article.tags}
+        desired_stock_ids = set(desired_matches)
         to_add = desired_stock_ids - current
         to_remove = current - desired_stock_ids
         if to_remove:
@@ -80,9 +133,51 @@ class NewsRepository:
                 )
                 .execution_options(synchronize_session=False)
             )
-        for stock_id in to_add:
-            await self.add_tag(article.id, stock_id)
+        for stock_id in desired_stock_ids:
+            alias, confidence = desired_matches[stock_id]
+            await self.add_tag(
+                article.id,
+                stock_id,
+                matching_alias=alias,
+                entity_match_confidence=confidence,
+            )
         return len(to_add), len(to_remove)
+
+    async def list_recent_stock_articles(
+        self, stock_id: int, *, recent_since: datetime, limit: int = 20
+    ) -> list[tuple[NewsArticle, NewsArticleStock]]:
+        result = await self.db.execute(
+            select(NewsArticle, NewsArticleStock)
+            .join(NewsArticleStock, NewsArticleStock.article_id == NewsArticle.id)
+            .where(
+                NewsArticleStock.stock_id == stock_id,
+                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at)
+                >= recent_since,
+            )
+            .order_by(
+                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at).desc(),
+                NewsArticle.id.desc(),
+            )
+            .limit(limit)
+        )
+        return list(result.all())
+
+    async def recent_stock_evidence_rows(self, *, recent_since: datetime) -> list[tuple]:
+        result = await self.db.execute(
+            select(
+                NewsArticleStock.stock_id,
+                NewsArticle.sentiment_score,
+                NewsArticle.sentiment_label,
+                NewsArticle.sentiment_confidence,
+                NewsArticleStock.entity_match_confidence,
+            )
+            .join(NewsArticle, NewsArticle.id == NewsArticleStock.article_id)
+            .where(
+                func.coalesce(NewsArticle.published_at, NewsArticle.fetched_at)
+                >= recent_since
+            )
+        )
+        return list(result.all())
 
     async def list_recent_articles(
         self, limit: int = 50, *, recent_since: datetime

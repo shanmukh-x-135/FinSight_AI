@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.portfolio.schemas import (
+    CounterfactualRequest,
     HoldingCreate,
     HoldingUpdate,
     PortfolioCreate,
@@ -31,7 +32,9 @@ watchlist_router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 # --------------------------------------------------------------------------- #
 # Portfolios                                                                   #
 # --------------------------------------------------------------------------- #
-@portfolio_router.post("", status_code=status.HTTP_201_CREATED, summary="Create a portfolio")
+@portfolio_router.post(
+    "", status_code=status.HTTP_201_CREATED, summary="Create a portfolio"
+)
 async def create_portfolio(
     payload: PortfolioCreate,
     user: User = Depends(get_current_user),
@@ -101,6 +104,32 @@ async def portfolio_analytics(
     return envelope(data=await PortfolioService(db).get_analytics(user.id, portfolio_id))
 
 
+@portfolio_router.get(
+    "/{portfolio_id}/risk", summary="Static-weight portfolio risk diagnostics"
+)
+async def portfolio_risk(
+    portfolio_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return envelope(data=await PortfolioService(db).get_risk(user.id, portfolio_id))
+
+
+@portfolio_router.post(
+    "/{portfolio_id}/counterfactual",
+    summary="Estimate risk changes for hypothetical holding adjustments",
+)
+async def portfolio_counterfactual(
+    portfolio_id: int,
+    payload: CounterfactualRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return envelope(
+        data=await PortfolioService(db).counterfactual(user.id, portfolio_id, payload)
+    )
+
+
 # ----- Holdings ------------------------------------------------------------
 @portfolio_router.post(
     "/{portfolio_id}/items", status_code=status.HTTP_201_CREATED, summary="Add a holding"
@@ -113,7 +142,11 @@ async def add_holding(
 ) -> dict:
     item = await PortfolioService(db).add_holding(user.id, portfolio_id, payload)
     return envelope(
-        data={"id": item.id, "quantity": item.quantity, "avg_buy_price": item.avg_buy_price},
+        data={
+            "id": item.id,
+            "quantity": item.quantity,
+            "avg_buy_price": item.avg_buy_price,
+        },
         message="Holding added.",
     )
 
@@ -126,9 +159,15 @@ async def update_holding(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    item = await PortfolioService(db).update_holding(user.id, portfolio_id, item_id, payload)
+    item = await PortfolioService(db).update_holding(
+        user.id, portfolio_id, item_id, payload
+    )
     return envelope(
-        data={"id": item.id, "quantity": item.quantity, "avg_buy_price": item.avg_buy_price},
+        data={
+            "id": item.id,
+            "quantity": item.quantity,
+            "avg_buy_price": item.avg_buy_price,
+        },
         message="Holding updated.",
     )
 
@@ -154,13 +193,17 @@ async def list_watchlist(
     return envelope(data=await PortfolioService(db).list_watchlist(user.id))
 
 
-@watchlist_router.post("", status_code=status.HTTP_201_CREATED, summary="Add to watchlist")
+@watchlist_router.post(
+    "", status_code=status.HTTP_201_CREATED, summary="Add to watchlist"
+)
 async def add_watchlist(
     payload: WatchlistAdd,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    item = await PortfolioService(db).add_watchlist_item(user.id, payload.symbol, payload.pinned)
+    item = await PortfolioService(db).add_watchlist_item(
+        user.id, payload.symbol, payload.pinned
+    )
     return envelope(data={"id": item.id}, message="Added to watchlist.")
 
 

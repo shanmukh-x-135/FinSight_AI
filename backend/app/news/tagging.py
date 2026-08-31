@@ -9,10 +9,17 @@ Tagging is best-effort and imperfect by nature — documented in docs/news-senti
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from app.news.constants import ALIAS_STOPWORDS, COMPANY_ALIASES, MIN_ALIAS_LEN
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+
+
+@dataclass(frozen=True)
+class EntityMatch:
+    alias: str
+    confidence: float
 
 
 def _normalize_phrase(text: str) -> str:
@@ -61,3 +68,20 @@ def tag_article(
         for stock_id, aliases in aliases_by_stock.items()
         if any(f" {alias} " in normalized_text for alias in aliases)
     }
+
+
+def match_article_entities(
+    title: str, summary: str, aliases_by_stock: dict[int, set[str]]
+) -> dict[int, EntityMatch]:
+    """Return the strongest explainable alias match for each linked stock."""
+    normalized_text = f" {_normalize_phrase(f'{title} {summary}')} "
+    matches: dict[int, EntityMatch] = {}
+    for stock_id, aliases in aliases_by_stock.items():
+        present = [alias for alias in aliases if f" {alias} " in normalized_text]
+        if not present:
+            continue
+        alias = max(present, key=lambda value: (len(value.split()), len(value), value))
+        token_count = len(alias.split())
+        confidence = 0.95 if token_count >= 2 else (0.82 if len(alias) >= 5 else 0.72)
+        matches[stock_id] = EntityMatch(alias=alias, confidence=confidence)
+    return matches

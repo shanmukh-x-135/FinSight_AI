@@ -5,6 +5,9 @@ daily sentiment, and **feed real sentiment into Phase 4's feature vector** —
 closing the placeholder left there. Sentiment is a *deterministic classification
 input* ("analytics before AI"); the LLM never scores it.
 
+Event classification adds provider-text excerpts, per-association confidence,
+explicit no-news availability, and deterministic movement attribution.
+
 ## Pipeline
 
 ```
@@ -119,6 +122,27 @@ added for that date and the index rebuilt.
 | `GET /api/v1/news/sentiment/sector/{sector}` | Article-weighted daily sentiment for a sector |
 | `GET /api/v1/admin/jobs/news-ingestion/status?recent_window_days=` | Aggregate counts and latest ingestion/sentiment timestamps, with no article content (administrator only) |
 | `POST /api/v1/admin/jobs/news-ingestion/run` | Ingest + score + tag + aggregate (administrator only) |
+
+## Evidence and movement attribution
+
+Each article persists a bounded sentiment confidence, deterministic event
+category and rule-owned driver, sanitized evidence excerpt, source identity,
+publication time, and per-stock matched alias/entity confidence. The supported
+taxonomy is Earnings, Guidance, M&A, Regulation, Order Win, Product Launch,
+Management, Brokerage Action, Macro, Commodity Exposure, Litigation, Corporate
+Action, and low-confidence `Other`.
+
+`GET /api/v1/news/sentiment/{symbol}` returns source-first evidence and an
+explicit `available` or `no_relevant_news` state. Missing recent evidence means
+null sentiment/confidence, zero counts and an empty evidence list—not neutral.
+
+`GET /api/v1/market/stocks/{symbol}/attribution` compares company news, sector
+and broad-market returns, technical momentum, relative volume, historical
+regimes, reviewed macro exposure, and corporate actions. Each contributor has
+direction, relevance, confidence and an observation. Conflicts remain visible,
+and the response is explicitly limited to likely contributors, not proven
+causes. Dashboard summaries and admin EOD status also carry deterministic
+Market, News, Universe and Historical Corpus freshness states.
 
 ## Verification
 

@@ -19,8 +19,9 @@ For an explicit target date:
 - provider probing begins only after the session close plus
   `MARKET_CLOSE_GRACE_MINUTES`.
 
-When no target is supplied, the runner uses the current calendar date in the
-configured market timezone and applies the same checks.
+When no target is supplied, the runner walks backward through the NSE calendar
+from the current market-local date, skips weekends and holidays before provider
+checks, and selects the latest session confirmed ready.
 
 ## Provider readiness
 
