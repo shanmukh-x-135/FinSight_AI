@@ -7,7 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 type Mode = "login" | "register";
@@ -53,6 +53,27 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("oauthError");
+    const timer = window.setTimeout(() => {
+      if (!code) return;
+      setError(
+        code === "provider_denied"
+          ? "Google sign-in was cancelled."
+          : "Google sign-in could not be completed. Please try again.",
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  function continueWithGoogle() {
+    const requested = new URLSearchParams(window.location.search).get("returnTo");
+    const returnTo = requested?.startsWith("/") && !requested.startsWith("//")
+      ? requested
+      : "/dashboard";
+    window.location.assign(api.googleStartUrl(returnTo));
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -92,6 +113,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
       </CardHeader>
       <form onSubmit={onSubmit} noValidate>
         <CardContent className="flex flex-col gap-4">
+          <Button type="button" variant="outline" className="w-full" onClick={continueWithGoogle} disabled={submitting}>
+            Continue with Google
+          </Button>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+            <span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" />
+          </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Email</Label>
             <Input

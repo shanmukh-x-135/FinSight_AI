@@ -11,13 +11,17 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidTokenError,
+    OAuthFlowError,
+    OAuthIdentityConflictError,
 )
+from app.auth.google import GOOGLE_PROVIDER, GoogleIdentity
 from app.auth.models import User
 from app.auth.repository import AuthRepository
 from app.auth.schemas import PreferencesUpdate
@@ -82,12 +86,56 @@ class AuthService:
         if user is None:
             verify_password(password, _DUMMY_HASH)
             raise InvalidCredentialsError()
+        if user.hashed_password is None:
+            verify_password(password, _DUMMY_HASH)
+            raise InvalidCredentialsError()
         if not verify_password(password, user.hashed_password):
             raise InvalidCredentialsError()
         if not user.is_active:
             raise InvalidCredentialsError()
 
         return await self._issue_tokens(user)
+
+    # ----- Google OpenID Connect -----------------------------------------
+    async def login_with_google(self, google: GoogleIdentity) -> IssuedSession:
+        if not google.email_verified:
+            raise OAuthFlowError(
+                "unverified_email", "Google has not verified this email address."
+            )
+        email = google.email.strip().lower()
+        identity = await self.repo.get_identity(GOOGLE_PROVIDER, google.subject)
+        email_user = await self.repo.get_user_by_email(email)
+
+        if identity is not None:
+            if email_user is not None and email_user.id != identity.user_id:
+                raise OAuthIdentityConflictError()
+            if not identity.user.is_active:
+                raise OAuthFlowError("account_disabled", "This account is not active.")
+            identity.provider_email = email
+            return await self._issue_tokens(identity.user)
+
+        user = email_user
+        if user is not None and not user.is_active:
+            raise OAuthFlowError("account_disabled", "This account is not active.")
+        if user is None:
+            user = await self.repo.create_user(email=email, hashed_password=None)
+
+        try:
+            await self.repo.create_identity(
+                user_id=user.id,
+                provider=GOOGLE_PROVIDER,
+                subject=google.subject,
+                email=email,
+            )
+            return await self._issue_tokens(user)
+        except IntegrityError:
+            # A duplicated callback must converge on the identity that won the
+            # unique provider+subject insert; it must never create two users.
+            await self.db.rollback()
+            winner = await self.repo.get_identity(GOOGLE_PROVIDER, google.subject)
+            if winner is None or winner.user.email != email:
+                raise OAuthIdentityConflictError() from None
+            return await self._issue_tokens(winner.user)
 
     # ----- Refresh (with rotation) ----------------------------------------
     async def refresh(self, refresh_token: str) -> IssuedSession:

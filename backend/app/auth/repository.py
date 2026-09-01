@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth.models import Preferences, Session, User
+from app.auth.models import AuthIdentity, Preferences, Session, User
 
 
 class AuthRepository:
@@ -37,13 +37,43 @@ class AuthRepository:
         )
         return result.scalar_one_or_none()
 
-    async def create_user(self, email: str, hashed_password: str) -> User:
+    async def create_user(self, email: str, hashed_password: str | None) -> User:
         """Create a user together with a default preferences row."""
         user = User(email=email, hashed_password=hashed_password)
         user.preferences = Preferences()  # defaults from the model
         self.db.add(user)
         await self.db.flush()  # assign PKs without ending the transaction
         return user
+
+    # ----- External identities -------------------------------------------
+    async def get_identity(self, provider: str, subject: str) -> AuthIdentity | None:
+        result = await self.db.execute(
+            select(AuthIdentity)
+            .where(
+                AuthIdentity.provider == provider,
+                AuthIdentity.provider_subject == subject,
+            )
+            .options(selectinload(AuthIdentity.user).selectinload(User.preferences))
+        )
+        return result.scalar_one_or_none()
+
+    async def create_identity(
+        self,
+        *,
+        user_id: int,
+        provider: str,
+        subject: str,
+        email: str,
+    ) -> AuthIdentity:
+        identity = AuthIdentity(
+            user_id=user_id,
+            provider=provider,
+            provider_subject=subject,
+            provider_email=email,
+        )
+        self.db.add(identity)
+        await self.db.flush()
+        return identity
 
     # ----- Preferences -----------------------------------------------------
     async def update_preferences(

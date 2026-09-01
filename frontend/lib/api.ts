@@ -186,6 +186,9 @@ async function performRefresh(): Promise<boolean> {
 
 // ----- Endpoints ------------------------------------------------------------
 export const api = {
+  googleStartUrl: (returnTo = "/dashboard") =>
+    `${API_URL}/api/v1/auth/google/start?${new URLSearchParams({ return_to: returnTo })}`,
+
   register: (email: string, password: string) =>
     request<User>("/api/v1/auth/register", {
       method: "POST",

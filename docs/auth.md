@@ -17,6 +17,8 @@ All under `/api/v1`, all responses in the standard envelope
 | `GET  /auth/csrf`          | Refresh cookie | Bootstrap CSRF before an expired-access refresh. |
 | `POST /auth/refresh`       | Refresh cookie + CSRF | Rotate the cookie session.       |
 | `POST /auth/logout`        | Cookie + CSRF | Revoke and clear the current session.           |
+| `GET  /auth/google/start`  | – | Start Google OAuth 2.0 / OpenID Connect.             |
+| `GET  /auth/google/callback` | Signed transaction | Verify and link Google identity.  |
 | `GET  /user/me`            | ✔    | Current user + preferences (the canonical protected route). |
 | `GET  /user/preferences`   | ✔    | Read preferences.                                  |
 | `PUT  /user/preferences`   | ✔    | Partial update of preferences.                     |
@@ -96,14 +98,48 @@ timing against account enumeration.
 
 ## Data model (User domain)
 
-Three tables (design doc §6.3), migration `0002_auth` plus the administrator
-capability migration `0008_user_admin`:
+Four tables, introduced by `0002_auth`, `0008_user_admin`, and
+`0020_google_identities`:
 
 - **users** — `id, email (unique), hashed_password, is_active, is_admin, created_at`.
 - **preferences** — 1:1 with users:
   `risk_tolerance, investment_horizon, preferred_market, preferred_sectors (JSON list)`.
   A default row is created at registration.
 - **sessions** — issued refresh tokens: `user_id, jti (unique), expires_at, revoked, created_at`.
+- **auth_identities** — external identity links:
+  `user_id, provider, provider_subject, provider_email, linked_at`, with a unique
+  provider+subject constraint. OAuth-only users have no password hash.
+
+## Google OpenID Connect
+
+`GET /auth/google/start` creates random state and nonce values, stores them in a
+short-lived signed HttpOnly transaction cookie, and redirects to Google's
+authorization endpoint. The configured redirect URI must use the frontend
+gateway, for example:
+
+```text
+https://your-app.vercel.app/api-proxy/api/v1/auth/google/callback
+```
+
+The callback exchanges the one-time code on the backend. `google-auth` verifies
+the ID-token signature, issuer, audience, and expiry; FinSight additionally
+checks nonce, provider subject, email presence, and `email_verified == true`.
+No browser-supplied profile or identity claim is trusted.
+
+Linking rules are deliberately narrow:
+
+- an existing Google subject signs into its already linked internal user;
+- a new Google subject with the same verified email as a password account links
+  to that account;
+- a new verified email creates one OAuth-only internal user;
+- a subject/email combination that points at different users is rejected rather
+  than merged;
+- missing, unverified, denied, expired, or conflicting flows return a stable
+  error code to the login experience.
+
+Configuration is all-or-none: `GOOGLE_OAUTH_CLIENT_ID`,
+`GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URI`. Secrets remain on
+Render; the browser receives neither the client secret nor Google tokens.
 
 ### Preference vocabularies (`app/auth/constants.py`)
 

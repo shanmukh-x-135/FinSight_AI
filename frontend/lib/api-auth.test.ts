@@ -57,4 +57,12 @@ describe("authenticated transport", () => {
     expect(refreshCalls).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(6);
   });
+
+  it("starts Google sign-in through the same-origin gateway with a return path", async () => {
+    const { api } = await import("./api");
+
+    expect(api.googleStartUrl("/market/RELIANCE.NS")).toBe(
+      "/api-proxy/api/v1/auth/google/start?return_to=%2Fmarket%2FRELIANCE.NS",
+    );
+  });
 });

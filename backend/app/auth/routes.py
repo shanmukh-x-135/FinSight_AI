@@ -13,8 +13,11 @@ rendered by the global handlers.
 from __future__ import annotations
 
 import hmac
+import secrets
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import (
@@ -24,6 +27,15 @@ from app.auth.dependencies import (
     enforce_login_rate_limit,
     get_auth_context,
     get_current_user,
+)
+from app.auth.exceptions import OAuthFlowError
+from app.auth.google import (
+    OAUTH_TRANSACTION_COOKIE,
+    OAUTH_TRANSACTION_TTL_SECONDS,
+    GoogleOAuthClient,
+    create_oauth_transaction,
+    decode_oauth_transaction,
+    get_google_oauth_client,
 )
 from app.auth.models import User
 from app.auth.schemas import (
@@ -99,6 +111,26 @@ def _session_payload(session: IssuedSession) -> SessionResponse:
     )
 
 
+def _clear_oauth_transaction(response: Response) -> None:
+    secure, same_site = _cookie_security()
+    response.delete_cookie(
+        OAUTH_TRANSACTION_COOKIE,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=same_site,
+    )
+
+
+def _oauth_error_response(code: str) -> RedirectResponse:
+    response = RedirectResponse(
+        url=f"/login?{urlencode({'oauthError': code})}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    _clear_oauth_transaction(response)
+    return response
+
+
 # --------------------------------------------------------------------------- #
 # Auth                                                                         #
 # --------------------------------------------------------------------------- #
@@ -132,6 +164,62 @@ async def login(
     session = await AuthService(db).login(payload.email, payload.password)
     _set_session_cookies(response, session)
     return envelope(data=_session_payload(session), message="Login successful.")
+
+
+@auth_router.get("/google/start", summary="Start Google OpenID Connect sign-in")
+async def google_start(
+    return_to: str | None = None,
+    google: GoogleOAuthClient = Depends(get_google_oauth_client),
+) -> RedirectResponse:
+    transaction, transaction_token = create_oauth_transaction(return_to)
+    response = RedirectResponse(
+        google.authorization_url(transaction), status_code=status.HTTP_302_FOUND
+    )
+    secure, same_site = _cookie_security()
+    response.set_cookie(
+        OAUTH_TRANSACTION_COOKIE,
+        transaction_token,
+        max_age=OAUTH_TRANSACTION_TTL_SECONDS,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=same_site,
+    )
+    return response
+
+
+@auth_router.get("/google/callback", summary="Complete Google OpenID Connect sign-in")
+async def google_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    google: GoogleOAuthClient = Depends(get_google_oauth_client),
+) -> RedirectResponse:
+    try:
+        transaction = decode_oauth_transaction(
+            request.cookies.get(OAUTH_TRANSACTION_COOKIE)
+        )
+        if not state or not secrets.compare_digest(state, transaction.state):
+            raise OAuthFlowError("invalid_state", "Google sign-in validation failed.")
+        if error:
+            code_name = "provider_denied" if error == "access_denied" else "provider_error"
+            raise OAuthFlowError(code_name, "Google sign-in was not completed.")
+        if not code:
+            raise OAuthFlowError("missing_code", "Google did not return an authorization code.")
+        identity = await google.exchange_and_verify(code, transaction.nonce)
+        session = await AuthService(db).login_with_google(identity)
+    except OAuthFlowError as exc:
+        return _oauth_error_response(exc.code)
+
+    response = RedirectResponse(
+        url=f"/oauth/callback?{urlencode({'returnTo': transaction.return_to})}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    _clear_oauth_transaction(response)
+    _set_session_cookies(response, session)
+    return response
 
 
 @auth_router.post(
