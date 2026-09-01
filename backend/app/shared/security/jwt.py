@@ -3,8 +3,8 @@
 Pure encode/decode helpers with no database or FastAPI coupling, so they are
 trivially unit-testable. Two token types are issued:
 
-* **access**  — short-lived (``access_token_expire_minutes``), sent as a Bearer
-  token on every authenticated request.
+* **access**  — short-lived (``access_token_expire_minutes``), carried in an
+  HttpOnly cookie and bound to the persisted session by ``jti``.
 * **refresh** — long-lived (``refresh_token_expire_days``), carries a unique
   ``jti`` so it can be tracked and revoked server-side (see the ``sessions``
   table). Refresh tokens are rotated on use.
@@ -35,7 +35,7 @@ class DecodedToken:
 
     subject: str          # user id as a string
     token_type: TokenType
-    jti: str | None       # present on refresh tokens
+    jti: str | None       # persisted session id; present on issued session tokens
     expires_at: datetime
 
 
@@ -61,12 +61,13 @@ def _create_token(
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(subject: str | int) -> str:
+def create_access_token(subject: str | int, session_id: str | None = None) -> str:
     """Issue a short-lived access token for ``subject`` (user id)."""
     return _create_token(
         subject,
         "access",
         timedelta(minutes=settings.access_token_expire_minutes),
+        jti=session_id,
     )
 
 

@@ -67,6 +67,16 @@ class AuthRepository:
         result = await self.db.execute(select(Session).where(Session.jti == jti))
         return result.scalar_one_or_none()
 
+    async def get_session_for_update_by_jti(self, jti: str) -> Session | None:
+        """Serialize refresh-token rotation on PostgreSQL."""
+        result = await self.db.execute(
+            select(Session)
+            .where(Session.jti == jti)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
     async def revoke_session(self, session: Session) -> None:
         session.revoked = True
         await self.db.flush()

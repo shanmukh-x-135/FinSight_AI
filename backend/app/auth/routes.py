@@ -12,26 +12,91 @@ rendered by the global handlers.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+import hmac
+
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import enforce_login_rate_limit, get_current_user
+from app.auth.dependencies import (
+    ACCESS_COOKIE,
+    REFRESH_COOKIE,
+    AuthContext,
+    enforce_login_rate_limit,
+    get_auth_context,
+    get_current_user,
+)
 from app.auth.models import User
 from app.auth.schemas import (
+    CsrfResponse,
     LoginRequest,
     PreferencesResponse,
     PreferencesUpdate,
-    RefreshRequest,
     RegisterRequest,
-    TokenResponse,
+    SessionResponse,
     UserResponse,
 )
-from app.auth.service import AuthService
+from app.auth.service import AuthService, IssuedSession
 from app.shared.database import get_db
 from app.shared.response import envelope
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 user_router = APIRouter(prefix="/user", tags=["user"])
+
+
+def _cookie_security() -> tuple[bool, str]:
+    """Cookies are same-site through the Next.js API proxy in production."""
+    from config.settings import settings
+
+    return settings.is_production, "lax"
+
+
+def _set_session_cookies(response: Response, session: IssuedSession) -> None:
+    from config.settings import settings
+
+    secure, same_site = _cookie_security()
+    response.set_cookie(
+        ACCESS_COOKIE,
+        session.access_token,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=same_site,
+    )
+    response.set_cookie(
+        REFRESH_COOKIE,
+        session.refresh_token,
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=same_site,
+    )
+
+
+def _clear_session_cookies(response: Response) -> None:
+    secure, same_site = _cookie_security()
+    response.delete_cookie(
+        ACCESS_COOKIE,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=same_site,
+    )
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        path="/",
+        secure=secure,
+        httponly=True,
+        samesite=same_site,
+    )
+
+
+def _session_payload(session: IssuedSession) -> SessionResponse:
+    return SessionResponse(
+        user=UserResponse.model_validate(session.user),
+        csrf_token=session.csrf_token,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -59,9 +124,14 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     "Rate-limited per client IP to deter brute-force attacks.",
     dependencies=[Depends(enforce_login_rate_limit)],
 )
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> dict:
-    tokens: TokenResponse = await AuthService(db).login(payload.email, payload.password)
-    return envelope(data=tokens, message="Login successful.")
+async def login(
+    payload: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    session = await AuthService(db).login(payload.email, payload.password)
+    _set_session_cookies(response, session)
+    return envelope(data=_session_payload(session), message="Login successful.")
 
 
 @auth_router.post(
@@ -70,9 +140,65 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> di
     description="Exchange a valid, non-revoked refresh token for a new token "
     "pair. The presented refresh token is revoked (rotation).",
 )
-async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -> dict:
-    tokens: TokenResponse = await AuthService(db).refresh(payload.refresh_token)
-    return envelope(data=tokens, message="Token refreshed.")
+async def refresh(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    refresh_token = request.cookies.get(REFRESH_COOKIE)
+    if not refresh_token:
+        from app.auth.exceptions import InvalidTokenError
+
+        raise InvalidTokenError("Missing refresh session.")
+    service = AuthService(db)
+    expected_csrf = await service.csrf_for_refresh(refresh_token)
+    supplied_csrf = request.headers.get("X-CSRF-Token", "")
+    if not supplied_csrf or not hmac.compare_digest(supplied_csrf, expected_csrf):
+        from app.auth.exceptions import InvalidTokenError
+
+        raise InvalidTokenError("Missing or invalid CSRF token.")
+    session = await service.refresh(refresh_token)
+    _set_session_cookies(response, session)
+    return envelope(data=_session_payload(session), message="Session refreshed.")
+
+
+@auth_router.get("/csrf", summary="Bootstrap CSRF protection for refresh")
+async def get_csrf(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+    refresh_token = request.cookies.get(REFRESH_COOKIE)
+    if not refresh_token:
+        from app.auth.exceptions import InvalidTokenError
+
+        raise InvalidTokenError("Missing refresh session.")
+    csrf_token = await AuthService(db).csrf_for_refresh(refresh_token)
+    return envelope(data=CsrfResponse(csrf_token=csrf_token))
+
+
+@auth_router.get("/session", summary="Hydrate the current browser session")
+async def get_session(context: AuthContext = Depends(get_auth_context)) -> dict:
+    if context.session_id is None:
+        from app.auth.exceptions import InvalidTokenError
+
+        raise InvalidTokenError("Session is not server-bound.")
+    from app.auth.service import csrf_token_for_session
+
+    return envelope(
+        data=SessionResponse(
+            user=UserResponse.model_validate(context.user),
+            csrf_token=csrf_token_for_session(context.session_id),
+        )
+    )
+
+
+@auth_router.post("/logout", summary="Revoke and clear the current session")
+async def logout(
+    response: Response,
+    context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    if context.session_id is not None:
+        await AuthService(db).logout(context.session_id)
+    _clear_session_cookies(response)
+    return envelope(data=None, message="Logged out.")
 
 
 # --------------------------------------------------------------------------- #

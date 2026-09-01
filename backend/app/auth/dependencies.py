@@ -12,8 +12,10 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,31 +28,76 @@ from app.auth.exceptions import (
 )
 from app.auth.models import User
 from app.auth.repository import AuthRepository
+from app.auth.service import csrf_token_for_session
 from app.shared.database import get_db
 from app.shared.security.jwt import TokenError, decode_token
+from app.shared.time import as_utc, utc_now
 
 # auto_error=False so a missing/blank header yields our envelope-shaped 401
 # instead of FastAPI's default error body.
 _bearer_scheme = HTTPBearer(auto_error=False)
 
+ACCESS_COOKIE = "finsight_access"
+REFRESH_COOKIE = "finsight_refresh"
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-async def get_current_user(
+
+@dataclass(frozen=True)
+class AuthContext:
+    user: User
+    session_id: str | None
+    via_cookie: bool
+
+
+async def get_auth_context(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: AsyncSession = Depends(get_db),
-) -> User:
-    """Return the authenticated user, or raise 401 (never 500) on any problem."""
-    if credentials is None or not credentials.credentials:
+) -> AuthContext:
+    """Resolve and validate the authoritative server-side session."""
+    bearer = credentials.credentials if credentials is not None else None
+    cookie_token = request.cookies.get(ACCESS_COOKIE)
+    token = bearer or cookie_token
+    if not token:
         raise InvalidTokenError("Missing authentication token.")
 
     try:
-        decoded = decode_token(credentials.credentials, expected_type="access")
+        decoded = decode_token(token, expected_type="access")
     except TokenError as exc:
         raise InvalidTokenError(str(exc)) from exc
 
-    user = await AuthRepository(db).get_user_by_id(int(decoded.subject))
+    repo = AuthRepository(db)
+    user = await repo.get_user_by_id(int(decoded.subject))
     if user is None or not user.is_active:
         raise InvalidTokenError("User not found or inactive.")
-    return user
+
+    via_cookie = bearer is None
+    if decoded.jti is not None:
+        session = await repo.get_session_by_jti(decoded.jti)
+        if (
+            session is None
+            or session.revoked
+            or session.user_id != user.id
+            or as_utc(session.expires_at) < utc_now()
+        ):
+            raise InvalidTokenError("Session is no longer active.")
+
+    if via_cookie and request.method in UNSAFE_METHODS:
+        if decoded.jti is None:
+            raise InvalidTokenError("Cookie session is not bound to a server session.")
+        supplied = request.headers.get("X-CSRF-Token", "")
+        expected = csrf_token_for_session(decoded.jti)
+        if not supplied or not hmac.compare_digest(supplied, expected):
+            raise InvalidTokenError("Missing or invalid CSRF token.")
+
+    return AuthContext(user=user, session_id=decoded.jti, via_cookie=via_cookie)
+
+
+async def get_current_user(
+    context: AuthContext = Depends(get_auth_context),
+) -> User:
+    """Return the authenticated user, or raise 401 (never 500) on any problem."""
+    return context.user
 
 
 async def get_admin_user(user: User = Depends(get_current_user)) -> User:

@@ -5,13 +5,15 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.auth_utils import access_token_from_cookie
+
 PW = "S3curePass!"
 
 
 async def _token(client: AsyncClient, email: str) -> str:
     await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
-    r = await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
-    return r.json()["data"]["access_token"]
+    await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
+    return access_token_from_cookie(client)
 
 
 @pytest.mark.asyncio

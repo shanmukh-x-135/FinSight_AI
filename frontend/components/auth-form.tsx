@@ -70,7 +70,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
       } else {
         await register(email, password);
       }
-      router.push("/dashboard");
+      const requested = new URLSearchParams(window.location.search).get("returnTo");
+      const returnTo = requested?.startsWith("/") && !requested.startsWith("//")
+        ? requested
+        : "/dashboard";
+      router.replace(returnTo);
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Something went wrong. Please try again.",

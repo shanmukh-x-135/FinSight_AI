@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { chatApi, tokenStore, type ChatMessage } from "./api";
+import { chatApi, type ChatMessage } from "./api";
 
 const userMessage: ChatMessage = {
   id: 1,
@@ -26,8 +26,6 @@ const assistantMessage: ChatMessage = {
 
 describe("chatApi.stream", () => {
   beforeEach(() => {
-    localStorage.clear();
-    tokenStore.set({ access_token: "access", refresh_token: "refresh", token_type: "bearer" });
     vi.restoreAllMocks();
   });
 
@@ -60,8 +58,8 @@ describe("chatApi.stream", () => {
     expect(onChunk.mock.calls.flat()).toEqual(["Market ", "breadth is balanced."]);
     expect(onComplete).toHaveBeenCalledWith(assistantMessage);
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/chat?stream=true",
-      expect.objectContaining({ method: "POST", cache: "no-store" }),
+      "/api-proxy/api/v1/chat?stream=true",
+      expect.objectContaining({ method: "POST", cache: "no-store", credentials: "include" }),
     );
   });
 

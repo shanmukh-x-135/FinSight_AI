@@ -1,4 +1,4 @@
-# Authentication & User Preferences (Phase 1)
+# Authentication & User Preferences (Phase 13B)
 
 How the auth module works: token lifecycle, the refresh/rotation flow, how to
 protect a new route, and the preferences schema that drives later
@@ -12,8 +12,11 @@ All under `/api/v1`, all responses in the standard envelope
 | Method & path              | Auth | Purpose                                            |
 |----------------------------|------|----------------------------------------------------|
 | `POST /auth/register`      | –    | Create an account (+ default preferences). 201.    |
-| `POST /auth/login`         | –    | Exchange credentials for an access+refresh pair.   |
-| `POST /auth/refresh`       | –    | Rotate tokens using a valid refresh token.         |
+| `POST /auth/login`         | –    | Establish an HttpOnly cookie session.               |
+| `GET  /auth/session`       | Cookie | Hydrate user state and a session-bound CSRF token. |
+| `GET  /auth/csrf`          | Refresh cookie | Bootstrap CSRF before an expired-access refresh. |
+| `POST /auth/refresh`       | Refresh cookie + CSRF | Rotate the cookie session.       |
+| `POST /auth/logout`        | Cookie + CSRF | Revoke and clear the current session.           |
 | `GET  /user/me`            | ✔    | Current user + preferences (the canonical protected route). |
 | `GET  /user/preferences`   | ✔    | Read preferences.                                  |
 | `PUT  /user/preferences`   | ✔    | Partial update of preferences.                     |
@@ -27,25 +30,43 @@ Two JWT types (HS256), configured in `config/settings.py`:
 
 | Token   | Claim `type` | Lifetime (default)                | Extra claims |
 |---------|--------------|-----------------------------------|--------------|
-| access  | `access`     | `ACCESS_TOKEN_EXPIRE_MINUTES` (30)| —            |
+| access  | `access`     | `ACCESS_TOKEN_EXPIRE_MINUTES` (30)| session `jti`|
 | refresh | `refresh`    | `REFRESH_TOKEN_EXPIRE_DAYS` (7)   | `jti`        |
 
-- The **access token** is sent as `Authorization: Bearer <token>` on every
-  authenticated request.
+- The browser receives both tokens only as `HttpOnly` cookies. JavaScript never
+  reads or persists bearer credentials.
 - The **refresh token** carries a unique `jti` recorded in the `sessions` table.
+- The access token carries the same `jti`, making the persisted session row the
+  authoritative logout/revocation boundary.
 
 ## Refresh & rotation flow
 
-1. `POST /auth/login` issues an access+refresh pair and inserts a `sessions` row
-   keyed by the refresh token's `jti`.
-2. `POST /auth/refresh` with a refresh token:
+1. `POST /auth/login` issues an access+refresh pair as cookies and inserts a
+   `sessions` row keyed by their shared `jti`.
+2. `POST /auth/refresh` with the refresh cookie and matching CSRF header:
    - decode + validate (signature, expiry, `type == refresh`);
    - look up the `jti` in `sessions`; reject if missing, revoked, or expired;
-   - **revoke** that session row (rotation) and issue a brand-new pair.
+   - lock the row on PostgreSQL so concurrent rotation is serialized;
+   - **revoke** that session row and issue a brand-new cookie pair.
 3. A rotated (old) refresh token therefore fails on reuse — replay protection.
 
-Revocation is server-side: deleting/revoking a `sessions` row invalidates its
-refresh token immediately.
+Revocation is server-side: revoking a `sessions` row invalidates both access and
+refresh authentication immediately.
+
+The frontend funnels API traffic through `/api-proxy`, a Next.js same-origin
+rewrite to Render. This makes cookies first-party on the Vercel application
+origin instead of relying on cross-site third-party cookie behavior. Production
+cookies use `Secure`, `HttpOnly`, `SameSite=Lax`, explicit lifetimes, and `/`
+scope. Local HTTP development uses the same topology without `Secure`.
+
+## CSRF
+
+Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests require
+`X-CSRF-Token`. The token is an HMAC derived from the server-side session id and
+is returned by session/login/refresh responses; it contains no bearer secret and
+is held only in frontend memory. Refresh bootstrap uses `GET /auth/csrf`, whose
+response cannot be read cross-origin because production CORS remains an explicit
+credentialed allowlist. Rotation changes both the session id and CSRF token.
 
 ## Protecting a new route
 
@@ -112,14 +133,20 @@ never expose self-promotion through a public endpoint. Re-login afterward so the
 operator can call the protected ingestion, history rebuild, and EOD status
 routes.
 
-## Frontend token storage
+## Frontend session model
 
-The frontend (`frontend/lib/api.ts`, `frontend/lib/auth-context.tsx`) stores the
-access + refresh tokens in **localStorage** and sends the access token as a
-Bearer header. One consistent approach across the app. On a 401 it transparently
-attempts a single refresh, then retries. Trade-off: localStorage is exposed to
-XSS; a future hardening is httpOnly, SameSite cookies (would require the API and
-web app to share a domain or a credentialed CORS setup).
+`frontend/lib/api.ts` sends credentialed requests through the same-origin proxy
+and centralizes refresh behind one in-flight promise. Concurrent 401 responses
+in one document share that promise. If two tabs race refresh-token rotation, the
+loser checks the new shared access cookie and converges on the winning session
+instead of clearing it.
+
+`frontend/lib/auth-context.tsx` exposes explicit `checking`, `authenticated`,
+`unauthenticated`, `refreshing`, `expired`, and `unavailable` states. Backend
+cold starts and network errors retain credentials and show a recoverable state;
+they are not treated as logout. `BroadcastChannel` plus a storage-event fallback
+causes login/logout/rotation in one tab to revalidate every other open tab. The
+storage event contains only an event type and timestamp, never credentials.
 
 ## Tests
 

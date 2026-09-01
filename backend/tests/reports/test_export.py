@@ -16,6 +16,7 @@ from pypdf import PdfReader
 from app.intelligence.models import Report
 from app.reports.exporters import render_markdown, render_pdf
 from app.reports.exporters.pdf import _latin1, _strip_inline
+from tests.auth_utils import access_token_from_cookie
 
 PW = "S3curePass!"
 
@@ -178,8 +179,8 @@ def test_pdf_handles_missing_sections(make_sections) -> None:
 async def _token(client: AsyncClient, email: str) -> tuple[str, int]:
     r = await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
     uid = r.json()["data"]["id"]
-    login = await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
-    return login.json()["data"]["access_token"], uid
+    await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
+    return access_token_from_cookie(client), uid
 
 
 @pytest.mark.asyncio

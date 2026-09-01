@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.auth_utils import access_token_from_cookie
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -23,11 +25,11 @@ async def test_authenticated_non_admin_cannot_run_jobs(
         "/api/v1/auth/register",
         json={"email": "user@example.com", "password": password},
     )
-    login = await client.post(
+    await client.post(
         "/api/v1/auth/login",
         json={"email": "user@example.com", "password": password},
     )
-    headers = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+    headers = {"Authorization": f"Bearer {access_token_from_cookie(client)}"}
 
     response = await client.post(path, headers=headers)
 

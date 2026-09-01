@@ -19,6 +19,7 @@ from app.strategy.models import (
     BacktestTrade,
     StrategyVersion,
 )
+from tests.auth_utils import access_token_from_cookie
 
 START = date(2026, 1, 1)
 
@@ -28,10 +29,10 @@ async def _headers(client: AsyncClient, email: str) -> dict[str, str]:
     await client.post(
         "/api/v1/auth/register", json={"email": email, "password": password}
     )
-    login = await client.post(
+    await client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+    return {"Authorization": f"Bearer {access_token_from_cookie(client)}"}
 
 
 async def _seed_prices(db: AsyncSession) -> None:

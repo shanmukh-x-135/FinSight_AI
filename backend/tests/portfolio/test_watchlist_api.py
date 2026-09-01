@@ -10,6 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.models import DailyPrice, Indicator, Stock
+from tests.auth_utils import access_token_from_cookie
 
 PW = "S3curePass!"
 WL = "/api/v1/watchlist"
@@ -17,8 +18,8 @@ WL = "/api/v1/watchlist"
 
 async def _token(client: AsyncClient, email: str) -> str:
     await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
-    r = await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
-    return r.json()["data"]["access_token"]
+    await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
+    return access_token_from_cookie(client)
 
 
 def _hdr(token: str) -> dict[str, str]:

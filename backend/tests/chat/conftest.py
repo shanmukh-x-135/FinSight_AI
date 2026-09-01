@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.market.models import DailyPrice, Stock
+from tests.auth_utils import access_token_from_cookie
 
 
 async def authenticated_headers(client: AsyncClient, email: str) -> dict[str, str]:
@@ -21,7 +22,7 @@ async def authenticated_headers(client: AsyncClient, email: str) -> dict[str, st
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
     assert login.status_code == 200
-    return {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+    return {"Authorization": f"Bearer {access_token_from_cookie(client)}"}
 
 
 @pytest_asyncio.fixture

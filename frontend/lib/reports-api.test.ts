@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { reportsApi, tokenStore } from "./api";
+import { reportsApi } from "./api";
 
 const envelope = (data: unknown) =>
   JSON.stringify({ success: true, message: "ok", data });
 
 describe("reportsApi.generate", () => {
   beforeEach(() => {
-    localStorage.clear();
-    tokenStore.set({ access_token: "old-access", refresh_token: "refresh", token_type: "bearer" });
     vi.restoreAllMocks();
   });
 
@@ -20,14 +18,24 @@ describe("reportsApi.generate", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response("{}", { status: 401 }))
       .mockResolvedValueOnce(
-        new Response(
-          envelope({
-            access_token: "new-access",
-            refresh_token: "new-refresh",
-            token_type: "bearer",
-          }),
-          { status: 200 },
-        ),
+        new Response(envelope({ csrf_token: "old-csrf" }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(envelope({
+          user: {
+            id: 1,
+            email: "investor@example.com",
+            is_active: true,
+            created_at: "2026-01-01T00:00:00Z",
+            preferences: {
+              risk_tolerance: "moderate",
+              investment_horizon: "medium",
+              preferred_market: "IN",
+              preferred_sectors: [],
+            },
+          },
+          csrf_token: "new-csrf",
+        }), { status: 200 }),
       )
       .mockResolvedValueOnce(
         new Response(envelope({ id: 7 }), { status: 200 }),
@@ -36,11 +44,12 @@ describe("reportsApi.generate", () => {
     await expect(reportsApi.generate()).resolves.toMatchObject({ id: 7 });
 
     const firstHeaders = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
-    const retryHeaders = fetchMock.mock.calls[2][1]?.headers as Record<string, string>;
+    const retryHeaders = fetchMock.mock.calls[3][1]?.headers as Record<string, string>;
     expect(firstHeaders["Idempotency-Key"]).toBe(
       "123e4567-e89b-42d3-a456-426614174000",
     );
     expect(retryHeaders["Idempotency-Key"]).toBe(firstHeaders["Idempotency-Key"]);
-    expect(retryHeaders.Authorization).toBe("Bearer new-access");
+    expect(retryHeaders["X-CSRF-Token"]).toBe("new-csrf");
+    expect(fetchMock.mock.calls[2][0]).toBe("/api-proxy/api/v1/auth/refresh");
   });
 });
