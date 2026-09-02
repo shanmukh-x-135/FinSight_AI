@@ -25,8 +25,9 @@ All under `/api/v1`, all responses in the standard envelope
 | `GET  /user/preferences`   | ✔    | Read preferences.                                  |
 | `PUT  /user/preferences`   | ✔    | Partial update of preferences.                     |
 
-`POST /auth/login` is rate-limited per client IP (default: 5 attempts / 60s) →
-HTTP 429 when exceeded.
+Failed credentials on `POST /auth/login` are rate-limited per normalized account
+and client IP (default: 5 failures / 60s) → HTTP 429 when exceeded. Successful
+authentication clears prior failures for that key and never consumes the limit.
 
 ## Tokens
 
