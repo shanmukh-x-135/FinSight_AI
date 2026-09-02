@@ -90,8 +90,8 @@ def portfolio_section(slice_: dict) -> tuple[str, str]:
         f"Portfolio value ₹{slice_['total_value']:,.0f}"
         + (f", {slice_['total_return_percent']:+.2f}% overall"
            if slice_.get("total_return_percent") is not None else "")
-        + f". Health score {slice_['health_score']}/100, risk {slice_['risk_level']}, "
-        f"diversification {slice_['diversification_score']}/100 across "
+        + f". Health score {slice_['health_score']}, risk {slice_['risk_level']}, "
+        f"diversification score {slice_['diversification_score']} across "
         f"{slice_['number_of_holdings']} holdings."
     )
     return _prompt("portfolio", slice_), fallback
