@@ -9,11 +9,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth.models import AuthIdentity, Preferences, Session, User
+from app.auth.models import (
+    AuthIdentity,
+    PasswordResetToken,
+    Preferences,
+    Session,
+    User,
+)
+from app.shared.time import utc_now
 
 
 class AuthRepository:
@@ -110,3 +117,41 @@ class AuthRepository:
     async def revoke_session(self, session: Session) -> None:
         session.revoked = True
         await self.db.flush()
+
+    async def revoke_user_sessions(self, user_id: int) -> None:
+        await self.db.execute(
+            update(Session)
+            .where(Session.user_id == user_id, Session.revoked.is_(False))
+            .values(revoked=True)
+        )
+
+    # ----- Password reset -------------------------------------------------
+    async def invalidate_password_reset_tokens(self, user_id: int) -> None:
+        await self.db.execute(
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == user_id,
+                PasswordResetToken.used_at.is_(None),
+            )
+            .values(used_at=utc_now())
+        )
+
+    async def create_password_reset_token(
+        self, *, user_id: int, token_hash: str, expires_at: datetime
+    ) -> PasswordResetToken:
+        token = PasswordResetToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        self.db.add(token)
+        await self.db.flush()
+        return token
+
+    async def get_password_reset_token(self, token_hash: str) -> PasswordResetToken | None:
+        result = await self.db.execute(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.token_hash == token_hash)
+            .options(selectinload(PasswordResetToken.user))
+        )
+        return result.scalar_one_or_none()

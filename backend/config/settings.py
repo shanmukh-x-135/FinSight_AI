@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str | None = None
     google_oauth_timeout_seconds: float = Field(default=10, gt=0, le=30)
+    resend_api_key: str | None = None
+    password_reset_from_email: str | None = None
+    frontend_url: str = "http://localhost:3000"
+    password_reset_expire_minutes: int = Field(default=30, ge=5, le=120)
+    password_reset_rate_limit_attempts: int = Field(default=3, ge=1, le=20)
+    password_reset_rate_limit_window_seconds: int = Field(default=300, ge=30, le=3600)
 
     # Brute-force protection on the login endpoint: at most N attempts per
     # client IP within the rolling window before returning HTTP 429.
@@ -176,6 +182,11 @@ class Settings(BaseSettings):
         if any(google_values) and not all(google_values):
             raise ValueError(
                 "Google OAuth requires client id, client secret, and redirect URI together"
+            )
+        resend_values = (self.resend_api_key, self.password_reset_from_email)
+        if any(resend_values) and not all(resend_values):
+            raise ValueError(
+                "Password reset email requires Resend API key and sender together"
             )
         if not self.is_production:
             return self

@@ -28,8 +28,12 @@ test("login, direct routes, reload, new tabs, and logout share one session", asy
 
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/login/);
-  await expect(waitingTab).toHaveURL(/\/login\?returnTo=%2Fportfolio$/);
-  await expect(directTab).toHaveURL(/\/login\?returnTo=%2Fwatchlist$/);
+  await expect(waitingTab).toHaveURL(
+    /\/login\?returnTo=%2Fportfolio&reason=signedOut$/,
+  );
+  await expect(directTab).toHaveURL(
+    /\/login\?returnTo=%2Fwatchlist&reason=signedOut$/,
+  );
 });
 
 test("an authenticated visit to login returns to the intended route", async ({ page }) => {

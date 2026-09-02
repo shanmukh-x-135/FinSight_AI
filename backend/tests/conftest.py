@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.auth.dependencies import login_rate_limiter
+from app.auth.dependencies import login_rate_limiter, password_reset_rate_limiter
 from app.auth.models import User
 from app.main import create_app
 from app.shared.database import Base, get_db
@@ -33,8 +33,10 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 def _reset_rate_limiter() -> None:
     """Clear the shared in-memory login rate limiter around every test."""
     login_rate_limiter.clear()
+    password_reset_rate_limiter.clear()
     yield
     login_rate_limiter.clear()
+    password_reset_rate_limiter.clear()
 
 
 @pytest_asyncio.fixture

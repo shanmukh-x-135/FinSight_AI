@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import secrets
 from dataclasses import dataclass
+from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,12 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
+    InvalidPasswordResetTokenError,
     InvalidTokenError,
     OAuthFlowError,
     OAuthIdentityConflictError,
 )
 from app.auth.google import GOOGLE_PROVIDER, GoogleIdentity
 from app.auth.models import User
+from app.auth.password_reset import PasswordResetDeliveryError, PasswordResetMailer
 from app.auth.repository import AuthRepository
 from app.auth.schemas import PreferencesUpdate
 from app.shared.security.jwt import (
@@ -34,6 +38,10 @@ from app.shared.security.jwt import (
 )
 from app.shared.security.passwords import hash_password, verify_password
 from app.shared.time import as_utc, utc_now
+from config.logging import get_logger
+from config.settings import settings
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -136,6 +144,54 @@ class AuthService:
             if winner is None or winner.user.email != email:
                 raise OAuthIdentityConflictError() from None
             return await self._issue_tokens(winner.user)
+
+    # ----- Password recovery ---------------------------------------------
+    async def request_password_reset(
+        self, email: str, mailer: PasswordResetMailer
+    ) -> None:
+        normalized_email = email.strip().lower()
+        user = await self.repo.get_user_by_email(normalized_email)
+        if user is None or not user.is_active:
+            # Keep the response identical for unknown and known addresses.
+            hashlib.sha256(secrets.token_bytes(32)).hexdigest()
+            return
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        await self.repo.invalidate_password_reset_tokens(user.id)
+        await self.repo.create_password_reset_token(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=utc_now()
+            + timedelta(minutes=settings.password_reset_expire_minutes),
+        )
+        await self.db.commit()
+        try:
+            await mailer.send(
+                email=normalized_email,
+                token=raw_token,
+                idempotency_key=f"password-reset-{token_hash}",
+            )
+        except PasswordResetDeliveryError:
+            logger.exception(
+                "password_reset_delivery_failed", extra={"user_id": user.id}
+            )
+
+    async def reset_password(self, raw_token: str, password: str) -> User:
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        reset_token = await self.repo.get_password_reset_token(token_hash)
+        if (
+            reset_token is None
+            or reset_token.used_at is not None
+            or as_utc(reset_token.expires_at) < utc_now()
+            or not reset_token.user.is_active
+        ):
+            raise InvalidPasswordResetTokenError()
+        reset_token.user.hashed_password = hash_password(password)
+        reset_token.used_at = utc_now()
+        await self.repo.revoke_user_sessions(reset_token.user_id)
+        await self.db.commit()
+        return reset_token.user
 
     # ----- Refresh (with rotation) ----------------------------------------
     async def refresh(self, refresh_token: str) -> IssuedSession:

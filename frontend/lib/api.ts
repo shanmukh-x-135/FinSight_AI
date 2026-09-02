@@ -195,6 +195,18 @@ export const api = {
       body: { email, password },
     }),
 
+  forgotPassword: (email: string) =>
+    request<null>("/api/v1/auth/password/forgot", {
+      method: "POST",
+      body: { email },
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<null>("/api/v1/auth/password/reset", {
+      method: "POST",
+      body: { token, password },
+    }),
+
   login: async (email: string, password: string) =>
     acceptSession(await request<SessionData>("/api/v1/auth/login", {
       method: "POST",

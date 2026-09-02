@@ -25,6 +25,7 @@ from app.auth.dependencies import (
     REFRESH_COOKIE,
     AuthContext,
     enforce_login_rate_limit,
+    enforce_password_reset_rate_limit,
     get_auth_context,
     get_current_user,
 )
@@ -38,12 +39,15 @@ from app.auth.google import (
     get_google_oauth_client,
 )
 from app.auth.models import User
+from app.auth.password_reset import PasswordResetMailer, get_password_reset_mailer
 from app.auth.schemas import (
     CsrfResponse,
+    ForgotPasswordRequest,
     LoginRequest,
     PreferencesResponse,
     PreferencesUpdate,
     RegisterRequest,
+    ResetPasswordRequest,
     SessionResponse,
     UserResponse,
 )
@@ -164,6 +168,35 @@ async def login(
     session = await AuthService(db).login(payload.email, payload.password)
     _set_session_cookies(response, session)
     return envelope(data=_session_payload(session), message="Login successful.")
+
+
+@auth_router.post(
+    "/password/forgot",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password reset email",
+    dependencies=[Depends(enforce_password_reset_rate_limit)],
+)
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    mailer: PasswordResetMailer = Depends(get_password_reset_mailer),
+) -> dict:
+    await AuthService(db).request_password_reset(payload.email, mailer)
+    return envelope(
+        data=None,
+        message="If an eligible account exists, a password reset link has been sent.",
+    )
+
+
+@auth_router.post("/password/reset", summary="Set a new password with a reset token")
+async def reset_password(
+    payload: ResetPasswordRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    await AuthService(db).reset_password(payload.token, payload.password)
+    _clear_session_cookies(response)
+    return envelope(data=None, message="Password reset successful. Please sign in.")
 
 
 @auth_router.get("/google/start", summary="Start Google OpenID Connect sign-in")

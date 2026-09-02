@@ -8,7 +8,7 @@
  */
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { PageSkeleton } from "@/components/workspace";
@@ -18,12 +18,24 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, status, loading, isAuthenticated, logout, refreshUser, error } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const hadAuthenticatedSession = useRef(false);
+
+  useEffect(() => {
+    if (isAuthenticated) hadAuthenticatedSession.current = true;
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (status === "unauthenticated" || status === "expired") {
       const query = window.location.search.slice(1);
       const returnTo = `${pathname}${query ? `?${query}` : ""}`;
-      router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+      const reason = status === "expired"
+        ? "expired"
+        : hadAuthenticatedSession.current
+          ? "signedOut"
+          : null;
+      const params = new URLSearchParams({ returnTo });
+      if (reason) params.set("reason", reason);
+      router.replace(`/login?${params}`);
     }
   }, [pathname, router, status]);
 

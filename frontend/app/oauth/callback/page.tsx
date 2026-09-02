@@ -1,5 +1,6 @@
 "use client";
 
+import { LoaderCircle, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -25,11 +26,14 @@ export default function OAuthCallbackPage() {
   }, [router, status]);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background p-6 text-foreground">
-      <div className="max-w-md text-center" aria-live="polite">
+    <main className="dark relative grid min-h-screen place-items-center overflow-hidden bg-background p-6 text-foreground">
+      <div className="surface-grid absolute inset-0 opacity-20" aria-hidden="true" />
+      <div className="relative z-10 w-full max-w-md border-y border-border/60 py-10 text-center" aria-live="polite">
+        <span className="mx-auto grid size-10 place-items-center rounded-lg bg-primary text-sm font-black text-primary-foreground">F</span>
         {status === "unavailable" ? (
           <>
-            <h1 className="text-xl font-semibold">Google sign-in is taking longer than expected</h1>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-warning">Connection delayed</p>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Google sign-in is taking longer than expected</h1>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
             <button type="button" className="mt-5 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground" onClick={() => void refreshUser()}>
               Check again
@@ -37,15 +41,17 @@ export default function OAuthCallbackPage() {
           </>
         ) : status === "unauthenticated" || status === "expired" ? (
           <>
-            <h1 className="text-xl font-semibold">Google sign-in could not be completed</h1>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-negative">Verification incomplete</p>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Google sign-in could not be completed</h1>
             <button type="button" className="mt-5 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground" onClick={() => router.replace("/login?oauthError=provider_error")}>
               Return to sign in
             </button>
           </>
         ) : (
           <>
-            <h1 className="text-xl font-semibold">Securing your FinSight session</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Verifying your Google identity…</p>
+            <ShieldCheck className="mx-auto mt-6 size-5 text-primary" aria-hidden="true" />
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight">Securing your FinSight session</h1>
+            <p className="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />Verifying your Google identity…</p>
           </>
         )}
       </div>

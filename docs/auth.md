@@ -19,6 +19,8 @@ All under `/api/v1`, all responses in the standard envelope
 | `POST /auth/logout`        | Cookie + CSRF | Revoke and clear the current session.           |
 | `GET  /auth/google/start`  | – | Start Google OAuth 2.0 / OpenID Connect.             |
 | `GET  /auth/google/callback` | Signed transaction | Verify and link Google identity.  |
+| `POST /auth/password/forgot` | – | Send a generic, rate-limited recovery response. |
+| `POST /auth/password/reset` | Single-use token | Set password and revoke sessions.  |
 | `GET  /user/me`            | ✔    | Current user + preferences (the canonical protected route). |
 | `GET  /user/preferences`   | ✔    | Read preferences.                                  |
 | `PUT  /user/preferences`   | ✔    | Partial update of preferences.                     |
@@ -140,6 +142,21 @@ Linking rules are deliberately narrow:
 Configuration is all-or-none: `GOOGLE_OAUTH_CLIENT_ID`,
 `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URI`. Secrets remain on
 Render; the browser receives neither the client secret nor Google tokens.
+
+## Password recovery
+
+Forgot-password requests always return the same accepted response for eligible
+and unknown addresses and are rate-limited by client IP. For an eligible user,
+the backend generates a cryptographically random token, stores only its SHA-256
+hash, invalidates prior unused tokens, and asks Resend to deliver a single-use
+link with an idempotency key. Delivery failures are logged without the email or
+raw token and do not turn the endpoint into an account-enumeration oracle.
+
+Reset tokens expire after 30 minutes by default. A successful reset hashes the
+new password with Argon2, marks the token used, revokes every active session for
+that user, and clears browser cookies. Replay, expiry, and malformed tokens share
+one safe error. Configure `RESEND_API_KEY`, `PASSWORD_RESET_FROM_EMAIL`, and the
+public HTTPS `FRONTEND_URL`; no email credential is exposed to the frontend.
 
 ### Preference vocabularies (`app/auth/constants.py`)
 

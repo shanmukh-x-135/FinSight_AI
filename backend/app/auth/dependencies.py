@@ -145,9 +145,19 @@ login_rate_limiter = SlidingWindowRateLimiter(
     max_attempts=settings.login_rate_limit_attempts,
     window_seconds=settings.login_rate_limit_window_seconds,
 )
+password_reset_rate_limiter = SlidingWindowRateLimiter(
+    max_attempts=settings.password_reset_rate_limit_attempts,
+    window_seconds=settings.password_reset_rate_limit_window_seconds,
+)
 
 
 async def enforce_login_rate_limit(request: Request) -> None:
     """FastAPI dependency: rate-limit login attempts by client IP."""
     client_ip = request.client.host if request.client else "unknown"
     await login_rate_limiter.hit(client_ip)
+
+
+async def enforce_password_reset_rate_limit(request: Request) -> None:
+    """Bound password-reset email requests without keying on account identity."""
+    client_ip = request.client.host if request.client else "unknown"
+    await password_reset_rate_limiter.hit(client_ip)

@@ -86,3 +86,19 @@ class OAuthIdentityConflictError(OAuthFlowError):
             "identity_conflict",
             "This Google identity conflicts with an existing account.",
         )
+
+
+class PasswordResetUnavailableError(AppException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_type = "password_reset_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__("Password recovery is temporarily unavailable.")
+
+
+class InvalidPasswordResetTokenError(AppException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_type = "invalid_password_reset_token"
+
+    def __init__(self) -> None:
+        super().__init__("This password reset link is invalid or has expired.")
