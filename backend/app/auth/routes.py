@@ -24,12 +24,12 @@ from app.auth.dependencies import (
     ACCESS_COOKIE,
     REFRESH_COOKIE,
     AuthContext,
-    enforce_login_rate_limit,
     enforce_password_reset_rate_limit,
     get_auth_context,
     get_current_user,
+    login_rate_limiter,
 )
-from app.auth.exceptions import OAuthFlowError
+from app.auth.exceptions import InvalidCredentialsError, OAuthFlowError
 from app.auth.google import (
     OAUTH_TRANSACTION_COOKIE,
     OAUTH_TRANSACTION_TTL_SECONDS,
@@ -157,15 +157,23 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     "/login",
     summary="Log in and receive tokens",
     description="Exchange email/password for an access + refresh token pair. "
-    "Rate-limited per client IP to deter brute-force attacks.",
-    dependencies=[Depends(enforce_login_rate_limit)],
+    "Failed credentials are rate-limited per account and client IP to deter brute-force attacks.",
 )
 async def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    session = await AuthService(db).login(payload.email, payload.password)
+    client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"{client_ip}:{payload.email.strip().lower()}"
+    await login_rate_limiter.check(rate_key)
+    try:
+        session = await AuthService(db).login(payload.email, payload.password)
+    except InvalidCredentialsError:
+        await login_rate_limiter.hit(rate_key)
+        raise
+    await login_rate_limiter.reset(rate_key)
     _set_session_cookies(response, session)
     return envelope(data=_session_payload(session), message="Login successful.")
 

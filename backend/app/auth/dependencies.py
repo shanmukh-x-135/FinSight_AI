@@ -120,17 +120,36 @@ class SlidingWindowRateLimiter:
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = asyncio.Lock()
 
-    async def hit(self, key: str) -> None:
-        now = time.monotonic()
+    def _prune(self, bucket: deque[float], now: float) -> None:
         cutoff = now - self.window_seconds
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+
+    def _raise_if_limited(self, bucket: deque[float], now: float) -> None:
+        if len(bucket) >= self.max_attempts:
+            retry_after = int(self.window_seconds - (now - bucket[0])) + 1
+            raise RateLimitExceededError(retry_after)
+
+    async def check(self, key: str) -> None:
+        """Reject a limited key without recording a successful request."""
+        now = time.monotonic()
         async with self._lock:
             bucket = self._hits[key]
-            while bucket and bucket[0] <= cutoff:
-                bucket.popleft()
-            if len(bucket) >= self.max_attempts:
-                retry_after = int(self.window_seconds - (now - bucket[0])) + 1
-                raise RateLimitExceededError(retry_after)
+            self._prune(bucket, now)
+            self._raise_if_limited(bucket, now)
+
+    async def hit(self, key: str) -> None:
+        now = time.monotonic()
+        async with self._lock:
+            bucket = self._hits[key]
+            self._prune(bucket, now)
+            self._raise_if_limited(bucket, now)
             bucket.append(now)
+
+    async def reset(self, key: str) -> None:
+        """Forget prior failures after successful authentication."""
+        async with self._lock:
+            self._hits.pop(key, None)
 
     def clear(self) -> None:
         """Reset all state (used between tests)."""
@@ -149,12 +168,6 @@ password_reset_rate_limiter = SlidingWindowRateLimiter(
     max_attempts=settings.password_reset_rate_limit_attempts,
     window_seconds=settings.password_reset_rate_limit_window_seconds,
 )
-
-
-async def enforce_login_rate_limit(request: Request) -> None:
-    """FastAPI dependency: rate-limit login attempts by client IP."""
-    client_ip = request.client.host if request.client else "unknown"
-    await login_rate_limiter.hit(client_ip)
 
 
 async def enforce_password_reset_rate_limit(request: Request) -> None:

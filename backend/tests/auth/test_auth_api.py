@@ -272,3 +272,13 @@ async def test_login_rate_limited_after_max_attempts(client: AsyncClient) -> Non
     blocked = await client.post(LOGIN, json={"email": EMAIL, "password": "wrong!"})
     assert blocked.status_code == 429
     assert blocked.json()["error"]["type"] == "rate_limit_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_successful_logins_do_not_consume_failure_limit(client: AsyncClient) -> None:
+    await _register(client)
+    for _ in range(settings.login_rate_limit_attempts + 2):
+        response = await client.post(
+            LOGIN, json={"email": EMAIL, "password": PASSWORD}
+        )
+        assert response.status_code == 200
