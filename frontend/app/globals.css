@@ -30,6 +30,10 @@
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
+  --color-delayed: var(--delayed);
+  --color-stale: var(--stale);
+  --color-selected: var(--selected);
+  --color-confidence: var(--confidence);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -73,6 +77,10 @@
   --positive: oklch(0.55 0.17 153);
   --negative: oklch(0.58 0.21 25);
   --warning: oklch(0.67 0.15 72);
+  --delayed: oklch(0.62 0.14 70);
+  --stale: oklch(0.55 0.035 250);
+  --selected: oklch(0.56 0.19 255);
+  --confidence: oklch(0.57 0.15 205);
   --chart-1: oklch(0.59 0.2 255);
   --chart-2: oklch(0.62 0.16 153);
   --chart-3: oklch(0.7 0.15 72);
@@ -111,6 +119,10 @@
   --positive: oklch(0.72 0.17 153);
   --negative: oklch(0.7 0.2 25);
   --warning: oklch(0.78 0.15 78);
+  --delayed: oklch(0.76 0.14 70);
+  --stale: oklch(0.62 0.025 250);
+  --selected: oklch(0.7 0.16 255);
+  --confidence: oklch(0.74 0.13 205);
   --chart-1: oklch(0.69 0.18 255);
   --chart-2: oklch(0.72 0.16 153);
   --chart-3: oklch(0.78 0.15 78);
@@ -143,6 +155,30 @@
 }
 
 @layer utilities {
+  .text-display {
+    @apply text-3xl font-semibold tracking-[-0.035em] sm:text-4xl;
+  }
+  .text-page-heading {
+    @apply text-2xl font-semibold tracking-[-0.025em] sm:text-[1.75rem];
+  }
+  .text-section-heading {
+    @apply text-sm font-semibold tracking-[-0.01em];
+  }
+  .text-label {
+    @apply text-[10px] font-semibold uppercase tracking-[0.16em];
+  }
+  .text-metadata {
+    @apply text-xs leading-5 text-muted-foreground;
+  }
+  .financial-number {
+    @apply font-mono tabular-nums tracking-[-0.025em];
+  }
+  .surface-primary {
+    @apply rounded-2xl bg-card shadow-[0_1px_2px_rgba(0,0,0,.06),0_16px_48px_rgba(0,0,0,.05)];
+  }
+  .surface-subtle {
+    @apply rounded-xl bg-muted/30;
+  }
   .surface-grid {
     background-image:
       linear-gradient(to right, color-mix(in oklch, var(--border), transparent 72%) 1px, transparent 1px),

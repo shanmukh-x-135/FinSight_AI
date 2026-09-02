@@ -21,7 +21,7 @@ const report = { id: 12, user_id: 1, report_type: "daily", created_at: "2026-08-
 async function mockWorkspace(page: Page) {
   await page.route("**/api/v1/**", async (route: Route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname;
+    const path = url.pathname.replace(/^\/api-proxy/, "");
     let data: unknown = null;
     if (path === "/api/v1/auth/session") data = { user: { id: 1, email: "researcher@finsight.ai", is_active: true, is_admin: true, created_at: "2026-01-01", preferences: { risk_tolerance: "moderate", investment_horizon: "long_term", preferred_market: "NSE", preferred_sectors: ["Technology", "Energy"] } }, csrf_token: "visual-csrf" };
     else if (path === "/api/v1/user/me") data = { id: 1, email: "researcher@finsight.ai", is_active: true, is_admin: true, created_at: "2026-01-01", preferences: { risk_tolerance: "moderate", investment_horizon: "long_term", preferred_market: "NSE", preferred_sectors: ["Technology", "Energy"] } };
@@ -129,4 +129,27 @@ test("historical regime evidence is visible across responsive layouts", async ({
     await expect(page.getByText(/Breadth features have 91% group similarity/)).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Next 5 sessions" })).toBeVisible();
   }
+});
+
+test("workspace shell exposes keyboard search and complete mobile navigation", async ({ page }) => {
+  await mockWorkspace(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await page.getByRole("button", { name: "Open command palette" }).focus();
+  await page.keyboard.press("Control+K");
+  const palette = page.getByRole("dialog", { name: "FinSight command palette" });
+  await expect(palette).toBeVisible();
+  await palette.getByLabel("Search commands and instruments").fill("Reliance");
+  await expect(palette.getByText("RELIANCE.NS")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(palette).toBeHidden();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const drawer = page.getByRole("dialog", { name: "Application navigation" });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "News" })).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "Reports" })).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "Strategies" })).toBeVisible();
 });
