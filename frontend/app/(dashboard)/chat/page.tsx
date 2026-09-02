@@ -2,17 +2,17 @@
 
 import {
   Clock3,
+  BrainCircuit,
   MessageSquareText,
   Send,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 import { EvidencePanel } from "@/components/EvidencePanel";
+import { ResearchMarkdown } from "@/components/research-markdown";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/workspace";
 import { ApiError, chatApi, type ChatMessage } from "@/lib/api";
 
@@ -57,9 +57,9 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
     : null;
   return (
     <article className="max-w-3xl" aria-label="FinSight AI response">
-      <Card className="gap-0 border-primary/20 py-0 shadow-sm">
-        <div className="flex items-center gap-2 border-b bg-primary/5 px-4 py-3">
-          <Sparkles className="h-4 w-4 text-primary" aria-hidden />
+      <div className="surface-primary overflow-hidden ring-1 ring-primary/12">
+        <div className="flex items-center gap-2 border-b border-border/45 bg-primary/5 px-4 py-3">
+          <BrainCircuit className="h-4 w-4 text-primary" aria-hidden />
           <span className="text-sm font-semibold">FinSight AI</span>
           {generationLabel && (
             <span className="text-xs text-muted-foreground">· {generationLabel}</span>
@@ -72,7 +72,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
         </div>
         <div className="px-4 py-4">
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Summary</p>
-          <p className="text-sm leading-7 text-foreground/90">{message.content}</p>
+          <ResearchMarkdown content={message.content} />
           <EvidencePanel
             evidence={message.evidence}
             confidence={message.confidence ?? undefined}
@@ -90,7 +90,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
                     href={source.reference}
                     target={source.reference.startsWith("http") ? "_blank" : undefined}
                     rel={source.reference.startsWith("http") ? "noopener noreferrer" : undefined}
-                    className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                    className="rounded-full bg-muted/55 px-2.5 py-1 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {source.label}
                   </Link>
@@ -99,7 +99,7 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
             </div>
           )}
         </div>
-      </Card>
+      </div>
       <p className="mt-1 text-xs text-muted-foreground">{formatTime(message.created_at)}</p>
     </article>
   );
@@ -201,7 +201,7 @@ export default function ChatPage() {
 
   return (
     <div className="mx-auto grid min-h-[calc(100vh-8rem)] max-w-[1500px] gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="order-2 rounded-xl border border-border/70 bg-card/70 p-4 lg:order-1" aria-label="Chat history">
+      <aside className="surface-primary order-2 h-fit p-4 lg:order-1 lg:sticky lg:top-20" aria-label="Chat history">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden />
@@ -240,8 +240,8 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      <section className="order-1 flex min-h-[38rem] min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/55 shadow-[0_1px_2px_rgba(0,0,0,.04)] lg:order-2">
-        <header className="border-b px-5 py-4">
+      <section className="surface-primary order-1 flex min-h-[38rem] min-w-0 flex-col overflow-hidden lg:order-2">
+        <header className="border-b border-border/45 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-primary/10 p-2 text-primary">
               <MessageSquareText className="h-5 w-5" aria-hidden />
@@ -261,7 +261,7 @@ export default function ChatPage() {
           ) : messages.length === 0 && !sending ? (
             <div className="mx-auto flex max-w-2xl flex-col items-center py-12 text-center">
               <div className="rounded-2xl bg-primary/10 p-4 text-primary">
-                <Sparkles className="h-7 w-7" aria-hidden />
+                <BrainCircuit className="h-7 w-7" aria-hidden />
               </div>
               <h2 className="mt-4 text-lg font-semibold">Ask about the evidence</h2>
               <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
@@ -273,7 +273,7 @@ export default function ChatPage() {
                     key={suggestion}
                     type="button"
                     onClick={() => void send(suggestion)}
-                    className="rounded-xl border border-border/70 bg-background/50 p-3 text-left text-sm hover:border-primary/40 hover:bg-primary/5"
+                    className="surface-subtle p-3 text-left text-sm outline-none hover:bg-primary/8 focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {suggestion}
                   </button>
@@ -291,16 +291,13 @@ export default function ChatPage() {
           )}
           {sending && (
             <article className="max-w-3xl" aria-label="FinSight AI is responding">
-              <Card className="gap-0 border-primary/20 p-4 shadow-sm">
+              <div className="surface-primary p-4 ring-1 ring-primary/12">
                 <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Sparkles className="h-4 w-4 text-primary" aria-hidden />
+                  <BrainCircuit className="h-4 w-4 text-primary" aria-hidden />
                   FinSight AI
                 </div>
-                <p className="mt-3 text-sm leading-7" aria-live="polite">
-                  {streamedText || "Reviewing your evidence…"}
-                  <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary align-middle" aria-hidden />
-                </p>
-              </Card>
+                <div className="mt-3" aria-live="polite"><ResearchMarkdown content={streamedText || "Reviewing your evidence…"} /><span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary align-middle motion-reduce:animate-none" aria-hidden /></div>
+              </div>
             </article>
           )}
           <div ref={endRef} />

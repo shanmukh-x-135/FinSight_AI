@@ -28,13 +28,30 @@ of components, and every AI insight uses the same evidence expander.
 ## Design system
 
 - **Semantic colour:** green = up/positive, red = down/negative, blue = AI /
-  interactive, amber = risk/warning. Helpers `signClass` / `toneOf` in
-  `lib/utils.ts` map a signed number to the right class so colour is consistent.
+  interactive, amber = risk/warning, with explicit delayed, stale, selected,
+  and confidence tokens. Icons and text accompany state colour. Helpers
+  `signClass` / `toneOf` in `lib/utils.ts` keep signed values consistent.
 - **Icons:** Lucide (`lucide-react`).
-- **Layout:** card-based (Shadcn `Card`) with shared workspace primitives for
-  analytical screens.
+- **Hierarchy:** primary surfaces use visual weight, spacing, and typography;
+  supporting evidence uses quieter surfaces and dividers rather than another
+  grid of equally bordered cards.
+- **Typography:** display, page heading, section heading, label, metadata, and
+  financial-number roles are explicit. Prices, ratios, percentages, and tables
+  use tabular numerals; dense research values can use the mono numeric role.
+- **Layout:** a compact collapsible desktop rail, restrained contextual topbar,
+  five-destination mobile dock, and complete mobile drawer preserve every route
+  without a horizontally scrolling navigation strip.
+- **Surfaces:** `surface-primary` and `surface-subtle` define the small elevation
+  vocabulary; `Panel` no longer applies a visible border to every section.
 - **Formatting:** `money` / `pct` / `signClass` (`lib/utils.ts`) — one source of
   truth for ₹ and % rendering across screens.
+
+The global command palette opens with `⌘K` / `Ctrl+K`, supports arrow/Enter/Esc
+keyboard operation, searches NIFTY 100 instruments, and provides deterministic
+navigation to market, portfolio, watchlist, research, strategies, movers,
+reports, and the AI workspace. Focus stays inside the palette while it is open
+and returns to the invoking control when it closes. Basic navigation never
+depends on an LLM.
 
 ## Shared component library (`frontend/components/`)
 
@@ -106,11 +123,17 @@ never a static mock.
 
 ## Responsive behaviour
 
-- Desktop: full top nav (Dashboard · Market · History · Portfolio · Watchlist ·
-  Reports · Assistant · Settings).
-- Mobile: the top nav collapses to a horizontally scrollable strip of the
-  prioritized screens; summary grids collapse to one/two columns; wide tables
-  scroll inside their own container. Advanced analytics remain desktop-first.
+- Desktop: compact collapsible sidebar with full route coverage, visible active
+  state, command search, account context, theme, and session controls.
+- Mobile: five primary destinations remain one tap away; the drawer exposes the
+  complete product map and account/session actions. Summary grids collapse to
+  one/two columns and wide tables scroll inside their own container.
+- Market and watchlist search/sort preferences persist locally between visits.
+  Watchlist pin/remove actions update immediately, announce their result to
+  assistive technology, and restore the previous state if the API rejects them.
+- Dialogs lock background scrolling, trap keyboard focus, close with Escape,
+  and restore focus. The global reduced-motion rule removes non-essential
+  animation and smooth scrolling when the operating system requests it.
 
 ## Tests
 

@@ -37,7 +37,7 @@ describe("NewsPage", () => {
     }]);
     render(<NewsPage />);
     expect(await screen.findByText("Reliance reports profit growth")).toBeVisible();
-    expect(screen.getByRole("link", { name: /open article/i })).toHaveAttribute("href", "https://example.test/story");
+    expect(screen.getByRole("link", { name: /open source/i })).toHaveAttribute("href", "https://example.test/story");
     expect(screen.getByRole("link", { name: /RELIANCE.NS/i })).toHaveTextContent("match 95%");
   });
 });

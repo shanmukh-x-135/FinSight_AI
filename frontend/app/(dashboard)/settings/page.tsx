@@ -9,14 +9,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError, api } from "@/lib/api";
-import { PageHeader, Skeleton } from "@/components/workspace";
+import { PageHeader, Panel, SectionHeader, Skeleton } from "@/components/workspace";
 import { useAuth } from "@/lib/auth-context";
 
 const RISK = ["conservative", "moderate", "aggressive"];
@@ -93,13 +85,10 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <PageHeader eyebrow="Workspace" title="Settings" description="Personalize the deterministic risk and relevance context used in reports and recommendations." />
 
-      <Card className="border-border/70 bg-card/80 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">Investment preferences</CardTitle>
-          <CardDescription>Used to tailor reports and recommendations.</CardDescription>
-        </CardHeader>
+      <Panel>
+        <SectionHeader title="Investment preferences" description="Used to tailor reports and recommendations; analytics remain deterministic." />
         <form onSubmit={onSubmit}>
-          <CardContent className="flex flex-col gap-4">
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
             {loading ? (
               <div role="status" aria-label="Loading preferences" className="space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><span className="sr-only">Loading preferences</span></div>
             ) : (
@@ -163,22 +152,22 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">Comma-separated.</p>
                 </div>
 
-                {message && <p className="text-sm text-green-600">{message}</p>}
+                {message && <p role="status" className="text-sm text-positive sm:col-span-2">{message}</p>}
                 {error && (
-                  <p role="alert" className="text-sm text-red-600">
+                  <p role="alert" className="text-sm text-negative sm:col-span-2">
                     {error}
                   </p>
                 )}
               </>
             )}
-          </CardContent>
-          <CardFooter className="mt-4">
+          </div>
+          <div className="mt-6 border-t border-border/45 pt-4">
             <Button type="submit" disabled={saving || loading}>
               {saving ? "Saving…" : "Save preferences"}
             </Button>
-          </CardFooter>
+          </div>
         </form>
-      </Card>
+      </Panel>
     </div>
   );
 }

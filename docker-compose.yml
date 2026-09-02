@@ -63,10 +63,12 @@ services:
       dockerfile: ../docker/Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
+        BACKEND_API_URL: http://backend:8000
         FRONTEND_BUILD_ENV: development
     container_name: finsight-frontend
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      BACKEND_API_URL: http://backend:8000
     ports:
       - "3000:3000"
     depends_on:

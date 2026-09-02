@@ -3,28 +3,18 @@
  *
  * Responsibilities:
  *  - prepend the API base URL and JSON headers
- *  - attach the Bearer access token from localStorage
+ *  - send backend-owned HttpOnly session cookies through the same-origin proxy
  *  - unwrap the standard response envelope ({ success, data, message, error })
  *  - transparently refresh the access token once on a 401, then retry
  *
- * Token storage decision (Phase 1): access + refresh tokens live in
- * localStorage and are sent as a Bearer header. This is one consistent
- * approach across the app. Trade-off: susceptible to XSS; a future hardening
- * is httpOnly cookies (documented in docs/auth.md).
+ * Browser JavaScript never receives bearer credentials. A session-bound CSRF
+ * token is held in memory and is rehydrated from the backend after reload.
  */
 
-import { resolveApiOrigin } from "@/lib/api-origin";
+import { publishAuthEvent } from "@/lib/auth-events";
+import { BROWSER_API_BASE } from "@/lib/api-origin";
 
-const API_URL = resolveApiOrigin();
-
-const ACCESS_KEY = "finsight_access";
-const REFRESH_KEY = "finsight_refresh";
-
-export interface TokenPair {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
+const API_URL = BROWSER_API_BASE;
 
 export interface Preferences {
   risk_tolerance: string;
@@ -42,6 +32,11 @@ export interface User {
   preferences: Preferences;
 }
 
+export interface SessionData {
+  user: User;
+  csrf_token: string;
+}
+
 export class ApiError extends Error {
   status: number;
   type: string;
@@ -53,21 +48,13 @@ export class ApiError extends Error {
   }
 }
 
-// ----- Token storage --------------------------------------------------------
-export const tokenStore = {
-  getAccess: (): string | null =>
-    typeof window === "undefined" ? null : localStorage.getItem(ACCESS_KEY),
-  getRefresh: (): string | null =>
-    typeof window === "undefined" ? null : localStorage.getItem(REFRESH_KEY),
-  set: (tokens: TokenPair): void => {
-    localStorage.setItem(ACCESS_KEY, tokens.access_token);
-    localStorage.setItem(REFRESH_KEY, tokens.refresh_token);
-  },
-  clear: (): void => {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-  },
-};
+let csrfToken: string | null = null;
+let refreshPromise: Promise<boolean> | null = null;
+
+function acceptSession(session: SessionData): SessionData {
+  csrfToken = session.csrf_token;
+  return session;
+}
 
 interface Envelope<T> {
   success: boolean;
@@ -91,7 +78,7 @@ async function parse<T>(res: Response): Promise<T> {
 interface RequestOptions {
   method?: string;
   body?: unknown;
-  auth?: boolean; // attach access token
+  auth?: boolean;
   headers?: Record<string, string>;
   _retried?: boolean; // internal: prevents infinite refresh loops
 }
@@ -103,9 +90,8 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     "Content-Type": "application/json",
     ...extraHeaders,
   };
-  if (auth) {
-    const token = tokenStore.getAccess();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (auth && method !== "GET" && method !== "HEAD" && csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
   }
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -113,10 +99,11 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     cache: "no-store",
+    credentials: "include",
   });
 
   // On an expired/invalid access token, try one refresh + retry.
-  if (res.status === 401 && auth && !_retried && tokenStore.getRefresh()) {
+  if (res.status === 401 && auth && !_retried) {
     const refreshed = await tryRefresh();
     if (refreshed) {
       return request<T>(path, { ...opts, _retried: true });
@@ -132,14 +119,17 @@ async function authenticatedFetch(
   retried = false,
 ): Promise<Response> {
   const headers = new Headers(init.headers);
-  const token = tokenStore.getAccess();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && csrfToken) {
+    headers.set("X-CSRF-Token", csrfToken);
+  }
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers,
     cache: "no-store",
+    credentials: "include",
   });
-  if (response.status === 401 && !retried && tokenStore.getRefresh()) {
+  if (response.status === 401 && !retried) {
     const refreshed = await tryRefresh();
     if (refreshed) return authenticatedFetch(path, init, true);
   }
@@ -147,34 +137,89 @@ async function authenticatedFetch(
 }
 
 async function tryRefresh(): Promise<boolean> {
-  const refresh_token = tokenStore.getRefresh();
-  if (!refresh_token) return false;
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = performRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function performRefresh(): Promise<boolean> {
   try {
-    const tokens = await request<TokenPair>("/api/v1/auth/refresh", {
+    if (!csrfToken) {
+      const csrfResponse = await fetch(`${API_URL}/api/v1/auth/csrf`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!csrfResponse.ok) return false;
+      csrfToken = (await parse<{ csrf_token: string }>(csrfResponse)).csrf_token;
+    }
+    const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
       method: "POST",
-      body: { refresh_token },
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      cache: "no-store",
+      credentials: "include",
     });
-    tokenStore.set(tokens);
-    return true;
+    if (response.ok) {
+      acceptSession(await parse<SessionData>(response));
+      publishAuthEvent("session");
+      return true;
+    }
+
+    // Another tab may have won refresh-token rotation. Its new access cookie is
+    // shared, so converge on that authoritative session before declaring expiry.
+    if (response.status === 401) {
+      const sessionResponse = await fetch(`${API_URL}/api/v1/auth/session`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (sessionResponse.ok) {
+        acceptSession(await parse<SessionData>(sessionResponse));
+        return true;
+      }
+    }
+    return false;
   } catch {
-    tokenStore.clear();
     return false;
   }
 }
 
 // ----- Endpoints ------------------------------------------------------------
 export const api = {
+  googleStartUrl: (returnTo = "/dashboard") =>
+    `${API_URL}/api/v1/auth/google/start?${new URLSearchParams({ return_to: returnTo })}`,
+
   register: (email: string, password: string) =>
     request<User>("/api/v1/auth/register", {
       method: "POST",
       body: { email, password },
     }),
 
-  login: (email: string, password: string) =>
-    request<TokenPair>("/api/v1/auth/login", {
+  forgotPassword: (email: string) =>
+    request<null>("/api/v1/auth/password/forgot", {
+      method: "POST",
+      body: { email },
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<null>("/api/v1/auth/password/reset", {
+      method: "POST",
+      body: { token, password },
+    }),
+
+  login: async (email: string, password: string) =>
+    acceptSession(await request<SessionData>("/api/v1/auth/login", {
       method: "POST",
       body: { email, password },
-    }),
+    })),
+
+  session: async () =>
+    acceptSession(await request<SessionData>("/api/v1/auth/session", { auth: true })),
+
+  logout: async () => {
+    await request<null>("/api/v1/auth/logout", { method: "POST", auth: true });
+    csrfToken = null;
+  },
 
   me: () => request<User>("/api/v1/user/me", { auth: true }),
 
@@ -1042,13 +1087,12 @@ export const chatApi = {
 /**
  * Download a report export (Markdown or PDF). The export endpoint returns a
  * binary file (not the JSON envelope), so this bypasses `request()` and streams
- * the blob with the Bearer token, then triggers a browser download.
+ * the blob with the session cookie, then triggers a browser download.
  */
 export async function downloadReport(id: number, fmt: "markdown" | "pdf"): Promise<void> {
-  const token = tokenStore.getAccess();
   const res = await fetch(`${API_URL}/api/v1/reports/${id}/export?format=${fmt}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     cache: "no-store",
+    credentials: "include",
   });
   if (!res.ok) {
     throw new ApiError(`Export failed (${res.status})`, res.status);

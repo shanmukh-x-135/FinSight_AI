@@ -16,10 +16,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-3 border-b border-border/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{eyebrow}</p>}
-        <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+        {eyebrow && <p className="text-label text-primary">{eyebrow}</p>}
+        <h1 className="text-page-heading mt-1">{title}</h1>
         {description && <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
@@ -39,7 +39,7 @@ export function SectionHeader({
   return (
     <div className="flex items-start justify-between gap-4">
       <div>
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+        <h2 className="text-section-heading">{title}</h2>
         {description && <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>}
       </div>
       {action}
@@ -48,7 +48,28 @@ export function SectionHeader({
 }
 
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn("min-w-0 rounded-xl border border-border/70 bg-card/85 p-4 shadow-[0_1px_2px_rgba(0,0,0,.04)] backdrop-blur-sm", className)}>{children}</section>;
+  return <section className={cn("surface-primary min-w-0 p-4 sm:p-5", className)}>{children}</section>;
+}
+
+export interface MetricStripItem {
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  tone?: "positive" | "negative" | "neutral";
+}
+
+export function MetricStrip({ items, className }: { items: MetricStripItem[]; className?: string }) {
+  return (
+    <dl className={cn("surface-primary grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4", className)}>
+      {items.map((item) => (
+        <div key={item.label} className="relative px-4 py-3.5 after:absolute after:inset-y-3 after:right-0 after:hidden after:w-px after:bg-border/55 last:after:hidden sm:after:block xl:px-5">
+          <dt className="text-xs text-muted-foreground">{item.label}</dt>
+          <dd className={cn("financial-number mt-1 text-lg font-semibold", item.tone === "positive" && "text-positive", item.tone === "negative" && "text-negative", item.tone === "neutral" && "text-muted-foreground")}>{item.value}</dd>
+          {item.detail != null && <p className="mt-0.5 text-[11px] text-muted-foreground">{item.detail}</p>}
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 export function TrendValue({ value, children, compact = false }: { value: number | null | undefined; children?: ReactNode; compact?: boolean }) {
@@ -64,13 +85,16 @@ export function TrendValue({ value, children, compact = false }: { value: number
   );
 }
 
-export function StatusBadge({ label, tone = "neutral" }: { label: string; tone?: "positive" | "negative" | "warning" | "neutral" | "info" }) {
+export function StatusBadge({ label, tone = "neutral" }: { label: string; tone?: "positive" | "negative" | "warning" | "neutral" | "info" | "delayed" | "stale" | "confidence" }) {
   return (
     <span className={cn(
       "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
       tone === "positive" && "border-positive/25 bg-positive/10 text-positive",
       tone === "negative" && "border-negative/25 bg-negative/10 text-negative",
       tone === "warning" && "border-warning/25 bg-warning/10 text-warning",
+      tone === "delayed" && "border-delayed/25 bg-delayed/10 text-delayed",
+      tone === "stale" && "border-stale/25 bg-stale/10 text-stale",
+      tone === "confidence" && "border-confidence/25 bg-confidence/10 text-confidence",
       tone === "info" && "border-primary/25 bg-primary/10 text-primary",
       tone === "neutral" && "border-border bg-muted/45 text-muted-foreground",
     )}>{label}</span>

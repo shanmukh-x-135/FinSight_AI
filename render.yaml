@@ -34,5 +34,17 @@ services:
         value: /tmp/finsight-data
       - key: CORS_ORIGINS
         sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: PASSWORD_RESET_FROM_EMAIL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
       - key: GEMINI_API_KEY
         sync: false

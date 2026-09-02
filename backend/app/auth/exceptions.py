@@ -61,3 +61,44 @@ class RateLimitExceededError(AppException):
             "Too many login attempts. Please try again later.",
             detail={"retryAfterSeconds": retry_after_seconds},
         )
+
+
+class OAuthUnavailableError(AppException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_type = "oauth_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__("Google sign-in is not configured.")
+
+
+class OAuthFlowError(AppException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_type = "oauth_error"
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message, detail={"code": code})
+        self.code = code
+
+
+class OAuthIdentityConflictError(OAuthFlowError):
+    def __init__(self) -> None:
+        super().__init__(
+            "identity_conflict",
+            "This Google identity conflicts with an existing account.",
+        )
+
+
+class PasswordResetUnavailableError(AppException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    error_type = "password_reset_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__("Password recovery is temporarily unavailable.")
+
+
+class InvalidPasswordResetTokenError(AppException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_type = "invalid_password_reset_token"
+
+    def __init__(self) -> None:
+        super().__init__("This password reset link is invalid or has expired.")

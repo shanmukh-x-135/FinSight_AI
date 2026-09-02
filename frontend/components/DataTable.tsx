@@ -24,6 +24,7 @@ export interface DataTableProps<T> {
   emptyMessage?: string;
   caption?: string;
   compact?: boolean;
+  scrollClassName?: string;
 }
 
 export function DataTable<T>({
@@ -35,13 +36,14 @@ export function DataTable<T>({
   emptyMessage = "No data.",
   caption,
   compact = true,
+  scrollClassName,
 }: DataTableProps<T>) {
   return (
-    <div className="max-w-full overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-[0_1px_2px_rgba(0,0,0,.03)] [contain:paint]">
-      <div className="w-full overflow-x-auto overscroll-x-contain">
+    <div className="max-w-full overflow-hidden rounded-xl border border-border/45 bg-card/55 [contain:paint]">
+      <div className={cn("w-full overflow-x-auto overscroll-contain", scrollClassName)}>
         <table className="w-full min-w-max text-sm" aria-busy={loading}>
         {caption && <caption className="sr-only">{caption}</caption>}
-        <thead>
+        <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
           <tr className="border-b border-border/70 bg-muted/35 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             {columns.map((c) => (
               <th
@@ -72,7 +74,7 @@ export function DataTable<T>({
             </tr>
           )}
           {!loading && rows.map((row, i) => (
-            <tr key={rowKey(row, i)} className="border-b border-border/55 transition-colors last:border-b-0 hover:bg-muted/30">
+            <tr key={rowKey(row, i)} className="border-b border-border/45 transition-colors last:border-b-0 hover:bg-muted/35 focus-within:bg-primary/6">
               {columns.map((c) => (
                 <td
                   key={c.key}

@@ -12,6 +12,7 @@ from app.discovery.exceptions import UnsupportedScreenerQueryError
 from app.discovery.parser import parse_screener_query
 from app.market.models import DailyPrice, Fundamentals, IndexMembership, Indicator, Stock
 from app.news.models import SentimentDaily
+from tests.auth_utils import access_token_from_cookie
 
 START = date(2026, 7, 1)
 
@@ -21,10 +22,10 @@ async def _headers(client: AsyncClient, email: str) -> dict[str, str]:
     await client.post(
         "/api/v1/auth/register", json={"email": email, "password": password}
     )
-    login = await client.post(
+    await client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    return {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+    return {"Authorization": f"Bearer {access_token_from_cookie(client)}"}
 
 
 async def _seed(db: AsyncSession) -> None:

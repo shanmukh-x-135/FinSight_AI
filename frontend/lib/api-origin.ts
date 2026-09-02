@@ -1,4 +1,12 @@
 const LOCAL_API_ORIGIN = "http://localhost:8000";
+export const BROWSER_API_BASE = "/api-proxy";
+
+export function resolveConfiguredApiOrigin(
+  backendOrigin = process.env.BACKEND_API_URL,
+  legacyPublicOrigin = process.env.NEXT_PUBLIC_API_URL,
+): string | undefined {
+  return backendOrigin?.trim() || legacyPublicOrigin?.trim() || undefined;
+}
 
 export function resolveApiOrigin(rawOrigin = process.env.NEXT_PUBLIC_API_URL): string {
   return (rawOrigin?.trim() || LOCAL_API_ORIGIN).replace(/\/$/, "");

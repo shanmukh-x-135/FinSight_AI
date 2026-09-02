@@ -7,14 +7,16 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
+from tests.auth_utils import access_token_from_cookie
+
 PW = "S3curePass!"
 
 
 async def _register(client: AsyncClient, email: str) -> tuple[str, int]:
     r = await client.post("/api/v1/auth/register", json={"email": email, "password": PW})
     uid = r.json()["data"]["id"]
-    login = await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
-    return login.json()["data"]["access_token"], uid
+    await client.post("/api/v1/auth/login", json={"email": email, "password": PW})
+    return access_token_from_cookie(client), uid
 
 
 @pytest.mark.asyncio

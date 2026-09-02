@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
-import { resolveApiOrigin } from "@/lib/api-origin";
+import { BROWSER_API_BASE } from "@/lib/api-origin";
 
-const API_URL = resolveApiOrigin();
+const API_URL = BROWSER_API_BASE;
 
 type ConnState = "checking" | "connected" | "unreachable";
 
@@ -86,7 +86,7 @@ export default function Home() {
             {health.service} · env: {health.env}
           </p>
         )}
-        <p className="mt-1 text-xs text-gray-400">API: {API_URL}</p>
+        <p className="mt-1 text-xs text-gray-400">Secure API gateway</p>
       </div>
 
       <div className="flex gap-3">

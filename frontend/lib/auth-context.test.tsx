@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, tokenStore, type User } from "@/lib/api";
+import { AUTH_EVENT_KEY } from "@/lib/auth-events";
+import { api, ApiError, type SessionData, type User } from "@/lib/api";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 
 const user: User = {
@@ -17,40 +18,83 @@ const user: User = {
   },
 };
 
+const session: SessionData = { user, csrf_token: "csrf" };
+
 function AuthState() {
-  const { loading, user: currentUser } = useAuth();
-  return <p>{loading ? "loading" : currentUser?.email ?? "anonymous"}</p>;
+  const { status, user: currentUser } = useAuth();
+  return <p>{`${status}:${currentUser?.email ?? "anonymous"}`}</p>;
 }
 
-describe("AuthProvider hydration", () => {
+function dispatchAuthEvent(type: "login" | "logout" | "session") {
+  const newValue = JSON.stringify({ type, at: Date.now() });
+  window.dispatchEvent(new StorageEvent("storage", { key: AUTH_EVENT_KEY, newValue }));
+}
+
+describe("AuthProvider session state", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
   });
 
-  it("finishes hydration without requesting a user when no token exists", async () => {
-    const me = vi.spyOn(api, "me");
+  it("resolves an absent session without flashing authenticated content", async () => {
+    vi.spyOn(api, "session").mockRejectedValue(new ApiError("Missing session", 401));
 
-    render(
-      <AuthProvider>
-        <AuthState />
-      </AuthProvider>,
-    );
+    render(<AuthProvider><AuthState /></AuthProvider>);
 
-    expect(await screen.findByText("anonymous")).toBeInTheDocument();
-    expect(me).not.toHaveBeenCalled();
+    expect(screen.getByText("checking:anonymous")).toBeInTheDocument();
+    expect(await screen.findByText("unauthenticated:anonymous")).toBeInTheDocument();
   });
 
-  it("hydrates the current user when a stored token exists", async () => {
-    tokenStore.set({ access_token: "access", refresh_token: "refresh", token_type: "bearer" });
-    vi.spyOn(api, "me").mockResolvedValue(user);
+  it("hydrates the current user from the server-controlled session", async () => {
+    vi.spyOn(api, "session").mockResolvedValue(session);
 
-    render(
-      <AuthProvider>
-        <AuthState />
-      </AuthProvider>,
-    );
+    render(<AuthProvider><AuthState /></AuthProvider>);
 
-    expect(await screen.findByText("investor@example.com")).toBeInTheDocument();
+    expect(await screen.findByText("authenticated:investor@example.com")).toBeInTheDocument();
+  });
+
+  it("revalidates an open tab when another tab logs in", async () => {
+    vi.spyOn(api, "session")
+      .mockRejectedValueOnce(new ApiError("Missing session", 401))
+      .mockResolvedValueOnce(session);
+
+    render(<AuthProvider><AuthState /></AuthProvider>);
+    expect(await screen.findByText("unauthenticated:anonymous")).toBeInTheDocument();
+
+    act(() => dispatchAuthEvent("login"));
+
+    expect(await screen.findByText("authenticated:investor@example.com")).toBeInTheDocument();
+  });
+
+  it("clears authenticated UI when another tab logs out", async () => {
+    vi.spyOn(api, "session").mockResolvedValue(session);
+
+    render(<AuthProvider><AuthState /></AuthProvider>);
+    expect(await screen.findByText("authenticated:investor@example.com")).toBeInTheDocument();
+
+    act(() => dispatchAuthEvent("logout"));
+
+    expect(await screen.findByText("unauthenticated:anonymous")).toBeInTheDocument();
+  });
+
+  it("keeps a backend outage distinct from an unauthenticated session", async () => {
+    vi.spyOn(api, "session").mockRejectedValue(new TypeError("network unavailable"));
+
+    render(<AuthProvider><AuthState /></AuthProvider>);
+
+    expect(await screen.findByText("unavailable:anonymous")).toBeInTheDocument();
+  });
+
+  it("marks a previously authenticated session as expired", async () => {
+    vi.spyOn(api, "session")
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(new ApiError("Expired", 401));
+
+    render(<AuthProvider><AuthState /></AuthProvider>);
+    expect(await screen.findByText("authenticated:investor@example.com")).toBeInTheDocument();
+
+    act(() => dispatchAuthEvent("session"));
+
+    expect(await screen.findByText("expired:anonymous")).toBeInTheDocument();
   });
 });

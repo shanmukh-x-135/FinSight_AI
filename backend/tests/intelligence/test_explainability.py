@@ -13,6 +13,7 @@ from app.intelligence.explainability import (
 from app.intelligence.prompt_builder import (
     chat_response,
     market_section,
+    portfolio_section,
     recommendation_explanation,
 )
 from app.intelligence.recommendation_engine import Recommendation
@@ -180,3 +181,20 @@ def test_exact_price_prediction_is_rejected_even_if_number_is_supplied() -> None
     )
     assert not result.valid
     assert "prediction" in result.reason
+
+
+def test_portfolio_fallback_does_not_invent_score_scale_claims() -> None:
+    prompt, fallback = portfolio_section(
+        {
+            "total_value": 125_000,
+            "total_return_percent": 8.25,
+            "health_score": 73,
+            "risk_level": "moderate",
+            "diversification_score": 61,
+            "number_of_holdings": 4,
+            "valuation_complete": True,
+        }
+    )
+
+    assert "/100" not in fallback
+    assert validate_grounded_narrative(fallback, prompt).valid

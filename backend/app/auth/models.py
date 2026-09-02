@@ -1,4 +1,4 @@
-"""ORM models for the User domain: User, Preferences, Session.
+"""ORM models for the User domain and linked authentication identities.
 
 Split into three tables per the design doc's User-domain schema (§6.3):
 
@@ -6,6 +6,7 @@ Split into three tables per the design doc's User-domain schema (§6.3):
 * ``preferences``  — 1:1 personalization profile driving later report/rec logic.
 * ``sessions``     — issued refresh tokens (by ``jti``) so they can be revoked
   and rotated.
+* ``auth_identities`` — verified external-provider subjects linked to users.
 
 Column types are chosen to work identically on Postgres and the SQLite test DB:
 ``JSON`` for the sectors list, plain strings for the preference vocabularies
@@ -22,6 +23,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -42,7 +44,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(320), unique=True, index=True, nullable=False
     )
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -58,6 +60,14 @@ class User(Base):
         cascade="all, delete-orphan",
     )
     sessions: Mapped[list["Session"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    auth_identities: Mapped[list["AuthIdentity"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -115,3 +125,52 @@ class Session(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="sessions")
+
+
+class AuthIdentity(Base):
+    """One verified external-provider subject linked to one internal user."""
+
+    __tablename__ = "auth_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "provider_subject", name="uq_auth_identity_provider_subject"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship(back_populates="auth_identities")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship(back_populates="password_reset_tokens")

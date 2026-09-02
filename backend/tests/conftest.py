@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.auth.dependencies import login_rate_limiter
+from app.auth.dependencies import login_rate_limiter, password_reset_rate_limiter
 from app.auth.models import User
 from app.main import create_app
 from app.shared.database import Base, get_db
+from tests.auth_utils import access_token_from_cookie
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -32,8 +33,10 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 def _reset_rate_limiter() -> None:
     """Clear the shared in-memory login rate limiter around every test."""
     login_rate_limiter.clear()
+    password_reset_rate_limiter.clear()
     yield
     login_rate_limiter.clear()
+    password_reset_rate_limiter.clear()
 
 
 @pytest_asyncio.fixture
@@ -86,8 +89,8 @@ async def admin_headers(client: AsyncClient, db_session: AsyncSession) -> dict[s
     user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
     user.is_admin = True
     await db_session.commit()
-    login = await client.post(
+    await client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
     )
-    token = login.json()["data"]["access_token"]
+    token = access_token_from_cookie(client)
     return {"Authorization": f"Bearer {token}"}

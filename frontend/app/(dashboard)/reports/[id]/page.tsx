@@ -12,13 +12,11 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
-import { MetricCard, toneOf } from "@/components/MetricCard";
 import { StockCard } from "@/components/StockCard";
 import { ReportBreadthVisual, ReportHistoryVisual, ReportPortfolioVisual, ReportSentimentVisual } from "@/components/report-visuals";
 import { ReportPageTemplate } from "@/components/templates/ReportPageTemplate";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataState, PageSkeleton } from "@/components/workspace";
+import { DataState, MetricStrip, PageSkeleton } from "@/components/workspace";
 import {
   downloadReport,
   reportsApi,
@@ -148,16 +146,7 @@ export default function ReportDetailPage() {
             />
           )}
           {market.breadth && (
-            <><ReportBreadthVisual breadth={market.breadth} /><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              <MetricCard label="Advancers" value={market.breadth.advancers} tone="positive" />
-              <MetricCard label="Decliners" value={market.breadth.decliners} tone="negative" />
-              <MetricCard label="Unchanged" value={market.breadth.unchanged} tone="neutral" />
-              <MetricCard label="Tracked" value={market.breadth.total} />
-              <MetricCard
-                label="A/D Ratio"
-                value={market.breadth.advance_decline_ratio == null ? "—" : market.breadth.advance_decline_ratio.toFixed(2)}
-              />
-            </div></>
+            <><ReportBreadthVisual breadth={market.breadth} /><MetricStrip className="mt-3 sm:grid-cols-3 xl:grid-cols-5" items={[{ label: "Advancers", value: market.breadth.advancers, tone: "positive" }, { label: "Decliners", value: market.breadth.decliners, tone: "negative" }, { label: "Unchanged", value: market.breadth.unchanged, tone: "neutral" }, { label: "Tracked", value: market.breadth.total }, { label: "A/D ratio", value: market.breadth.advance_decline_ratio == null ? "—" : market.breadth.advance_decline_ratio.toFixed(2) }]} /></>
           )}
           {(market.gainers?.length || market.losers?.length) && (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -187,13 +176,7 @@ export default function ReportDetailPage() {
               evidence={{ evidence: portfolioNarrativeEvidence(portfolio) }}
             />
           )}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <MetricCard label="Total Value" value={money(portfolio.total_value)} />
-            <MetricCard label="Total Return" value={pct(portfolio.total_return_percent)} tone={toneOf(portfolio.total_return_percent)} />
-            <MetricCard label="Health Score" value={portfolio.health_score == null ? "—" : Math.round(portfolio.health_score)} sub={`risk: ${portfolio.risk_level ?? "—"}`} />
-            <MetricCard label="Diversification" value={portfolio.diversification_score == null ? "—" : `${Math.round(portfolio.diversification_score)}/100`} />
-            <MetricCard label="Holdings" value={portfolio.number_of_holdings ?? "—"} />
-          </div>
+          <MetricStrip className="sm:grid-cols-2 xl:grid-cols-5" items={[{ label: "Total value", value: money(portfolio.total_value) }, { label: "Total return", value: pct(portfolio.total_return_percent), tone: portfolio.total_return_percent == null ? "neutral" : portfolio.total_return_percent >= 0 ? "positive" : "negative" }, { label: "Health score", value: portfolio.health_score == null ? "—" : Math.round(portfolio.health_score), detail: `Risk: ${portfolio.risk_level ?? "—"}` }, { label: "Diversification", value: portfolio.diversification_score == null ? "—" : `${Math.round(portfolio.diversification_score)}/100` }, { label: "Holdings", value: portfolio.number_of_holdings ?? "—" }]} />
           <ReportPortfolioVisual health={portfolio.health_score} diversification={portfolio.diversification_score} />
         </>
       )}
@@ -208,14 +191,7 @@ export default function ReportDetailPage() {
             />
           )}
           {hist.statistics && (
-            <><ReportHistoryVisual statistics={hist.statistics} /><div className="grid gap-4 sm:grid-cols-3">
-              <MetricCard label="Similar Sessions" value={hist.statistics.sample_size} sub={`top-${hist.statistics.k} nearest`} />
-              <MetricCard
-                label="Closed Higher"
-                value={hist.statistics.bullish_probability == null ? "—" : `${Math.round(hist.statistics.bullish_probability * 100)}%`}
-              />
-              <MetricCard label="Avg Next-Day" value={ratioPct(hist.statistics.avg_next_day_return)} tone={toneOf(hist.statistics.avg_next_day_return)} />
-            </div></>
+            <><ReportHistoryVisual statistics={hist.statistics} /><MetricStrip className="mt-3 xl:grid-cols-3" items={[{ label: "Similar sessions", value: hist.statistics.sample_size, detail: `top-${hist.statistics.k} nearest` }, { label: "Closed higher", value: hist.statistics.bullish_probability == null ? "—" : `${Math.round(hist.statistics.bullish_probability * 100)}%` }, { label: "Average next day", value: ratioPct(hist.statistics.avg_next_day_return), tone: hist.statistics.avg_next_day_return == null ? "neutral" : hist.statistics.avg_next_day_return >= 0 ? "positive" : "negative" }]} /></>
           )}
           <p className="text-xs italic text-muted-foreground">
             Historical context, not a forecast.
@@ -250,11 +226,9 @@ export default function ReportDetailPage() {
   );
 
   const appendix = news.length > 0 && (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Notable news</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="surface-subtle p-4">
+        <h3 className="text-section-heading">Notable news</h3>
+        <div className="mt-3">
         <ReportSentimentVisual labels={news.map((item) => item.sentiment_label)} />
         <ul className="space-y-2 text-sm">
           {news.slice(0, 5).map((a, i) => (
@@ -269,8 +243,8 @@ export default function ReportDetailPage() {
             </li>
           ))}
         </ul>
-      </CardContent>
-    </Card>
+        </div>
+    </div>
   );
 
   return (

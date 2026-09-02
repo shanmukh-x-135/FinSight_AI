@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataState, PageHeader, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
 import { ApiError, newsApi, watchlistApi, type LatestSentiment, type WatchlistItem } from "@/lib/api";
+import { usePersistentString } from "@/lib/use-persistent-state";
 import { money, pct } from "@/lib/utils";
 
 export default function WatchlistPage() {
@@ -16,10 +17,12 @@ export default function WatchlistPage() {
   const [sentiment, setSentiment] = useState<LatestSentiment[]>([]);
   const [loading, setLoading] = useState(true);
   const [symbol, setSymbol] = useState("");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"symbol" | "change" | "rsi" | "sentiment">("change");
+  const [query, setQuery] = usePersistentString<string>("finsight:watchlist:query", "");
+  const [sort, setSort] = usePersistentString<"symbol" | "change" | "rsi" | "sentiment">("finsight:watchlist:sort", "change");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set());
+  const [notice, setNotice] = useState("");
 
   const reload = useCallback(async () => setItems(await watchlistApi.list()), []);
   useEffect(() => { let active = true; Promise.all([watchlistApi.list(), newsApi.latestSentiment()]).then(([nextItems, nextSentiment]) => { if (active) { setItems(nextItems); setSentiment(nextSentiment); } }).catch(() => active && setError("Could not load your watchlist.")).finally(() => active && setLoading(false)); return () => { active = false; }; }, []);
@@ -33,11 +36,44 @@ export default function WatchlistPage() {
   }), [items, query, sentimentMap, sort]);
 
   async function onAdd(event: FormEvent) { event.preventDefault(); setError(null); setBusy(true); try { await watchlistApi.add(symbol.trim().toUpperCase()); setSymbol(""); await reload(); } catch (reason) { setError(reason instanceof ApiError ? reason.message : "Could not add to watchlist."); } finally { setBusy(false); } }
-  async function togglePin(item: WatchlistItem) { await watchlistApi.update(item.id, { pinned: !item.pinned }); await reload(); }
-  async function remove(id: number) { await watchlistApi.remove(id); await reload(); }
+  async function togglePin(item: WatchlistItem) {
+    const pinned = !item.pinned;
+    setError(null);
+    setNotice(`${item.symbol} ${pinned ? "pinned" : "unpinned"}.`);
+    setPendingIds((ids) => new Set(ids).add(item.id));
+    setItems((current) => current.map((row) => row.id === item.id ? { ...row, pinned } : row));
+    try {
+      await watchlistApi.update(item.id, { pinned });
+    } catch {
+      setItems((current) => current.map((row) => row.id === item.id ? item : row));
+      setNotice("");
+      setError(`Could not ${pinned ? "pin" : "unpin"} ${item.symbol}. Your previous watchlist was restored.`);
+    } finally {
+      setPendingIds((ids) => { const next = new Set(ids); next.delete(item.id); return next; });
+    }
+  }
+
+  async function remove(item: WatchlistItem) {
+    const originalIndex = items.findIndex((row) => row.id === item.id);
+    setError(null);
+    setNotice(`${item.symbol} removed from your watchlist.`);
+    setPendingIds((ids) => new Set(ids).add(item.id));
+    setItems((current) => current.filter((row) => row.id !== item.id));
+    try {
+      await watchlistApi.remove(item.id);
+    } catch {
+      setItems((current) => current.some((row) => row.id === item.id)
+        ? current
+        : [...current.slice(0, originalIndex), item, ...current.slice(originalIndex)]);
+      setNotice("");
+      setError(`Could not remove ${item.symbol}. Your previous watchlist was restored.`);
+    } finally {
+      setPendingIds((ids) => { const next = new Set(ids); next.delete(item.id); return next; });
+    }
+  }
 
   const columns: Column<WatchlistItem>[] = [
-    { key: "pin", header: <span className="sr-only">Pinned</span>, render: (item) => <button type="button" aria-label={item.pinned ? "Unpin" : "Pin"} onClick={() => togglePin(item)} className={item.pinned ? "text-warning" : "text-muted-foreground hover:text-foreground"}>{item.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</button> },
+    { key: "pin", header: <span className="sr-only">Pinned</span>, render: (item) => <button type="button" disabled={pendingIds.has(item.id)} aria-label={item.pinned ? `Unpin ${item.symbol}` : `Pin ${item.symbol}`} onClick={() => togglePin(item)} className={item.pinned ? "text-warning disabled:opacity-60" : "text-muted-foreground hover:text-foreground disabled:opacity-60"}>{item.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</button> },
     { key: "symbol", header: "Instrument", render: (item) => <Link href={`/market/${encodeURIComponent(item.symbol)}`} className="block min-w-40 font-semibold hover:text-primary">{item.symbol}<span className="block text-[11px] font-normal text-muted-foreground">{item.name ?? "Name unavailable"}</span></Link> },
     { key: "sector", header: "Sector", render: (item) => <span className="text-xs text-muted-foreground">{item.sector ?? "—"}</span> },
     { key: "price", header: "Last price", align: "right", render: (item) => money(item.current_price) },
@@ -45,8 +81,8 @@ export default function WatchlistPage() {
     { key: "rsi", header: "RSI", align: "right", render: (item) => item.rsi_14?.toFixed(1) ?? "—" },
     { key: "trend", header: "Signal", render: (item) => item.trend ? <StatusBadge label={item.trend} tone={item.trend === "bullish" ? "positive" : item.trend === "bearish" ? "negative" : "neutral"} /> : "—" },
     { key: "news", header: "News", align: "right", render: (item) => { const value = sentimentMap.get(item.symbol); return <TrendValue compact value={value}>{value == null ? "—" : value.toFixed(2)}</TrendValue>; } },
-    { key: "actions", header: <span className="sr-only">Actions</span>, align: "right", render: (item) => <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${item.symbol}`} onClick={() => remove(item.id)}><Trash2 className="size-3.5 text-negative" /></Button> },
+    { key: "actions", header: <span className="sr-only">Actions</span>, align: "right", render: (item) => <Button type="button" variant="ghost" size="icon-xs" disabled={pendingIds.has(item.id)} aria-label={`Remove ${item.symbol}`} onClick={() => remove(item)}><Trash2 className="size-3.5 text-negative" /></Button> },
   ];
 
-  return <div className="space-y-5"><PageHeader eyebrow="Monitoring" title="Watchlist" description="Track price, momentum, technical direction, and news tone in one compact view." actions={<form onSubmit={onAdd} className="flex gap-2"><Input aria-label="Stock symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="RELIANCE.NS" className="w-40" required /><Button type="submit" size="sm" disabled={busy}><Plus className="size-4" />{busy ? "Adding" : "Add"}</Button></form>} />{error && <div role="alert" className="rounded-lg border border-negative/30 bg-negative/10 p-3 text-sm text-negative">{error}</div>}<Panel><SectionHeader title="Monitored instruments" description={`${items.length} tracked · pinned names remain first`} action={<ArrowDownUp className="size-4 text-muted-foreground" />} /><div className="my-4 flex max-w-xl flex-col gap-2 sm:flex-row"><label className="relative block flex-1"><span className="sr-only">Search watchlist</span><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search watchlist" className="pl-8" /></label><select aria-label="Sort watchlist" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="change">1D change</option><option value="rsi">RSI</option><option value="sentiment">News sentiment</option><option value="symbol">Symbol</option></select></div>{!loading && items.length === 0 ? <DataState kind="empty" title="Your watchlist is empty" description="Add an NSE symbol to begin monitoring it." /> : <DataTable columns={columns} rows={filtered} rowKey={(item) => item.id} loading={loading} emptyMessage="No watchlist items match this search." caption="Watchlist instruments and latest research signals" />}</Panel></div>;
+  return <div className="space-y-5"><PageHeader eyebrow="Monitoring" title="Watchlist" description="Track price, momentum, technical direction, and news tone in one compact view." actions={<form onSubmit={onAdd} className="flex gap-2"><Input aria-label="Stock symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="RELIANCE.NS" className="w-40" required /><Button type="submit" size="sm" disabled={busy}><Plus className="size-4" />{busy ? "Adding" : "Add"}</Button></form>} /><p className="sr-only" role="status" aria-live="polite">{notice}</p>{error && <div role="alert" className="rounded-lg border border-negative/30 bg-negative/10 p-3 text-sm text-negative">{error}</div>}<Panel><SectionHeader title="Monitored instruments" description={`${items.length} tracked · pinned names remain first`} action={<ArrowDownUp className="size-4 text-muted-foreground" />} /><div className="my-4 flex max-w-xl flex-col gap-2 sm:flex-row"><label className="relative block flex-1"><span className="sr-only">Search watchlist</span><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search watchlist" className="pl-8" /></label><select aria-label="Sort watchlist" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="change">1D change</option><option value="rsi">RSI</option><option value="sentiment">News sentiment</option><option value="symbol">Symbol</option></select></div>{!loading && items.length === 0 ? <DataState kind="empty" title="Your watchlist is empty" description="Add an NSE symbol to begin monitoring it." /> : <DataTable columns={columns} rows={filtered} rowKey={(item) => item.id} loading={loading} emptyMessage="No watchlist items match this search." caption="Watchlist instruments and latest research signals" />}</Panel></div>;
 }

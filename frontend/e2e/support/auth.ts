@@ -18,7 +18,7 @@ export async function ensureE2EUser(request: APIRequestContext): Promise<void> {
 export async function login(page: Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(e2eUser.email);
-  await page.getByLabel("Password").fill(e2eUser.password);
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(e2eUser.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }

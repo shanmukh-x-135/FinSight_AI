@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.auth.constants import InvestmentHorizon, Market, RiskTolerance
 
@@ -21,14 +21,31 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128, examples=["S3curePass!"])
 
+    _normalize_email = field_validator("email", mode="before")(
+        lambda value: value.strip().lower() if isinstance(value, str) else value
+    )
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
 
+    _normalize_email = field_validator("email", mode="before")(
+        lambda value: value.strip().lower() if isinstance(value, str) else value
+    )
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+    _normalize_email = field_validator("email", mode="before")(
+        lambda value: value.strip().lower() if isinstance(value, str) else value
+    )
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class PreferencesUpdate(BaseModel):
@@ -63,7 +80,12 @@ class UserResponse(BaseModel):
     preferences: PreferencesResponse
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
+class SessionResponse(BaseModel):
+    """Browser-safe session bootstrap; bearer credentials never enter JS."""
+
+    user: UserResponse
+    csrf_token: str
+
+
+class CsrfResponse(BaseModel):
+    csrf_token: str
