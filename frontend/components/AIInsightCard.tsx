@@ -1,9 +1,9 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { BrainCircuit } from "lucide-react";
 
 import { EvidencePanel, type EvidencePanelProps } from "@/components/EvidencePanel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResearchMarkdown } from "@/components/research-markdown";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,10 +30,9 @@ export interface AIInsightCardProps {
 
 export function AIInsightCard({ title, narrative, action, confidence, evidence }: AIInsightCardProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="h-4 w-4 text-primary" aria-hidden />
+    <article className="rounded-xl bg-card/70 p-4 ring-1 ring-foreground/10">
+        <h3 className="flex items-center gap-2 text-base font-medium">
+          <BrainCircuit className="h-4 w-4 text-primary" aria-hidden />
           <span className="flex-1">{title}</span>
           {action && (
             <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium capitalize", actionStyle[action] ?? "bg-muted")}>
@@ -43,12 +42,11 @@ export function AIInsightCard({ title, narrative, action, confidence, evidence }
           {confidence != null && (
             <span className="text-xs font-normal text-muted-foreground">{confidence}% conf.</span>
           )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm leading-relaxed text-foreground/90">{narrative}</p>
+        </h3>
+      <div className="mt-3">
+        <ResearchMarkdown content={narrative} />
         <EvidencePanel {...evidence} confidence={evidence.confidence ?? confidence} />
-      </CardContent>
-    </Card>
+      </div>
+    </article>
   );
 }

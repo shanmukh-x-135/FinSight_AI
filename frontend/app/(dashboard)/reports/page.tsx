@@ -131,7 +131,7 @@ export default function ReportsPage() {
           {generating ? "Generating…" : "Generate report"}
         </Button>} />
 
-      <Panel><SectionHeader title="Report filters" description="Narrow the archive by report type and generation date." /><div className="mt-4">
+      <section className="surface-subtle p-4"><SectionHeader title="Report filters" description="Narrow the archive by report type and generation date." /><div className="mt-4">
           <form onSubmit={applyFilters} className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="type">Type</Label>
@@ -173,7 +173,7 @@ export default function ReportsPage() {
               </Button>
             )}
           </form>
-        </div></Panel>
+        </div></section>
 
       {error && <p role="alert" className="mt-4 text-sm text-negative">{error}</p>}
 
