@@ -8,12 +8,11 @@ import { AIAnalysisState } from "@/components/AIAnalysisState";
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { EconomicEventsCard, TechnicalSummaryCard } from "@/components/MarketContext";
-import { MetricCard, toneOf } from "@/components/MetricCard";
 import { SectorRotation } from "@/components/sector-rotation";
 import { StockHeatmap } from "@/components/stock-heatmap";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
+import { DataState, MetricStrip, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
 import { intelligenceApi, marketApi, watchlistApi, type Breadth, type EconomicCalendar, type HeatmapStock, type LatestSentiment, type MarketStockSnapshot, type Recommendation, type SectorOverview, type SectorRotation as SectorRotationRow, type TechnicalSummary, type UniverseCode, type UniverseOption, type WatchlistItem } from "@/lib/api";
 import { money, pct } from "@/lib/utils";
 
@@ -108,7 +107,7 @@ export default function MarketPage() {
     <div className="space-y-5">
       <PageHeader eyebrow="Market intelligence" title="Market Intelligence" description="Scan participation, technical regimes, sentiment, and catalysts across a membership-aware NSE research universe." actions={<label className="grid gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"><span>Research universe</span><select aria-label="Research universe" value={universe} onChange={(event) => { setLoading(true); setError(false); setUniverse(event.target.value as UniverseCode); }} className="h-9 min-w-40 rounded-lg border border-input bg-background px-3 text-sm font-medium normal-case tracking-normal text-foreground">{universeOptions.length === 0 ? <option value="NIFTY100">NIFTY 100</option> : universeOptions.map((option) => <option key={option.code} value={option.code}>{option.label} · {option.active_constituents}/{option.expected_constituents}</option>)}</select></label>} />
       {selectedUniverse && !selectedUniverse.initialized && <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-xs text-warning">{selectedUniverse.label} is not fully synchronized: {selectedUniverse.active_constituents} of {selectedUniverse.expected_constituents} constituents are active. Results remain scoped to validated members only.</div>}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Advancers" value={breadth.advancers} tone="positive" sub={`${breadth.total} priced stocks`} /><MetricCard label="Decliners" value={breadth.decliners} tone="negative" sub={`${breadth.unchanged} unchanged`} /><MetricCard label="A/D ratio" value={breadth.advance_decline_ratio?.toFixed(2) ?? "—"} tone={toneOf((breadth.advance_decline_ratio ?? 1) - 1)} /><MetricCard label="Average RSI" value={technical?.average_rsi?.toFixed(1) ?? "—"} sub={`${technical?.stocks_with_indicators ?? 0} with indicators`} /></div>
+      <MetricStrip items={[{ label: "Advancers", value: breadth.advancers, detail: `${breadth.total} priced stocks`, tone: "positive" }, { label: "Decliners", value: breadth.decliners, detail: `${breadth.unchanged} unchanged`, tone: "negative" }, { label: "A/D ratio", value: breadth.advance_decline_ratio?.toFixed(2) ?? "—", detail: (breadth.advance_decline_ratio ?? 1) >= 1 ? "Broad participation" : "Narrow participation", tone: (breadth.advance_decline_ratio ?? 1) >= 1 ? "positive" : "negative" }, { label: "Average RSI", value: technical?.average_rsi?.toFixed(1) ?? "—", detail: `${technical?.stocks_with_indicators ?? 0} with indicators` }]} />
 
       <Panel>
         <SectionHeader title="Equity screener" description={`${filtered.length} of ${stocks.length} instruments · prices and indicators are end-of-day`} action={<ArrowDownUp className="size-4 text-muted-foreground" />} />
@@ -118,7 +117,7 @@ export default function MarketPage() {
           <select aria-label="Sort stocks" value={sort} onChange={(event) => setSort(event.target.value as SortKey)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="change">1D change</option><option value="rsi">RSI</option><option value="symbol">Symbol</option></select>
         </div>
         {watchError && <p role="status" className="mb-3 text-xs text-warning">{watchError}</p>}
-        <DataTable columns={columns} rows={filtered} rowKey={(row) => row.symbol} emptyMessage="No instruments match these filters." caption="Tracked market instruments with price, technical, and sentiment metrics" />
+        <DataTable columns={columns} rows={filtered} rowKey={(row) => row.symbol} scrollClassName="max-h-[42rem]" emptyMessage="No instruments match these filters." caption="Tracked market instruments with price, technical, and sentiment metrics" />
       </Panel>
 
       <Panel><StockHeatmap stocks={heatmap} /></Panel>

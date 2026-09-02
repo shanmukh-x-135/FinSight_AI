@@ -8,9 +8,8 @@ import { AIInsightCard } from "@/components/AIInsightCard";
 import { DashboardWatchlist } from "@/components/DashboardWatchlist";
 import { DataFreshnessStrip } from "@/components/data-freshness";
 import { Heatmap } from "@/components/Heatmap";
-import { MetricCard, toneOf } from "@/components/MetricCard";
 import { buttonVariants } from "@/components/ui/button";
-import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, TrendValue } from "@/components/workspace";
+import { DataState, MetricStrip, PageHeader, PageSkeleton, Panel, SectionHeader, TrendValue } from "@/components/workspace";
 import { dashboardApi, type DashboardSummary } from "@/lib/api";
 import { marketNarrativeEvidence } from "@/lib/evidence";
 import { cn, money, pct } from "@/lib/utils";
@@ -55,12 +54,12 @@ export default function DashboardPage() {
 
       <DataFreshnessStrip items={data.freshness} />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Market breadth" value={`${breadth.advancers} / ${breadth.decliners}`} sub={`${breadth.total} tracked · ${breadth.unchanged} unchanged`} tone={toneOf((breadth.advance_decline_ratio ?? 1) - 1)} />
-        <MetricCard label="A/D ratio" value={breadth.advance_decline_ratio?.toFixed(2) ?? "—"} sub={breadth.advance_decline_ratio == null ? "No decliners in sample" : breadth.advance_decline_ratio >= 1 ? "Advancers lead" : "Decliners lead"} tone={toneOf((breadth.advance_decline_ratio ?? 1) - 1)} />
-        <MetricCard label="Portfolio value" value={portfolio ? money(portfolio.total_value) : "—"} sub={portfolio ? pct(portfolio.total_return_percent) : "Create a portfolio to track exposure"} tone={toneOf(portfolio?.total_return_percent)} />
-        <MetricCard label="Active signals" value={opportunities.length + risks.length} sub={`${opportunities.length} watch · ${risks.length} risk`} />
-      </div>
+      <MetricStrip items={[
+        { label: "Market breadth", value: `${breadth.advancers} / ${breadth.decliners}`, detail: `${breadth.total} tracked · ${breadth.unchanged} unchanged`, tone: (breadth.advance_decline_ratio ?? 1) >= 1 ? "positive" : "negative" },
+        { label: "A/D ratio", value: breadth.advance_decline_ratio?.toFixed(2) ?? "—", detail: breadth.advance_decline_ratio == null ? "No decliners in sample" : breadth.advance_decline_ratio >= 1 ? "Advancers lead" : "Decliners lead", tone: (breadth.advance_decline_ratio ?? 1) >= 1 ? "positive" : "negative" },
+        { label: "Portfolio value", value: portfolio ? money(portfolio.total_value) : "—", detail: portfolio ? pct(portfolio.total_return_percent) : "Create a portfolio to track exposure", tone: portfolio?.total_return_percent == null ? "neutral" : portfolio.total_return_percent >= 0 ? "positive" : "negative" },
+        { label: "Active signals", value: opportunities.length + risks.length, detail: `${opportunities.length} watch · ${risks.length} risk` },
+      ]} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,.85fr)]">
         <Panel className="surface-grid min-h-72 overflow-hidden">
@@ -73,7 +72,7 @@ export default function DashboardPage() {
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs"><span><i className="mr-1.5 inline-block size-2 rounded-sm bg-positive" />{breadth.advancers} advancing</span><span><i className="mr-1.5 inline-block size-2 rounded-sm bg-negative" />{breadth.decliners} declining</span><span className="text-muted-foreground"><i className="mr-1.5 inline-block size-2 rounded-sm bg-muted-foreground/35" />{breadth.unchanged} flat</span></div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {[...market.gainers.slice(0, 2), ...market.losers.slice(0, 2)].map((quote) => <Link key={quote.symbol} href={`/market/${encodeURIComponent(quote.symbol)}`} className="rounded-lg border border-border/70 bg-background/65 p-3 transition-colors hover:border-primary/45"><p className="truncate text-xs font-semibold">{quote.symbol}</p><p className="mt-1 text-sm">{money(quote.close)}</p><TrendValue compact value={quote.change_percent}>{pct(quote.change_percent)}</TrendValue></Link>)}
+              {[...market.gainers.slice(0, 2), ...market.losers.slice(0, 2)].map((quote) => <Link key={quote.symbol} href={`/market/${encodeURIComponent(quote.symbol)}`} className="surface-subtle p-3 outline-none transition-colors hover:bg-muted/55 focus-visible:ring-2 focus-visible:ring-ring"><p className="truncate text-xs font-semibold">{quote.symbol}</p><p className="financial-number mt-1 text-sm">{money(quote.close)}</p><TrendValue compact value={quote.change_percent}>{pct(quote.change_percent)}</TrendValue></Link>)}
             </div>
           </div>
         </Panel>

@@ -51,6 +51,27 @@ export function Panel({ className, children }: { className?: string; children: R
   return <section className={cn("surface-primary min-w-0 p-4 sm:p-5", className)}>{children}</section>;
 }
 
+export interface MetricStripItem {
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  tone?: "positive" | "negative" | "neutral";
+}
+
+export function MetricStrip({ items, className }: { items: MetricStripItem[]; className?: string }) {
+  return (
+    <dl className={cn("surface-primary grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4", className)}>
+      {items.map((item) => (
+        <div key={item.label} className="relative px-4 py-3.5 after:absolute after:inset-y-3 after:right-0 after:hidden after:w-px after:bg-border/55 last:after:hidden sm:after:block xl:px-5">
+          <dt className="text-xs text-muted-foreground">{item.label}</dt>
+          <dd className={cn("financial-number mt-1 text-lg font-semibold", item.tone === "positive" && "text-positive", item.tone === "negative" && "text-negative", item.tone === "neutral" && "text-muted-foreground")}>{item.value}</dd>
+          {item.detail != null && <p className="mt-0.5 text-[11px] text-muted-foreground">{item.detail}</p>}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function TrendValue({ value, children, compact = false }: { value: number | null | undefined; children?: ReactNode; compact?: boolean }) {
   const positive = value != null && value > 0;
   const negative = value != null && value < 0;
