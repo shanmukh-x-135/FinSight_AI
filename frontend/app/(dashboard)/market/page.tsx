@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DataState, MetricStrip, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge, TrendValue } from "@/components/workspace";
 import { intelligenceApi, marketApi, watchlistApi, type Breadth, type EconomicCalendar, type HeatmapStock, type LatestSentiment, type MarketStockSnapshot, type Recommendation, type SectorOverview, type SectorRotation as SectorRotationRow, type TechnicalSummary, type UniverseCode, type UniverseOption, type WatchlistItem } from "@/lib/api";
+import { usePersistentString } from "@/lib/use-persistent-state";
 import { money, pct } from "@/lib/utils";
 
 type SortKey = "symbol" | "change" | "rsi";
@@ -38,9 +39,9 @@ export default function MarketPage() {
   const [watchError, setWatchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [query, setQuery] = useState("");
-  const [sector, setSector] = useState("All sectors");
-  const [sort, setSort] = useState<SortKey>("change");
+  const [query, setQuery] = usePersistentString<string>("finsight:market:query", "");
+  const [sector, setSector] = usePersistentString<string>("finsight:market:sector", "All sectors");
+  const [sort, setSort] = usePersistentString<SortKey>("finsight:market:sort", "change");
 
   useEffect(() => {
     let active = true;

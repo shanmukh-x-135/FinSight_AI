@@ -18,8 +18,11 @@ const rows = [
 
 describe("WatchlistPage sorting", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(watchlistApi.list).mockResolvedValue(rows);
+    vi.mocked(watchlistApi.update).mockResolvedValue({ id: 1 });
+    vi.mocked(watchlistApi.remove).mockResolvedValue(null);
     vi.mocked(newsApi.latestSentiment).mockResolvedValue([{ symbol: "ZZZ.NS", latest_sentiment: -0.2, availability: "available", confidence: 0.7, article_count: 1 }, { symbol: "AAA.NS", latest_sentiment: 0.5, availability: "available", confidence: 0.8, article_count: 2 }]);
   });
 
@@ -30,5 +33,29 @@ describe("WatchlistPage sorting", () => {
 
     fireEvent.change(screen.getByRole("combobox", { name: "Sort watchlist" }), { target: { value: "symbol" } });
     expect(within(screen.getAllByRole("row")[1]).getByText("AAA.NS")).toBeVisible();
+  });
+
+  it("pins immediately and rolls back when persistence fails", async () => {
+    vi.mocked(watchlistApi.update).mockRejectedValueOnce(new Error("offline"));
+    render(<WatchlistPage />);
+    await screen.findByRole("button", { name: "Pin ZZZ.NS" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin ZZZ.NS" }));
+    expect(screen.getByRole("button", { name: "Unpin ZZZ.NS" })).toBeDisabled();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("previous watchlist was restored");
+    expect(screen.getByRole("button", { name: "Pin ZZZ.NS" })).toBeEnabled();
+  });
+
+  it("removes immediately and restores the row when persistence fails", async () => {
+    vi.mocked(watchlistApi.remove).mockRejectedValueOnce(new Error("offline"));
+    render(<WatchlistPage />);
+    await screen.findByRole("button", { name: "Remove ZZZ.NS" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove ZZZ.NS" }));
+    expect(screen.queryByText("ZZZ.NS")).not.toBeInTheDocument();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("previous watchlist was restored");
+    expect(screen.getByText("ZZZ.NS")).toBeVisible();
   });
 });

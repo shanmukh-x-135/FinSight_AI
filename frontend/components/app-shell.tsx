@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { CommandPalette } from "@/components/command-palette";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,8 @@ export function AppShell({ children, email, isAdmin = false, onLogout }: { child
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const mobileDialogRef = useRef<HTMLElement>(null);
+  const mobileCloseRef = useRef<HTMLButtonElement>(null);
   const [dark, setDark] = useState(() => typeof window === "undefined" || window.localStorage.getItem("finsight-theme") !== "light");
   const visibleNavigation = useMemo(() => isAdmin ? [...navigation, { href: "/operations", label: "Operations", icon: Activity }] : [...navigation], [isAdmin]);
   const activeRoute = visibleNavigation.find((item) => isActive(pathname, item.href));
@@ -55,6 +57,29 @@ export function AppShell({ children, email, isAdmin = false, onLogout }: { child
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = requestAnimationFrame(() => mobileCloseRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [mobileOpen]);
+
+  function handleMobileDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") { event.preventDefault(); setMobileOpen(false); return; }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(mobileDialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input, [tabindex]:not([tabindex="-1"])') ?? []);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
 
   function toggleTheme() {
     setDark((current) => {
@@ -105,7 +130,7 @@ export function AppShell({ children, email, isAdmin = false, onLogout }: { child
           {visibleNavigation.filter((item) => mobilePrimary.has(item.href)).map((item) => { const active = isActive(pathname, item.href); const Icon = item.icon; return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={cn("flex min-w-0 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "bg-primary/10 font-medium text-primary")}><Icon className="size-4" aria-hidden /><span className="truncate">{item.label}</span></Link>; })}
         </nav>
 
-        {mobileOpen && <div className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-sm lg:hidden" onMouseDown={() => setMobileOpen(false)}><aside role="dialog" aria-modal="true" aria-label="Application navigation" className="flex h-full w-[min(22rem,88vw)] flex-col bg-sidebar p-3 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex h-12 items-center justify-between px-2"><Link href="/dashboard" className="flex items-center gap-2.5 font-semibold"><span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-black text-primary-foreground">F</span>FinSight AI</Link><Button variant="ghost" size="icon-sm" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X className="size-4" /></Button></div><button type="button" onClick={() => { setMobileOpen(false); setCommandOpen(true); }} className="my-3 flex h-10 items-center gap-2 rounded-lg bg-sidebar-accent/70 px-3 text-xs text-muted-foreground"><Search className="size-4" />Search or quick action</button><nav aria-label="All navigation" className="flex-1 space-y-1 overflow-y-auto">{navLinks(true)}</nav><div className="border-t border-sidebar-border pt-2"><Link href="/settings" className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground"><Settings className="size-4" />Settings</Link><button type="button" onClick={onLogout} className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-negative"><LogOut className="size-4" />Log out</button></div></aside></div>}
+        {mobileOpen && <div className="fixed inset-0 z-[70] bg-slate-950/70 backdrop-blur-sm lg:hidden" onMouseDown={() => setMobileOpen(false)}><aside ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Application navigation" className="flex h-full w-[min(22rem,88vw)] flex-col bg-sidebar p-3 shadow-2xl" onMouseDown={(event) => event.stopPropagation()} onKeyDown={handleMobileDialogKeyDown}><div className="flex h-12 items-center justify-between px-2"><Link href="/dashboard" className="flex items-center gap-2.5 font-semibold"><span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-black text-primary-foreground">F</span>FinSight AI</Link><Button ref={mobileCloseRef} variant="ghost" size="icon-sm" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X className="size-4" /></Button></div><button type="button" onClick={() => { setMobileOpen(false); setCommandOpen(true); }} className="my-3 flex h-10 items-center gap-2 rounded-lg bg-sidebar-accent/70 px-3 text-xs text-muted-foreground"><Search className="size-4" />Search or quick action</button><nav aria-label="All navigation" className="flex-1 space-y-1 overflow-y-auto">{navLinks(true)}</nav><div className="border-t border-sidebar-border pt-2"><Link href="/settings" className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground"><Settings className="size-4" />Settings</Link><button type="button" onClick={onLogout} className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-negative"><LogOut className="size-4" />Log out</button></div></aside></div>}
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       </div>
     </div>

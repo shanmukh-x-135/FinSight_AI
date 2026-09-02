@@ -30,18 +30,29 @@ const destinations = [
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
   const [stocks, setStocks] = useState<MarketStockSnapshot[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || stocks.length > 0) return;
     let active = true;
-    if (stocks.length === 0) {
-      marketApi.stocks("NIFTY100").then((rows) => active && setStocks(rows)).catch(() => undefined);
-    }
-    return () => { active = false; cancelAnimationFrame(frame); };
+    marketApi.stocks("NIFTY100").then((rows) => active && setStocks(rows)).catch(() => undefined);
+    return () => { active = false; };
   }, [open, stocks.length]);
 
   const results = useMemo(() => {
@@ -80,6 +91,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   return (
     <div className="fixed inset-0 z-[80] grid items-start justify-items-center bg-slate-950/70 px-3 pt-[12vh] backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in" onMouseDown={close}>
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="FinSight command palette"
@@ -87,6 +99,13 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
           if (event.key === "Escape") close();
+          if (event.key === "Tab") {
+            const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input, button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') ?? []);
+            const first = focusable[0];
+            const last = focusable.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }
           if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((value) => Math.min(value + 1, results.length - 1)); }
           if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((value) => Math.max(value - 1, 0)); }
           if (event.key === "Enter" && results[activeIndex]) { event.preventDefault(); choose(results[activeIndex].href); }

@@ -50,4 +50,15 @@ describe("premium application shell", () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/market/RELIANCE.NS"));
   });
+
+  it("moves focus into overlays and restores it when they close", async () => {
+    const user = userEvent.setup();
+    render(<AppShell email="analyst@example.com" onLogout={vi.fn()}><p>Workspace</p></AppShell>);
+    const trigger = screen.getByRole("button", { name: "Open command palette" });
+
+    await user.click(trigger);
+    await waitFor(() => expect(screen.getByLabelText("Search commands and instruments")).toHaveFocus());
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
 });

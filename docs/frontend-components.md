@@ -49,7 +49,9 @@ of components, and every AI insight uses the same evidence expander.
 The global command palette opens with `⌘K` / `Ctrl+K`, supports arrow/Enter/Esc
 keyboard operation, searches NIFTY 100 instruments, and provides deterministic
 navigation to market, portfolio, watchlist, research, strategies, movers,
-reports, and the AI workspace. Basic navigation never depends on an LLM.
+reports, and the AI workspace. Focus stays inside the palette while it is open
+and returns to the invoking control when it closes. Basic navigation never
+depends on an LLM.
 
 ## Shared component library (`frontend/components/`)
 
@@ -126,6 +128,12 @@ never a static mock.
 - Mobile: five primary destinations remain one tap away; the drawer exposes the
   complete product map and account/session actions. Summary grids collapse to
   one/two columns and wide tables scroll inside their own container.
+- Market and watchlist search/sort preferences persist locally between visits.
+  Watchlist pin/remove actions update immediately, announce their result to
+  assistive technology, and restore the previous state if the API rejects them.
+- Dialogs lock background scrolling, trap keyboard focus, close with Escape,
+  and restore focus. The global reduced-motion rule removes non-essential
+  animation and smooth scrolling when the operating system requests it.
 
 ## Tests
 
