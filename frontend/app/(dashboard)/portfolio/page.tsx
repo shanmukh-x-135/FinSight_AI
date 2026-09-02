@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 
 import { AIInsightCard } from "@/components/AIInsightCard";
 import { AIAnalysisState } from "@/components/AIAnalysisState";
@@ -15,13 +16,11 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { DonutChart } from "@/components/donut-chart";
 import { ContributionChart } from "@/components/finance-charts";
 import { ContextualAIActions } from "@/components/contextual-ai-actions";
-import { MetricCard, toneOf } from "@/components/MetricCard";
 import { PortfolioRiskView } from "@/components/portfolio-risk";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DataState, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge } from "@/components/workspace";
+import { DataState, MetricStrip, PageHeader, PageSkeleton, Panel, SectionHeader, StatusBadge } from "@/components/workspace";
 import {
   ApiError,
   intelligenceApi,
@@ -163,28 +162,12 @@ export default function PortfolioPage() {
           Known cost basis: {money(a.total_cost)}.
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="Total Value" value={money(a.total_value)} />
-        <MetricCard
-          label="Total Return"
-          value={money(a.total_unrealized_pnl)}
-          sub={pct(a.total_return_percent)}
-          tone={toneOf(a.total_unrealized_pnl)}
-        />
-        <MetricCard
-          label="Today's P&L"
-          value={money(a.daily_pnl)}
-          sub={pct(a.daily_pnl_percent)}
-          tone={toneOf(a.daily_pnl)}
-        />
-        <MetricCard label="Health Score" value={a.health_score ?? "—"} sub={`risk: ${a.risk_level}`} />
-      </div>
+      <MetricStrip items={[{ label: "Total value", value: money(a.total_value), detail: `${a.number_of_holdings} holdings · ${a.number_of_sectors} sectors` }, { label: "Unrealized P&L", value: money(a.total_unrealized_pnl), detail: pct(a.total_return_percent), tone: a.total_unrealized_pnl == null ? "neutral" : a.total_unrealized_pnl >= 0 ? "positive" : "negative" }, { label: "Today’s P&L", value: money(a.daily_pnl), detail: pct(a.daily_pnl_percent), tone: a.daily_pnl == null ? "neutral" : a.daily_pnl >= 0 ? "positive" : "negative" }, { label: "Health score", value: a.health_score ?? "—", detail: `Risk: ${a.risk_level}` }]} />
     </div>
   );
 
   const charts = a && (
-    <div className="grid gap-4 xl:grid-cols-3">
-      <Panel className="xl:col-span-3"><SectionHeader title="Portfolio equity curve" description="Performance through time requires dated cash flows and position history." /><div className="mt-4"><DataState kind="unavailable" title="Historical portfolio valuation is not available" description="FinSight currently stores present holdings and cost basis, not transaction timing. An equity curve is intentionally withheld rather than reconstructed from incomplete data." /></div></Panel>
+    <div className="grid gap-4 xl:grid-cols-[.9fr_1.2fr_.9fr]">
       <Panel>
           <SectionHeader title="Sector allocation" description="Current market value by sector." />
           <div className="mt-4">
@@ -213,6 +196,7 @@ export default function PortfolioPage() {
         </div>
       </Panel>
       <Panel><SectionHeader title="P&L contribution" description="Largest unrealized contributors by holding." /><ContributionChart holdings={a.holdings} /></Panel>
+      <div role="status" className="surface-subtle px-4 py-3 text-xs leading-5 text-muted-foreground xl:col-span-3"><strong className="text-foreground">Equity curve withheld:</strong> FinSight stores present holdings and cost basis, not dated cash flows. Historical performance is not reconstructed from incomplete data.</div>
     </div>
   );
 
@@ -250,7 +234,7 @@ export default function PortfolioPage() {
     <div className="flex flex-col gap-6">
       <DataTable<HoldingAnalytics>
         columns={[
-          { key: "symbol", header: "Symbol", className: "font-medium", render: (h) => h.symbol },
+          { key: "symbol", header: "Instrument", className: "font-medium", render: (h) => <Link href={`/market/${encodeURIComponent(h.symbol)}`} className="outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">{h.symbol}<span className="block text-[10px] font-normal text-muted-foreground">{h.name ?? "Company name unavailable"}</span></Link> },
           { key: "quantity", header: "Qty", align: "right", render: (h) => h.quantity },
           { key: "average", header: "Avg", align: "right", render: (h) => money(h.avg_buy_price) },
           { key: "price", header: "Price", align: "right", render: (h) => money(h.current_price) },
@@ -307,11 +291,8 @@ export default function PortfolioPage() {
         emptyMessage="No holdings yet — add one below."
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{editingId != null ? "Edit holding" : "Add holding"}</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="surface-subtle p-4">
+          <h3 className="text-section-heading">{editingId != null ? "Edit holding" : "Add holding"}</h3>
           <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="symbol">Symbol</Label>
@@ -336,15 +317,14 @@ export default function PortfolioPage() {
             )}
           </form>
           {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 
   return (
     <div className="space-y-5">
       <PageHeader eyebrow="Portfolio analytics" title={detail?.name ?? "Portfolio"} description="Exposure, contribution, risk, and evidence-backed position intelligence." actions={<ContextualAIActions actions={[{ label: "Explain concentration", prompt: "Explain my portfolio concentration using the current evidence and identify the largest contributors." }, { label: "Review P&L", prompt: "Explain my portfolio profit and loss by position using current deterministic analytics." }, { label: "Interpret stress", prompt: "Summarize my portfolio stress-test results, key vulnerabilities, and evidence-backed limitations." }]} />} />
-      {error && !analytics ? <DataState kind="error" title="Portfolio unavailable" description={error} /> : <>{summaryCards}{charts}{risk && portfolioId != null && <PortfolioRiskView risk={risk} onCounterfactual={(changes) => portfolioApi.counterfactual(portfolioId, changes)} />}<Panel><SectionHeader title="Position intelligence" description="Signals are ranked deterministically from current analytics." /><div className="mt-4">{aiAnalysis}</div></Panel><Panel><SectionHeader title="Holdings" description="Current valuation and unrealized performance by position." /><div className="mt-4">{tables}</div></Panel></>}
+      {error && !analytics ? <DataState kind="error" title="Portfolio unavailable" description={error} /> : <>{summaryCards}{charts}<Panel><SectionHeader title="Holdings" description="Current valuation and unrealized performance by position." /><div className="mt-4">{tables}</div></Panel>{risk && portfolioId != null && <PortfolioRiskView risk={risk} onCounterfactual={(changes) => portfolioApi.counterfactual(portfolioId, changes)} />}<Panel><SectionHeader title="Position intelligence" description="Signals are ranked deterministically from current analytics." /><div className="mt-4">{aiAnalysis}</div></Panel></>}
     </div>
   );
 }
