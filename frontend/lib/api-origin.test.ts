@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveApiOrigin, validateProductionApiOrigin } from "./api-origin";
+import {
+  resolveApiOrigin,
+  resolveConfiguredApiOrigin,
+  validateProductionApiOrigin,
+} from "./api-origin";
 
 describe("API origin configuration", () => {
   it("keeps the local backend default for development", () => {
@@ -11,6 +15,21 @@ describe("API origin configuration", () => {
     expect(resolveApiOrigin("https://api.finsight.example/")).toBe(
       "https://api.finsight.example",
     );
+  });
+
+  it("uses the legacy container argument when the primary origin is empty", () => {
+    expect(
+      resolveConfiguredApiOrigin("", "https://api.finsight.example"),
+    ).toBe("https://api.finsight.example");
+  });
+
+  it("prefers the server-only backend origin when both are configured", () => {
+    expect(
+      resolveConfiguredApiOrigin(
+        "https://private-api.finsight.example",
+        "https://legacy-api.finsight.example",
+      ),
+    ).toBe("https://private-api.finsight.example");
   });
 
   it("accepts a production HTTPS origin", () => {

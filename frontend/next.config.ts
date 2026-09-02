@@ -1,13 +1,16 @@
 import type { NextConfig } from "next";
 
-import { resolveApiOrigin, validateProductionApiOrigin } from "./lib/api-origin";
+import {
+  resolveApiOrigin,
+  resolveConfiguredApiOrigin,
+  validateProductionApiOrigin,
+} from "./lib/api-origin";
 
 const isProductionDeployment =
   process.env.VERCEL_ENV === "production" ||
   process.env.FRONTEND_BUILD_ENV === "production";
 
-const configuredBackendOrigin =
-  process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
+const configuredBackendOrigin = resolveConfiguredApiOrigin();
 const backendOrigin = isProductionDeployment
   ? validateProductionApiOrigin(configuredBackendOrigin)
   : resolveApiOrigin(configuredBackendOrigin);
